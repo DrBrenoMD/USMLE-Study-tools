@@ -1,0 +1,8 @@
+{
+  "name": "Breno Md - USMLE Study Tools",
+  "description": "Minimalist study tracker and tools ecosystem for USMLE preparation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
