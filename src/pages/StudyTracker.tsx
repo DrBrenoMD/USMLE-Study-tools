@@ -29,6 +29,8 @@ import {
   RotateCcw,
   CheckCircle2,
   Lock,
+  Download,
+  Upload,
 } from "lucide-react";
 import { useStudyPlan } from "../hooks/useStudyPlan";
 import { cn } from "../lib/utils";
@@ -262,11 +264,78 @@ export default function StudyTracker() {
     }
   };
 
+  // Exportar Backup Completo (JSON)
+  const handleExportBackup = () => {
+    const backupData = {
+      version: 4,
+      exportDate: new Date().toISOString(),
+      mode,
+      examDateStr,
+      bufferDays,
+      daysOff,
+      resources,
+      studyLogs,
+    };
+
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData, null, 2));
+    const downloadAnchor = document.createElement("a");
+    const dateFormatted = format(new Date(), "yyyy-MM-dd_HHmm");
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", `breno_md_backup_${dateFormatted}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  };
+
+  // Importar Backup Completo (JSON)
+  const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileReader = new FileReader();
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    fileReader.onload = (event) => {
+      try {
+        const result = event.target?.result;
+        if (typeof result === "string") {
+          const parsed = JSON.parse(result);
+
+          if (parsed.resources && Array.isArray(parsed.resources)) {
+            setResources(parsed.resources);
+          }
+          if (parsed.studyLogs && Array.isArray(parsed.studyLogs)) {
+            setStudyLogs(parsed.studyLogs);
+          }
+          if (parsed.mode) {
+            setMode(parsed.mode);
+          }
+          if (parsed.examDateStr !== undefined) {
+            setExamDateStr(parsed.examDateStr);
+          }
+          if (parsed.bufferDays !== undefined) {
+            setBufferDays(Number(parsed.bufferDays));
+          }
+          if (parsed.daysOff && Array.isArray(parsed.daysOff)) {
+            setDaysOff(parsed.daysOff);
+          }
+
+          alert("Backup restaurado com sucesso!");
+        }
+      } catch (err) {
+        console.error("Erro ao importar backup:", err);
+        alert("Erro ao ler o arquivo de backup. Certifique-se de que é um arquivo JSON válido do Breno Md.");
+      }
+    };
+
+    fileReader.readAsText(file);
+    // Reset file input value so same file can be selected again if needed
+    e.target.value = "";
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-gray-50/50 font-sans pb-20 text-gray-900">
       {/* Header Minimalista e Fluido */}
       <header className="bg-white border-b border-gray-200/80 pt-6 pb-4 shrink-0">
-        <div className="w-full max-w-[1550px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 flex items-center justify-between">
+        <div className="w-full max-w-[1550px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-3">
             <Link 
               to="/" 
@@ -285,7 +354,34 @@ export default function StudyTracker() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Download Backup */}
+            <button
+              type="button"
+              onClick={handleExportBackup}
+              className="flex items-center gap-1.5 text-xs font-medium text-gray-700 hover:text-blue-700 px-3 py-1.5 rounded-lg border border-gray-200 hover:border-blue-200 hover:bg-blue-50/50 transition-all cursor-pointer shadow-xs"
+              title="Baixar cópia de segurança com materiais e histórico em arquivo JSON"
+            >
+              <Download className="w-3.5 h-3.5 text-blue-600" />
+              <span>Baixar Backup</span>
+            </button>
+
+            {/* Upload Backup */}
+            <label
+              className="flex items-center gap-1.5 text-xs font-medium text-gray-700 hover:text-blue-700 px-3 py-1.5 rounded-lg border border-gray-200 hover:border-blue-200 hover:bg-blue-50/50 transition-all cursor-pointer shadow-xs"
+              title="Restaurar backup a partir de um arquivo JSON"
+            >
+              <Upload className="w-3.5 h-3.5 text-blue-600" />
+              <span>Importar Backup</span>
+              <input
+                type="file"
+                accept=".json"
+                onChange={handleImportBackup}
+                className="hidden"
+              />
+            </label>
+
+            {/* Limpar Dados */}
             <button
               type="button"
               onClick={handleClearAllData}
@@ -293,7 +389,7 @@ export default function StudyTracker() {
               title="Limpar todos os dados e começar do zero"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span>Limpar Dados</span>
+              <span>Limpar</span>
             </button>
           </div>
         </div>
@@ -353,15 +449,6 @@ export default function StudyTracker() {
         {activeTab === 'planner' && (
           <div className="flex flex-col gap-6">
             
-            {/* Linha do Tempo Visual Minimalista */}
-            {plan.isValid && resources.length > 0 && (
-              <StudyTimeline
-                plan={plan}
-                resources={resources}
-                examDateStr={examDateStr}
-              />
-            )}
-
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
             
               {/* Coluna Esquerda: Configurações e Materiais */}
@@ -1116,6 +1203,15 @@ export default function StudyTracker() {
               </div>
               
             </div>
+
+            {/* Linha do Tempo Visual Minimalista (Posicionada abaixo da calculadora e materiais) */}
+            {plan.isValid && resources.length > 0 && (
+              <StudyTimeline
+                plan={plan}
+                resources={resources}
+                examDateStr={examDateStr}
+              />
+            )}
           </div>
         )}
 

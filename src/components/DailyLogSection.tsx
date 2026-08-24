@@ -241,9 +241,10 @@ export function DailyLogSection({ resources, activeDateStr, onActiveDateChange, 
                 type="number"
                 min="0"
                 max="100"
+                step="any"
                 value={scorePercent}
-                onChange={(e) => setScorePercent(e.target.value ? Number(e.target.value) : '')}
-                placeholder="Ex: 72"
+                onChange={(e) => setScorePercent(e.target.value !== '' ? Number(e.target.value) : '')}
+                placeholder="Ex: 72.5"
                 className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-gray-900 focus:outline-none focus:border-blue-500 focus:bg-white"
               />
               <span className="absolute right-3 top-2.5 text-xs text-gray-400 font-medium pointer-events-none">
