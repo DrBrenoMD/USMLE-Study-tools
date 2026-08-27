@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Square, FastForward, Clock, Activity, TrendingUp, TrendingDown, Volume2, VolumeX, Settings2 } from 'lucide-react';
+import { Play, Square, FastForward, Clock, Activity, TrendingUp, TrendingDown, Volume2, VolumeX, Settings2, Pause } from 'lucide-react';
 
 export function QuestionPacer({ className }: { className?: string }) {
   const [totalQuestions, setTotalQuestions] = useState(40);
@@ -14,7 +14,6 @@ export function QuestionPacer({ className }: { className?: string }) {
   
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const hasPlayedAlarmRef = useRef(false);
 
   const totalQuestionsDone = completedQuestionsTime.length;
   const remainingQuestions = Math.max(0, totalQuestions - totalQuestionsDone - 1);
@@ -41,9 +40,8 @@ export function QuestionPacer({ className }: { className?: string }) {
           // Calculate required pace continuously or based on state? 
           // Since effectiveTarget depends on currentQuestionTime ONLY if we want it to adapt mid-question.
           // But actually requiredPace is based on totalCompletedTime, which is constant during the question.
-          if (next === effectiveTarget && !hasPlayedAlarmRef.current) {
+          if (effectiveTarget > 0 && next > 0 && next % effectiveTarget === 0) {
             playBeep();
-            hasPlayedAlarmRef.current = true;
           }
           return next;
         });
@@ -87,20 +85,21 @@ export function QuestionPacer({ className }: { className?: string }) {
       audioContextRef.current.resume();
     }
     setIsActive(true);
-    hasPlayedAlarmRef.current = false;
+  };
+
+  const handlePause = () => {
+    setIsActive(false);
   };
 
   const handleNext = () => {
     setCompletedQuestionsTime(prev => [...prev, currentQuestionTime]);
     setCurrentQuestionTime(0);
-    hasPlayedAlarmRef.current = false;
   };
 
   const handleStop = () => {
     setIsActive(false);
     setCurrentQuestionTime(0);
     setCompletedQuestionsTime([]);
-    hasPlayedAlarmRef.current = false;
   };
 
   const formatTime = (seconds: number) => {
@@ -154,7 +153,7 @@ export function QuestionPacer({ className }: { className?: string }) {
                 <input 
                   type="number" 
                   value={targetTimeSeconds}
-                  onChange={(e) => setTargetTimeSeconds(Math.max(10, parseInt(e.target.value) || 90))}
+                  onChange={(e) => setTargetTimeSeconds(Math.max(1, parseInt(e.target.value) || 1))}
                   className="px-3 py-2 border border-gray-300 rounded-lg font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -308,13 +307,22 @@ export function QuestionPacer({ className }: { className?: string }) {
                   Retomar
                 </button>
               ) : (
-                <button
-                  onClick={handleNext}
-                  disabled={totalQuestionsDone + 1 >= totalQuestions}
-                  className="px-6 py-2.5 bg-gray-900 hover:bg-black disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-xl font-bold flex items-center gap-2 shadow-sm transition-all"
-                >
-                  {totalQuestionsDone + 1 >= totalQuestions ? 'Última Questão' : 'Próxima'} <FastForward className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handlePause}
+                    className="px-4 py-2.5 bg-amber-100 text-amber-700 hover:bg-amber-200 rounded-xl font-bold flex items-center gap-2 transition-all"
+                  >
+                    <Pause className="w-4 h-4" />
+                    Pausar
+                  </button>
+                  <button
+                    onClick={handleNext}
+                    disabled={totalQuestionsDone + 1 >= totalQuestions}
+                    className="px-6 py-2.5 bg-gray-900 hover:bg-black disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-xl font-bold flex items-center gap-2 shadow-sm transition-all"
+                  >
+                    {totalQuestionsDone + 1 >= totalQuestions ? 'Última Questão' : 'Próxima'} <FastForward className="w-4 h-4" />
+                  </button>
+                </div>
               )}
             </div>
           </div>
