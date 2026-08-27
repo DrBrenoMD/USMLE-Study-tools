@@ -1,4 +1,4 @@
-import { ArrowRight, BookOpen, CalendarDays, LineChart } from "lucide-react";
+import { ArrowRight, BookOpen, CalendarDays, LineChart, Activity, Calculator } from "lucide-react";
 import { Link } from "react-router-dom";
 import { MouseInteractiveBackground } from "../components/MouseInteractiveBackground";
 
@@ -11,40 +11,48 @@ const MENU_ITEMS = [
     active: true,
   },
   {
+    title: "Question Pacer",
+    description: "Treine seu pace de questões contra o relógio.",
+    icon: Activity,
+    href: "/pacer",
+    active: true,
+  },
+  {
+    title: "NBME Calculator",
+    description: "Estime seu score nos simulados do Step 1 e 2 CK.",
+    icon: Calculator,
+    href: "/calculator",
+    active: true,
+  },
+  {
+    title: "Score Predictor",
+    description: "Previsão de score baseada no seu histórico de simulados.",
+    icon: LineChart,
+    href: "/predictor",
+    active: true,
+  },
+  {
     title: "Flashcards",
     description: "Revisão espaçada dos principais tópicos.",
     icon: BookOpen,
-    href: "#",
-    active: false,
-  },
-  {
-    title: "Performance",
-    description: "Análise de evolução nos simulados e NBMEs.",
-    icon: LineChart,
-    href: "#",
-    active: false,
+    href: "/flashcards",
+    active: true,
   },
 ];
 
 export default function Home() {
   return (
-    <div className="relative flex min-h-screen flex-col overflow-hidden bg-[#F9FAFB] font-sans">
+    <div className="relative flex flex-1 flex-col overflow-hidden bg-transparent font-sans">
       <MouseInteractiveBackground />
-
-      <header className="flex flex-col items-center justify-center pt-12 pb-8 bg-white border-b border-gray-100 relative overflow-hidden">
-        <div className="absolute inset-0 opacity-40 bg-[radial-gradient(circle_at_50%_120%,rgba(59,130,246,0.08),transparent_50%)]"></div>
-        <h1 className="text-4xl font-extralight tracking-tight text-gray-900 mb-6 relative z-10">
-          Breno Md
+      <header className="flex flex-col items-center justify-center pt-12 pb-8 relative overflow-hidden">
+        <h1 className="text-4xl font-bold tracking-tight text-gray-900 mb-2 relative z-10">
+          USMLE Study Tools
         </h1>
-        <nav className="flex space-x-8 relative z-10">
-          <Link to="/tracker" className="text-sm font-medium text-gray-400 hover:text-gray-600 transition-colors">Study Tracking</Link>
-          <Link to="#" className="text-sm font-medium text-gray-400 hover:text-gray-600 transition-colors">Question Banks</Link>
-          <Link to="#" className="text-sm font-medium text-gray-400 hover:text-gray-600 transition-colors">Materials</Link>
-          <Link to="#" className="text-sm font-medium text-gray-400 hover:text-gray-600 transition-colors">NBMEs</Link>
-        </nav>
+        <p className="text-sm font-medium text-gray-500 uppercase tracking-widest relative z-10">
+          By Breno, MD
+        </p>
       </header>
-
-      <main className="z-10 flex w-full max-w-5xl flex-col items-center px-6 mx-auto mt-16">
+      <main className="z-10 flex w-full max-w-5xl flex-col items-center px-6 mx-auto mt-8">
         <nav className="grid w-full grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {MENU_ITEMS.map((item) => (
             <Link

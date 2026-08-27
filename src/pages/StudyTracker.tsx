@@ -46,6 +46,7 @@ import {
 import { StudyHeatmap } from "../components/StudyHeatmap";
 import { DailyLogSection } from "../components/DailyLogSection";
 import { StudyTimeline } from "../components/StudyTimeline";
+import { StudyCalendar } from "../components/StudyCalendar";
 
 const DAYS_OF_WEEK = [
   { id: 0, name: 'Dom', short: 'D' },
@@ -1206,11 +1207,19 @@ export default function StudyTracker() {
 
             {/* Linha do Tempo Visual Minimalista (Posicionada abaixo da calculadora e materiais) */}
             {plan.isValid && resources.length > 0 && (
-              <StudyTimeline
-                plan={plan}
-                resources={resources}
-                examDateStr={examDateStr}
-              />
+              <>
+                <StudyTimeline
+                  plan={plan}
+                  resources={resources}
+                  examDateStr={examDateStr}
+                />
+                <StudyCalendar 
+                  plan={plan}
+                  resources={resources}
+                  studyLogs={studyLogs}
+                  onAddLog={handleAddLog}
+                />
+              </>
             )}
           </div>
         )}

@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { format, subDays, addDays, isSameDay, startOfWeek, endOfWeek, parseISO, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Flame, Trophy, Clock, CheckCircle2, Calendar as CalendarIcon, Sparkles, Plus, Trash2, Filter } from 'lucide-react';
+import { Flame, Trophy, Clock, CheckCircle2, Calendar as CalendarIcon, Sparkles, Plus, Trash2, Filter, CheckSquare } from 'lucide-react';
 import { StudyLogEntry, Resource, getCategoryIcon } from '../types';
 import { cn } from '../lib/utils';
 
@@ -334,8 +334,35 @@ export function StudyHeatmap({ logs, resources, onAddLog, onDeleteLog, onSelectD
             )}
           </div>
 
-          <div className="text-xs font-semibold text-gray-700">
-            Total do Dia: <span className="font-bold text-blue-600">{Math.floor(selectedDayTotalMinutes / 60)}h {selectedDayTotalMinutes % 60}m</span>
+          <div className="flex items-center gap-4 flex-wrap">
+            {(() => {
+              const qbankLogs = selectedDayLogs.filter(log => log.resourceType === 'qbank' || log.unit === 'questões');
+              const totalQuestions = qbankLogs.reduce((acc, log) => acc + log.amount, 0);
+              const totalAmountScored = qbankLogs.filter(l => l.scorePercent !== undefined).reduce((acc, log) => acc + log.amount, 0);
+              const totalScoreWeighted = qbankLogs.filter(l => l.scorePercent !== undefined).reduce((acc, log) => acc + ((log.scorePercent || 0) * log.amount), 0);
+              const avgScore = totalAmountScored > 0 ? Math.round(totalScoreWeighted / totalAmountScored) : 0;
+
+              return totalQuestions > 0 ? (
+                <div className="flex items-center gap-3 text-xs bg-white px-2 py-1 rounded-md border border-gray-200">
+                  <div className="flex items-center gap-1.5">
+                    <CheckSquare className="w-3.5 h-3.5 text-blue-500" />
+                    <span className="font-semibold text-gray-700">{totalQuestions} questões</span>
+                  </div>
+                  {totalAmountScored > 0 && (
+                    <>
+                      <div className="w-px h-3 bg-gray-200"></div>
+                      <div className="flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                        <span className="font-semibold text-emerald-700">{avgScore}% acertos</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ) : null;
+            })()}
+            <div className="text-xs font-semibold text-gray-700 bg-white px-2 py-1 rounded-md border border-gray-200">
+              Total do Dia: <span className="font-bold text-blue-600">{Math.floor(selectedDayTotalMinutes / 60)}h {selectedDayTotalMinutes % 60}m</span>
+            </div>
           </div>
         </div>
 
