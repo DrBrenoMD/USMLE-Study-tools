@@ -4,6 +4,7 @@ import { ptBR } from 'date-fns/locale';
 import { Flame, Trophy, Clock, CheckCircle2, Calendar as CalendarIcon, Sparkles, Plus, Trash2, Filter, CheckSquare } from 'lucide-react';
 import { StudyLogEntry, Resource, getCategoryIcon } from '../types';
 import { cn } from '../lib/utils';
+import { useTimerStore } from '../store/useTimerStore';
 
 interface StudyHeatmapProps {
   logs: StudyLogEntry[];
@@ -17,6 +18,7 @@ export function StudyHeatmap({ logs, resources, onAddLog, onDeleteLog, onSelectD
   const [selectedDateStr, setSelectedDateStr] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const [filterResourceId, setFilterResourceId] = useState<string>('all');
   const [weeksToShow, setWeeksToShow] = useState<number>(18); // ~4.5 meses
+  const { dailyNetTime } = useTimerStore();
 
   // Mapa de data (YYYY-MM-DD) -> Array de Logs
   const logsByDate = useMemo(() => {
@@ -43,6 +45,14 @@ export function StudyHeatmap({ logs, resources, onAddLog, onDeleteLog, onSelectD
       totalMinutes += log.minutesSpent || 0;
       totalItems += log.amount || 0;
       uniqueActiveDays.add(log.date);
+    });
+
+    Object.entries(dailyNetTime).forEach(([dateStr, seconds]) => {
+       const mins = Math.round(seconds / 60);
+       if (mins > 0) {
+         totalMinutes += mins;
+         uniqueActiveDays.add(dateStr);
+       }
     });
 
     // Calcular Sequência Atual (Current Streak)
@@ -93,7 +103,7 @@ export function StudyHeatmap({ logs, resources, onAddLog, onDeleteLog, onSelectD
       currentStreak,
       maxStreak: Math.max(maxStreak, currentStreak),
     };
-  }, [logs]);
+  }, [logs, dailyNetTime]);
 
   // Gerar a matriz do calendário Heatmap (7 linhas para os dias da semana, colunas para as semanas)
   const heatmapGrid = useMemo(() => {
@@ -113,7 +123,13 @@ export function StudyHeatmap({ logs, resources, onAddLog, onDeleteLog, onSelectD
           ? dayLogs 
           : dayLogs.filter(l => l.resourceId === filterResourceId);
 
-        const minutes = filteredDayLogs.reduce((acc, l) => acc + (l.minutesSpent || 0), 0);
+        let minutes = filteredDayLogs.reduce((acc, l) => acc + (l.minutesSpent || 0), 0);
+        
+        // Add timer net time if no specific resource is filtered
+        if (filterResourceId === 'all' && dailyNetTime[dStr]) {
+          minutes += Math.round(dailyNetTime[dStr] / 60);
+        }
+
         const items = filteredDayLogs.reduce((acc, l) => acc + (l.amount || 0), 0);
 
         let intensity: 0 | 1 | 2 | 3 | 4 = 0;
@@ -139,14 +155,20 @@ export function StudyHeatmap({ logs, resources, onAddLog, onDeleteLog, onSelectD
     }
 
     return weeks;
-  }, [logsByDate, filterResourceId, weeksToShow]);
+  }, [logsByDate, filterResourceId, weeksToShow, dailyNetTime]);
 
   // Logs do dia selecionado
   const selectedDayLogs = useMemo(() => {
     return logsByDate.get(selectedDateStr) || [];
   }, [logsByDate, selectedDateStr]);
 
-  const selectedDayTotalMinutes = selectedDayLogs.reduce((acc, l) => acc + (l.minutesSpent || 0), 0);
+  const selectedDayTotalMinutes = useMemo(() => {
+    let total = selectedDayLogs.reduce((acc, l) => acc + (l.minutesSpent || 0), 0);
+    if (filterResourceId === 'all' && dailyNetTime[selectedDateStr]) {
+      total += Math.round(dailyNetTime[selectedDateStr] / 60);
+    }
+    return total;
+  }, [selectedDayLogs, filterResourceId, selectedDateStr, dailyNetTime]);
 
   const getIntensityColor = (intensity: number) => {
     switch (intensity) {

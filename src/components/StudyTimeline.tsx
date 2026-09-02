@@ -278,34 +278,67 @@ export const StudyTimeline: React.FC<StudyTimelineProps> = ({
 
                   {/* Barra Visual Gantt na Linha do Tempo */}
                   <div className="relative w-full h-5 bg-gray-100 rounded-md overflow-hidden border border-gray-200 my-1">
-                    <div
-                      className={`absolute top-0 bottom-0 rounded-[4px] transition-all border flex items-center px-2 text-[10px] font-semibold whitespace-nowrap overflow-hidden ${
-                        isCompleted
-                          ? 'bg-emerald-100 border-emerald-300 text-emerald-900'
-                          : item.activeNow
-                          ? `${color.barBg}`
-                          : 'bg-gray-100 border-gray-300 text-gray-500 border-dashed'
-                      }`}
-                      style={{
-                        left: `${startPct}%`,
-                        width: `${widthPct}%`,
-                      }}
-                    >
-                      {/* Progresso interno se estiver ativo */}
-                      {item.activeNow && progressPct > 0 && (
-                        <div
-                          className={`absolute left-0 top-0 bottom-0 opacity-30 ${color.fill}`}
-                          style={{ width: `${progressPct}%` }}
-                        />
-                      )}
-                      <span className="relative z-10 truncate">
-                        {isCompleted
-                          ? '100% Concluído'
-                          : item.activeNow
-                          ? `${item.dailyAmount} ${item.unit}/dia • ${item.dailyMinutes} min/dia`
-                          : `Ao iniciar: ${item.projectedDailyAmount || item.dailyAmount} ${item.unit}/dia`}
-                      </span>
-                    </div>
+                    {item.frequency !== 'daily' && item.scheduledDates && item.scheduledDates.length > 0 ? (
+                      <>
+                        {item.scheduledDates.map((date, idx) => {
+                          const datePct = getTimelinePercent(date);
+                          return (
+                            <div
+                              key={idx}
+                              className={`absolute top-0 bottom-0 rounded-[2px] border ${
+                                isCompleted
+                                  ? 'bg-emerald-200 border-emerald-400'
+                                  : item.activeNow
+                                  ? `${color.fill} border-transparent`
+                                  : 'bg-gray-300 border-gray-400'
+                              }`}
+                              style={{
+                                left: `${datePct}%`,
+                                width: '8px',
+                                marginLeft: '-4px'
+                              }}
+                              title={format(new Date(date), 'dd/MM/yyyy')}
+                            />
+                          );
+                        })}
+                        <div className="absolute inset-0 flex items-center px-2 text-[10px] font-semibold text-gray-700 z-10 pointer-events-none drop-shadow-sm">
+                          {isCompleted
+                            ? '100% Concluído'
+                            : item.activeNow
+                            ? `${item.scheduledDates.length} sessões programadas`
+                            : 'Aguardando fase anterior'}
+                        </div>
+                      </>
+                    ) : (
+                      <div
+                        className={`absolute top-0 bottom-0 rounded-[4px] transition-all border flex items-center px-2 text-[10px] font-semibold whitespace-nowrap overflow-hidden ${
+                          isCompleted
+                            ? 'bg-emerald-100 border-emerald-300 text-emerald-900'
+                            : item.activeNow
+                            ? `${color.barBg}`
+                            : 'bg-gray-100 border-gray-300 text-gray-500 border-dashed'
+                        }`}
+                        style={{
+                          left: `${startPct}%`,
+                          width: `${widthPct}%`,
+                        }}
+                      >
+                        {/* Progresso interno se estiver ativo */}
+                        {item.activeNow && progressPct > 0 && (
+                          <div
+                            className={`absolute left-0 top-0 bottom-0 opacity-30 ${color.fill}`}
+                            style={{ width: `${progressPct}%` }}
+                          />
+                        )}
+                        <span className="relative z-10 truncate">
+                          {isCompleted
+                            ? '100% Concluído'
+                            : item.activeNow
+                            ? `${item.dailyAmount} ${item.unit}/dia • ${item.dailyMinutes} min/dia`
+                            : `Ao iniciar: ${item.projectedDailyAmount || item.dailyAmount} ${item.unit}/dia`}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Detalhes e Carga Diária quando Ativo ou Quando Iniciar */}

@@ -132,9 +132,13 @@ export interface Resource {
   
   frequency: FrequencyType; // 'daily', 'weekly', 'biweekly', 'monthly', 'sporadic'
   preferredDayOfWeek?: number; // 0..6 para semanais (ex: 6 = Sábado para simulados)
+  fixedGlobalVolume?: number | null; // Volume fixo para todos os dias
+  fixedVolumeByDayOfWeek?: Record<number, number | null>; // {0: 20, 1: null, ...} 0=Dom
   
   dependsOnId?: string | null; // ID do material que precisa ser concluído antes
-  
+  targetEndDate?: string | null; // Data limite individual
+  targetStartDate?: string | null; // Data de início individual
+
   // Exclusividade e Correção para NBME/Simulados
   exclusiveStudyDay?: boolean; // Se verdadeiro, no dia do simulado não se estuda mais nada diário
   reviewDaysPerItem?: number; // Dias adicionais de revisão/correção por exame (ex: 1 dia para fazer + 1 dia para corrigir)
@@ -152,6 +156,8 @@ export interface ResourceScheduleCalculation {
   // Datas e fases
   startDate: Date;
   endDate: Date;
+  scheduledDates?: Date[];
+
   activeNow: boolean; // Se já está em andamento agora ou aguardando dependência
   isCompleted?: boolean; // Se o material já foi 100% concluído
   waitingFor?: string; // Nome do recurso pré-requisito
@@ -174,6 +180,7 @@ export interface ResourceScheduleCalculation {
   exclusiveDaysReserved?: number;
   reviewDaysPerSession?: number;
   scheduleNote?: string;
+  calculationBreakdown?: string[];
 }
 
 export interface DailySchedule {
@@ -195,6 +202,7 @@ export interface DailySchedule {
   note?: string;
   isExclusive?: boolean;
   reviewDays?: number;
+  calculationBreakdown?: string[];
 }
 
 export interface StudyPlan {

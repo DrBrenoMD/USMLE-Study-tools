@@ -1,18 +1,27 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useRef } from 'react';
 import { Play, Square, FastForward, Clock, Activity, TrendingUp, TrendingDown, Volume2, VolumeX, Settings2, Pause } from 'lucide-react';
+import { useTimerStore } from '../store/useTimerStore';
 
 export function QuestionPacer({ className }: { className?: string }) {
-  const [totalQuestions, setTotalQuestions] = useState(40);
-  const [targetTimeSeconds, setTargetTimeSeconds] = useState(90);
-  const [isAdaptive, setIsAdaptive] = useState(false);
-  const [isActive, setIsActive] = useState(false);
-  
-  const [currentQuestionTime, setCurrentQuestionTime] = useState(0);
-  const [completedQuestionsTime, setCompletedQuestionsTime] = useState<number[]>([]);
-  
-  const [soundEnabled, setSoundEnabled] = useState(true);
-  
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const { 
+    pacerIsActive: isActive, 
+    pacerTotalQuestions: totalQuestions, 
+    pacerTargetTimeSeconds: targetTimeSeconds, 
+    pacerIsAdaptive: isAdaptive, 
+    pacerCurrentQuestionTime: currentQuestionTime, 
+    pacerCompletedQuestionsTime: completedQuestionsTime, 
+    pacerSoundEnabled: soundEnabled,
+    setPacerState,
+    nextPacerQuestion,
+    stopPacer
+  } = useTimerStore();
+
+  const setTotalQuestions = (v: number) => setPacerState({ pacerTotalQuestions: v });
+  const setTargetTimeSeconds = (v: number) => setPacerState({ pacerTargetTimeSeconds: v });
+  const setIsAdaptive = (v: boolean) => setPacerState({ pacerIsAdaptive: v });
+  const setIsActive = (v: boolean) => setPacerState({ pacerIsActive: v });
+  const setSoundEnabled = (v: boolean) => setPacerState({ pacerSoundEnabled: v });
+
   const audioContextRef = useRef<AudioContext | null>(null);
 
   const totalQuestionsDone = completedQuestionsTime.length;
@@ -31,28 +40,6 @@ export function QuestionPacer({ className }: { className?: string }) {
   const effectiveTarget = isAdaptive && requiredPace < targetTimeSeconds && requiredPace > 0
     ? requiredPace 
     : targetTimeSeconds;
-
-  useEffect(() => {
-    if (isActive) {
-      timerRef.current = setInterval(() => {
-        setCurrentQuestionTime(prev => {
-          const next = prev + 1;
-          // Calculate required pace continuously or based on state? 
-          // Since effectiveTarget depends on currentQuestionTime ONLY if we want it to adapt mid-question.
-          // But actually requiredPace is based on totalCompletedTime, which is constant during the question.
-          if (effectiveTarget > 0 && next > 0 && next % effectiveTarget === 0) {
-            playBeep();
-          }
-          return next;
-        });
-      }, 1000);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-    }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [isActive, effectiveTarget]);
 
   const playBeep = () => {
     if (!soundEnabled) return;
@@ -92,14 +79,11 @@ export function QuestionPacer({ className }: { className?: string }) {
   };
 
   const handleNext = () => {
-    setCompletedQuestionsTime(prev => [...prev, currentQuestionTime]);
-    setCurrentQuestionTime(0);
+    nextPacerQuestion();
   };
 
   const handleStop = () => {
-    setIsActive(false);
-    setCurrentQuestionTime(0);
-    setCompletedQuestionsTime([]);
+    stopPacer();
   };
 
   const formatTime = (seconds: number) => {

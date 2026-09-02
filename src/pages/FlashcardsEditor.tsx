@@ -16,7 +16,7 @@ import {
   ChevronRight,
   Image as ImageIcon,
 } from "lucide-react";
-import * as fabric from "fabric";
+import { fabric } from "fabric";
 
 export default function FlashcardsEditor() {
   const location = useLocation();

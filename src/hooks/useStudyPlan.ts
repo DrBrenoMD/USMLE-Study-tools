@@ -198,6 +198,26 @@ export function useStudyPlan(
       // Cálculo recursivo respeitando ordem topológica
       const calculatedMap = new Map<string, ResourceScheduleCalculation>();
 
+      const generatePeriodicDates = (startDate: Date, frequency: FrequencyType, sessions: number, preferredDow?: number): Date[] => {
+        let dates: Date[] = [];
+        if (sessions <= 0) return dates;
+        let cur = startOfDay(startDate);
+        const targetDow = preferredDow ?? 6; // default 6 = Sábado
+        while (cur.getDay() !== targetDow) {
+          cur = addDays(cur, 1);
+        }
+        let step = 7;
+        if (frequency === 'biweekly') step = 14;
+        else if (frequency === 'monthly') step = 28;
+        else if (frequency === 'sporadic') step = 21; // roughly spread
+        
+        for (let i = 0; i < sessions; i++) {
+          dates.push(new Date(cur));
+          cur = addDays(cur, step);
+        }
+        return dates;
+      };
+
       const calculateResourceByDate = (r: Resource): ResourceScheduleCalculation => {
         if (calculatedMap.has(r.id)) {
           return calculatedMap.get(r.id)!;
@@ -223,6 +243,17 @@ export function useStudyPlan(
             // Se o pai ainda não concluiu, o filho inicia no dia seguinte ao término previsto do pai
             startDate = addDays(parentCalc.endDate, 1);
             activeNow = differenceInCalendarDays(startDate, today) <= 0;
+          }
+        }
+
+        if (r.targetStartDate) {
+          const customStart = startOfDay(new Date(r.targetStartDate));
+          if (customStart > startDate) {
+            startDate = customStart;
+            activeNow = differenceInCalendarDays(startDate, today) <= 0;
+            if (!activeNow && !r.dependsOnId) {
+              waitingForName = `Data programada (${format(customStart, 'dd/MM/yyyy')})`;
+            }
           }
         }
 
@@ -262,7 +293,11 @@ export function useStudyPlan(
           const totalDaysForThis = isExclusive ? sessions * (1 + reviewDays) : 0;
           const sessionDuration = (r.minutesPerItem || 300);
 
-          const daysSpan = Math.max(1, differenceInCalendarDays(targetFinishDate, startDate));
+          const scheduledDates = generatePeriodicDates(startDate, r.frequency, sessions, r.preferredDayOfWeek);
+          const finalEndDate = scheduledDates.length > 0 ? scheduledDates[scheduledDates.length - 1] : targetFinishDate;
+          const effectiveEndDate = targetFinishDate > finalEndDate ? targetFinishDate : finalEndDate;
+
+          const daysSpan = Math.max(1, differenceInCalendarDays(effectiveEndDate, startDate));
           const weeksAvailable = Math.max(1, Math.floor(daysSpan / 7));
 
           const freqLabel = r.frequency === 'weekly' 
@@ -293,7 +328,8 @@ export function useStudyPlan(
             dependsOnId: r.dependsOnId,
             dependsOnName: waitingForName,
             startDate,
-            endDate: targetFinishDate,
+            endDate: effectiveEndDate,
+            scheduledDates,
             activeNow,
             isCompleted: false,
             waitingFor: waitingForName,
@@ -348,7 +384,6 @@ export function useStudyPlan(
         }
 
         // Caso 4: Material por Quantidade (QBanks, Livros, Vídeos)
-        // Dias de estudo brutos e efetivos disponíveis a partir do startDate
         const totalStudyDaysFromStart = Math.max(1, countStudyDays(startDate, targetFinishDate));
         const effectiveStudyDaysFromStart = Math.max(1, Math.round(
           totalStudyDaysFromStart * (effectiveDailyStudyDays / Math.max(1, totalStudyDays))
@@ -360,8 +395,6 @@ export function useStudyPlan(
 
         let allocatedEffectiveDays = effectiveStudyDaysFromStart;
         let endDate = targetFinishDate;
-
-        // Se houver sucessores na cadeia com trabalho pendente, divide os dias proporcionalmente
         if (children.length > 0 && downstreamWork > 0 && selfWork > 0) {
           const fraction = Math.min(1, Math.max(0.05, selfWork / downstreamWork));
           allocatedEffectiveDays = Math.max(1, Math.round(effectiveStudyDaysFromStart * fraction));
@@ -369,9 +402,135 @@ export function useStudyPlan(
           endDate = findDateAfterStudyDays(startDate, rawStudyDays);
         }
 
-        const amountPerDay = Math.ceil((remainingItems / Math.max(1, allocatedEffectiveDays)) * 10) / 10;
-        const dailyMinutes = Math.round(amountPerDay * (r.minutesPerItem || 2));
+        if (r.targetEndDate) {
+            const customEnd = startOfDay(new Date(r.targetEndDate));
+            endDate = customEnd;
+            allocatedEffectiveDays = Math.max(1, countStudyDays(startDate, endDate));
+        }
 
+        let amountPerDay = 0;
+        let breakdown: string[] = [];
+        let dailyAmountToday = 0;
+
+        const hasFixedDays = r.fixedVolumeByDayOfWeek && Object.keys(r.fixedVolumeByDayOfWeek).length > 0;
+        const hasGlobalFixed = r.fixedGlobalVolume !== undefined && r.fixedGlobalVolume !== null;
+
+        let unfixedCount = 0;
+        let totalFixed = 0;
+        const projectedDowCounts = [0,0,0,0,0,0,0];
+
+        // Pass 1: find amountPerDay for dynamic days
+        if (hasFixedDays || hasGlobalFixed) {
+            let cur = startOfDay(startDate);
+            const end = startOfDay(endDate);
+            while (cur <= end) {
+              if (!isDayOff(cur)) {
+                projectedDowCounts[cur.getDay()]++;
+              }
+              cur = addDays(cur, 1);
+            }
+            for (let d = 0; d < 7; d++) {
+              const f = (r.fixedVolumeByDayOfWeek as any)?.[d];
+              if (f !== undefined && f !== null) {
+                totalFixed += f * projectedDowCounts[d];
+              } else if (hasGlobalFixed) {
+                totalFixed += r.fixedGlobalVolume! * projectedDowCounts[d];
+              } else {
+                unfixedCount += projectedDowCounts[d];
+              }
+            }
+            const rem = Math.max(0, remainingItems - totalFixed);
+            amountPerDay = unfixedCount > 0 ? Math.ceil((rem / unfixedCount) * 10) / 10 : 0;
+        } else {
+            amountPerDay = Math.ceil((remainingItems / Math.max(1, allocatedEffectiveDays)) * 10) / 10;
+        }
+
+        // Pass 2: Simulate day-by-day to find actual end date and avoid overflow
+        let simulatedRemaining = remainingItems;
+        let simCur = startOfDay(startDate);
+        const originalEnd = startOfDay(endDate);
+        let calculatedEndDate = originalEnd;
+        let daysCount = 0;
+        const actualDowCounts = [0,0,0,0,0,0,0];
+        let actualTotal = 0;
+        
+        while (simulatedRemaining > 0) {
+          if (!isDayOff(simCur)) {
+              const dow = simCur.getDay();
+              const f = (r.fixedVolumeByDayOfWeek as any)?.[dow];
+              let planned = 0;
+              if (f !== undefined && f !== null) {
+                  planned = f;
+              } else if (hasGlobalFixed) {
+                  planned = r.fixedGlobalVolume!;
+              } else {
+                  planned = amountPerDay;
+              }
+              
+              if (planned > 0) {
+                  const actual = Math.min(simulatedRemaining, planned);
+                  simulatedRemaining -= actual;
+                  daysCount++;
+                  actualDowCounts[dow]++;
+                  actualTotal += actual;
+                  if (simulatedRemaining <= 0) {
+                      calculatedEndDate = simCur;
+                      break;
+                  }
+              } else if (simCur > originalEnd) {
+                  // Prevenir loop infinito se amountPerDay == 0 e não houver dias fixos cobrindo o restante
+                  calculatedEndDate = simCur;
+                  break;
+              }
+          }
+          simCur = addDays(simCur, 1);
+        }
+
+        // Build Breakdown
+        const daysOfWeekNames = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+        breakdown.push(`Volume pendente: ${remainingItems} ${r.unit}`);
+        
+        if (hasFixedDays || hasGlobalFixed) {
+            for (let d = 0; d < 7; d++) {
+                if (actualDowCounts[d] > 0) {
+                    const f = (r.fixedVolumeByDayOfWeek as any)?.[d];
+                    if (f !== undefined && f !== null) {
+                        breakdown.push(`${daysOfWeekNames[d]}: ${f} ${r.unit}/dia (Fixo) x ${actualDowCounts[d]} dias`);
+                    } else if (hasGlobalFixed) {
+                        breakdown.push(`${daysOfWeekNames[d]}: ${r.fixedGlobalVolume} ${r.unit}/dia (Geral) x ${actualDowCounts[d]} dias`);
+                    } else {
+                        breakdown.push(`${daysOfWeekNames[d]}: ${amountPerDay} ${r.unit}/dia (Dinâmico) x ${actualDowCounts[d]} dias`);
+                    }
+                }
+            }
+            if (unfixedCount === 0 && actualTotal < remainingItems) {
+                breakdown.push(`⚠️ Atenção: O volume total fixo projetado (${actualTotal}) não cobre o pendente (${remainingItems}) até a data alvo.`);
+            }
+        } else {
+            breakdown.push(`Dias úteis até o final da fase: ${allocatedEffectiveDays}`);
+            breakdown.push(`Cálculo: ${remainingItems} / ${allocatedEffectiveDays} = ${amountPerDay} ${r.unit}/dia`);
+        }
+
+        if (simulatedRemaining <= 0 && calculatedEndDate < originalEnd) {
+            breakdown.push(`✅ Conclusão antecipada em ${format(calculatedEndDate, 'dd/MM/yyyy')} (atingiu ${remainingItems} ${r.unit}).`);
+        } else if (simulatedRemaining > 0 || calculatedEndDate > originalEnd) {
+            breakdown.push(`⚠️ Atenção: A data de término se estendeu até ${format(calculatedEndDate, 'dd/MM/yyyy')} para cobrir o volume pendente.`);
+        }
+        
+        endDate = calculatedEndDate;
+        allocatedEffectiveDays = daysCount > 0 ? daysCount : allocatedEffectiveDays;
+
+        const todayDow = startOfDay(new Date()).getDay();
+        const todayFixed = (r.fixedVolumeByDayOfWeek as any)?.[todayDow];
+        if (todayFixed !== undefined && todayFixed !== null) {
+          dailyAmountToday = todayFixed;
+        } else if (hasGlobalFixed) {
+          dailyAmountToday = r.fixedGlobalVolume!;
+        } else {
+          dailyAmountToday = amountPerDay;
+        }
+
+        const dailyMinutes = Math.round(dailyAmountToday * (r.minutesPerItem || 2));
         const calc: ResourceScheduleCalculation = {
           resourceId: r.id,
           resourceName: r.name || 'Sem nome',
@@ -387,7 +546,7 @@ export function useStudyPlan(
           waitingFor: waitingForName,
           remainingItems,
           availableStudyDays: allocatedEffectiveDays,
-          dailyAmount: amountPerDay,
+          dailyAmount: dailyAmountToday,
           unit: r.unit,
           dailyMinutes,
           projectedDailyAmount: amountPerDay,
@@ -395,6 +554,7 @@ export function useStudyPlan(
           scheduleNote: activeNow 
             ? `${amountPerDay} ${r.unit}/dia (~${dailyMinutes} min/dia) até ${format(endDate, 'dd/MM/yyyy')}`
             : `Previsto: ${format(startDate, 'dd/MM/yyyy')} a ${format(endDate, 'dd/MM/yyyy')} • ${amountPerDay} ${r.unit}/dia (${dailyMinutes} min/dia)`,
+          calculationBreakdown: breakdown,
         };
         calculatedMap.set(r.id, calc);
         return calc;
@@ -455,6 +615,7 @@ export function useStudyPlan(
               projectedDailyAmount: item.dailyAmount,
               projectedDailyMinutes: item.dailyMinutes,
               note: item.scheduleNote || '',
+              calculationBreakdown: item.calculationBreakdown,
             });
           } else {
             // Em espera (Queued)
@@ -474,6 +635,7 @@ export function useStudyPlan(
               availableStudyDays: item.availableStudyDays,
               projectedDailyAmount: item.projectedDailyAmount || item.dailyAmount,
               projectedDailyMinutes: item.projectedDailyMinutes || item.dailyMinutes,
+              calculationBreakdown: item.calculationBreakdown,
               note: `Aguardando ${item.waitingFor || 'fase anterior'}. Início previsto em ${format(item.startDate, 'dd/MM/yyyy')} com meta de ${item.projectedDailyAmount || item.dailyAmount} ${item.unit}/dia (${item.projectedDailyMinutes || item.dailyMinutes} min/dia)`,
             });
           }
@@ -495,6 +657,7 @@ export function useStudyPlan(
             projectedDailyAmount: 1,
             projectedDailyMinutes: item.sessionDurationMinutes || 300,
             note: item.scheduleNote || 'Sessão periódica agendada',
+            calculationBreakdown: item.calculationBreakdown,
             isExclusive: (item.exclusiveDaysReserved || 0) > 0,
             reviewDays: item.reviewDaysPerSession,
           });
@@ -551,6 +714,17 @@ export function useStudyPlan(
           }
         }
 
+        if (r.targetStartDate) {
+          const customStart = startOfDay(new Date(r.targetStartDate));
+          if (customStart > startDate) {
+            startDate = customStart;
+            activeNow = differenceInCalendarDays(startDate, today) <= 0;
+            if (!activeNow && !r.dependsOnId) {
+              waitingForName = `Data programada (${format(customStart, 'dd/MM/yyyy')})`;
+            }
+          }
+        }
+
         if (isCompleted && r.allocationMode !== 'fixed_time') {
           const calc: ResourceScheduleCalculation = {
             resourceId: r.id,
@@ -581,8 +755,8 @@ export function useStudyPlan(
         if (r.frequency !== 'daily') {
           const sessions = remainingItems > 0 ? remainingItems : 1;
           const sessionDuration = r.minutesPerItem || 300;
-          const weeksNeeded = r.frequency === 'weekly' ? sessions : r.frequency === 'biweekly' ? sessions * 2 : sessions * 4;
-          const endDate = addDays(startDate, weeksNeeded * 7);
+          const scheduledDates = generatePeriodicDates(startDate, r.frequency, sessions, r.preferredDayOfWeek);
+          const endDate = scheduledDates.length > 0 ? scheduledDates[scheduledDates.length - 1] : startDate;
 
           const calc: ResourceScheduleCalculation = {
             resourceId: r.id,
@@ -594,6 +768,7 @@ export function useStudyPlan(
             dependsOnName: waitingForName,
             startDate,
             endDate,
+            scheduledDates,
             activeNow,
             isCompleted: false,
             waitingFor: waitingForName,
@@ -642,9 +817,72 @@ export function useStudyPlan(
 
         // Modo Pace por Item Target
         const pace = Math.max(0.1, r.targetDailyPace || 1);
-        const daysNeeded = Math.ceil(remainingItems / pace);
-        const endDate = findDateAfterStudyDays(startDate, daysNeeded);
-        const dailyMinutes = Math.round(pace * (r.minutesPerItem || 2));
+        let breakdown: string[] = [];
+        let dailyAmountToday = 0;
+        let calculatedEndDate = startDate;
+        let daysCount = 0;
+
+        const hasFixedDays = r.fixedVolumeByDayOfWeek && Object.keys(r.fixedVolumeByDayOfWeek).length > 0;
+        const hasGlobalFixed = r.fixedGlobalVolume !== undefined && r.fixedGlobalVolume !== null;
+
+        let simulatedRemaining = remainingItems;
+        let simCur = startOfDay(startDate);
+        
+        while (simulatedRemaining > 0) {
+          if (!isDayOff(simCur)) {
+              const dow = simCur.getDay();
+              const f = (r.fixedVolumeByDayOfWeek as any)?.[dow];
+              let planned = 0;
+              if (f !== undefined && f !== null) {
+                  planned = f;
+              } else if (hasGlobalFixed) {
+                  planned = r.fixedGlobalVolume!;
+              } else {
+                  planned = pace;
+              }
+              
+              if (planned > 0) {
+                  const actual = Math.min(simulatedRemaining, planned);
+                  simulatedRemaining -= actual;
+                  daysCount++;
+                  if (simulatedRemaining <= 0) {
+                      calculatedEndDate = simCur;
+                      break;
+                  }
+              }
+          }
+          simCur = addDays(simCur, 1);
+        }
+
+        const endDate = calculatedEndDate;
+
+        if (r.targetEndDate) {
+            const targetEnd = startOfDay(new Date(r.targetEndDate));
+            if (endDate > targetEnd) {
+                breakdown.push(`⚠️ Atenção: Ritmo insuficiente. A conclusão estimada (${format(endDate, 'dd/MM/yyyy')}) ultrapassa a data limite definida (${format(targetEnd, 'dd/MM/yyyy')}).`);
+            }
+        }
+
+        const todayDow = startOfDay(new Date()).getDay();
+        const todayFixed = (r.fixedVolumeByDayOfWeek as any)?.[todayDow];
+        if (todayFixed !== undefined && todayFixed !== null) {
+          dailyAmountToday = todayFixed;
+        } else if (hasGlobalFixed) {
+          dailyAmountToday = r.fixedGlobalVolume!;
+        } else {
+          dailyAmountToday = pace;
+        }
+
+        const dailyMinutes = Math.round(dailyAmountToday * (r.minutesPerItem || 2));
+
+        breakdown.push(`Volume pendente: ${remainingItems} ${r.unit}`);
+        if (hasFixedDays || hasGlobalFixed) {
+            breakdown.push(`Ritmo padrão: ${pace} ${r.unit}/dia (aplicado aos dias não fixados)`);
+            breakdown.push(`✅ Conclusão alcançada em ${format(endDate, 'dd/MM/yyyy')} após ${daysCount} dias úteis.`);
+        } else {
+            breakdown.push(`Ritmo (Pace) configurado: ${pace} ${r.unit}/dia`);
+            breakdown.push(`Cálculo de dias: ${remainingItems} / ${pace} = ${daysCount} dias necessários`);
+        }
 
         const calc: ResourceScheduleCalculation = {
           resourceId: r.id,
@@ -660,15 +898,16 @@ export function useStudyPlan(
           isCompleted: false,
           waitingFor: waitingForName,
           remainingItems,
-          availableStudyDays: daysNeeded,
-          dailyAmount: pace,
+          availableStudyDays: daysCount,
+          dailyAmount: dailyAmountToday,
           unit: r.unit,
           dailyMinutes,
           projectedDailyAmount: pace,
           projectedDailyMinutes: dailyMinutes,
           scheduleNote: activeNow
-            ? `${pace} ${r.unit}/dia (~${dailyMinutes} min/dia) • Término em ${format(endDate, 'dd/MM/yyyy')}`
-            : `Previsto para iniciar em ${format(startDate, 'dd/MM/yyyy')} com ${pace} ${r.unit}/dia até ${format(endDate, 'dd/MM/yyyy')}`,
+            ? `${dailyAmountToday} ${r.unit}/dia (~${dailyMinutes} min/dia) • Término em ${format(endDate, 'dd/MM/yyyy')}`
+            : `Previsto para iniciar em ${format(startDate, 'dd/MM/yyyy')} com ${dailyAmountToday} ${r.unit}/dia até ${format(endDate, 'dd/MM/yyyy')}`,
+          calculationBreakdown: breakdown,
         };
         calculatedMap.set(r.id, calc);
         return calc;
@@ -709,6 +948,7 @@ export function useStudyPlan(
               startDate: item.startDate,
               endDate: item.endDate,
               note: 'Material 100% concluído!',
+              calculationBreakdown: item.calculationBreakdown,
             });
           } else if (item.activeNow) {
             totalDailyMinutes += item.dailyMinutes;
@@ -735,6 +975,7 @@ export function useStudyPlan(
               projectedDailyAmount: item.dailyAmount,
               projectedDailyMinutes: item.dailyMinutes,
               note: item.scheduleNote || '',
+              calculationBreakdown: item.calculationBreakdown,
             });
           } else {
             dailyTasks.push({
@@ -753,6 +994,7 @@ export function useStudyPlan(
               availableStudyDays: item.availableStudyDays,
               projectedDailyAmount: item.projectedDailyAmount || item.dailyAmount,
               projectedDailyMinutes: item.projectedDailyMinutes || item.dailyMinutes,
+              calculationBreakdown: item.calculationBreakdown,
               note: `Aguardando ${item.waitingFor || 'fase anterior'}. Início previsto em ${format(item.startDate, 'dd/MM/yyyy')} com meta de ${item.projectedDailyAmount || item.dailyAmount} ${item.unit}/dia (${item.projectedDailyMinutes || item.dailyMinutes} min/dia)`,
             });
           }
@@ -771,6 +1013,7 @@ export function useStudyPlan(
             startDate: item.startDate,
             endDate: item.endDate,
             note: item.scheduleNote || 'Sessão periódica agendada',
+            calculationBreakdown: item.calculationBreakdown,
           });
         }
       });

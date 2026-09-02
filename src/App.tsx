@@ -4,7 +4,6 @@
  */
 
 import { BrowserRouter, Route, Routes, Link, useLocation } from "react-router-dom";
-import { useState } from "react";
 import Home from "./pages/Home";
 import StudyTracker from "./pages/StudyTracker";
 import PacerPage from "./pages/Pacer";
@@ -13,11 +12,10 @@ import ScorePredictor from "./pages/ScorePredictor";
 import FlashcardsLobby from "./pages/FlashcardsLobby";
 import FlashcardsEditor from "./pages/FlashcardsEditor";
 import FlashcardsDashboard from "./pages/FlashcardsDashboard";
-import { QuestionPacer } from "./components/QuestionPacer";
-import { Activity, X, ChevronLeft } from "lucide-react";
+import { TopBarTimer } from "./components/TopBarTimer";
+import { ChevronLeft } from "lucide-react";
 
 function AppContent() {
-  const [isPacerFloating, setIsPacerFloating] = useState(false);
   const location = useLocation();
   const isHome = location.pathname === "/";
 
@@ -37,31 +35,10 @@ function AppContent() {
           </Link>
         </div>
         
-        <button 
-          onClick={() => setIsPacerFloating(true)}
-          className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-sm font-semibold transition-colors"
-        >
-          <Activity className="w-4 h-4" />
-          <span className="hidden sm:inline">Pacer Rápido</span>
-        </button>
-      </header>
-
-      {/* Floating Pacer Modal */}
-      {isPacerFloating && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm">
-          <div className="relative w-full max-w-2xl bg-transparent animate-in fade-in zoom-in-95 duration-200">
-            <button 
-              onClick={() => setIsPacerFloating(false)}
-              className="absolute -top-12 right-0 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors"
-            >
-              <X className="w-6 h-6" />
-            </button>
-            <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
-               <QuestionPacer className="mt-0" />
-            </div>
-          </div>
+        <div className="flex items-center gap-3">
+          <TopBarTimer />
         </div>
-      )}
+      </header>
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col">

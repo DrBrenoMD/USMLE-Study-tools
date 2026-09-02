@@ -622,6 +622,7 @@ export default function StudyTracker() {
                       const isExpanded = expandedSettingsId === resource.id;
                       const isDependent = Boolean(resource.dependsOnId);
                       const parentResource = resources.find(r => r.id === resource.dependsOnId);
+                      const calc = plan.resourcesSchedule?.find(c => c.resourceId === resource.id);
 
                       const progressPercent = resource.total > 0 
                         ? Math.min(100, Math.round((resource.completed / resource.total) * 100))
@@ -828,31 +829,71 @@ export default function StudyTracker() {
                             </div>
                           )}
 
+                          {/* Detalhamento de Cálculo (Visível se houver) */}
+                          {calc && calc.calculationBreakdown && calc.calculationBreakdown.length > 0 && (
+                            <details className="mt-3 mb-1 text-[10px] text-indigo-700 bg-indigo-50/70 p-2.5 rounded-lg border border-indigo-100">
+                              <summary className="font-semibold cursor-pointer hover:text-indigo-900 flex items-center gap-1 select-none">
+                                <BarChart3 className="w-4 h-4 text-indigo-500" /> Detalhamento de como o cálculo foi feito
+                              </summary>
+                              <ul className="mt-2 pl-5 list-disc space-y-1 text-indigo-600/90 font-medium">
+                                {calc.calculationBreakdown.map((line, idx) => (
+                                  <li key={idx}>{line}</li>
+                                ))}
+                              </ul>
+                            </details>
+                          )}
+
                           {/* Gaveta de Opções Avançadas */}
                           {isExpanded && (
                             <div className="mt-2 pt-3 border-t border-gray-200/80 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-gray-50/80 p-3 rounded-lg">
                               
-                              {/* 1. Dependência Sequencial */}
-                              <div>
-                                <label className="block text-[10px] text-gray-600 uppercase font-bold mb-1 flex items-center gap-1">
-                                  <Link2 className="w-3 h-3 text-blue-600" />
-                                  Dependência
-                                </label>
-                                <select
-                                  value={resource.dependsOnId || ''}
-                                  onChange={(e) => updateResource(resource.id, { dependsOnId: e.target.value || null })}
-                                  className="w-full text-xs font-medium text-gray-800 bg-white border border-gray-200 rounded-md p-1.5 focus:outline-none focus:border-blue-500 cursor-pointer"
-                                >
-                                  <option value="">Nenhum (Início Imediato)</option>
-                                  {availableDependencies.map(dep => (
-                                    <option key={dep.id} value={dep.id}>
-                                      Após: {dep.name || 'Material sem nome'}
-                                    </option>
-                                  ))}
-                                </select>
-                                <p className="text-[9px] text-gray-400 mt-1">
-                                  Inicia após terminar o pré-requisito.
-                                </p>
+                              {/* 1. Dependência Sequencial e Data Limite */}
+                              <div className="flex flex-col gap-3">
+                                <div>
+                                  <label className="block text-[10px] text-gray-600 uppercase font-bold mb-1 flex items-center gap-1">
+                                    <Link2 className="w-3 h-3 text-blue-600" />
+                                    Dependência
+                                  </label>
+                                  <select
+                                    value={resource.dependsOnId || ''}
+                                    onChange={(e) => updateResource(resource.id, { dependsOnId: e.target.value || null })}
+                                    className="w-full text-xs font-medium text-gray-800 bg-white border border-gray-200 rounded-md p-1.5 focus:outline-none focus:border-blue-500 cursor-pointer"
+                                  >
+                                    <option value="">Nenhum (Início Imediato)</option>
+                                    {availableDependencies.map(dep => (
+                                      <option key={dep.id} value={dep.id}>
+                                        Após: {dep.name || 'Material sem nome'}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <p className="text-[9px] text-gray-400 mt-1">
+                                    Inicia após terminar o pré-requisito.
+                                  </p>
+                                </div>
+                                <div>
+                                  <label className="block text-[10px] text-gray-600 uppercase font-bold mb-1 flex items-center gap-1">
+                                    <CalendarDays className="w-3 h-3 text-emerald-600" />
+                                    Data de Início (Opcional)
+                                  </label>
+                                  <input
+                                    type="date"
+                                    value={resource.targetStartDate || ''}
+                                    onChange={(e) => updateResource(resource.id, { targetStartDate: e.target.value || null })}
+                                    className="w-full text-xs font-medium text-gray-800 bg-white border border-gray-200 rounded-md p-1.5 mb-3 focus:outline-none focus:border-blue-500 cursor-pointer"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-[10px] text-gray-600 uppercase font-bold mb-1 flex items-center gap-1">
+                                    <CalendarDays className="w-3 h-3 text-emerald-600" />
+                                    Data Limite (Opcional)
+                                  </label>
+                                  <input
+                                    type="date"
+                                    value={resource.targetEndDate || ''}
+                                    onChange={(e) => updateResource(resource.id, { targetEndDate: e.target.value || null })}
+                                    className="w-full text-xs font-medium text-gray-800 bg-white border border-gray-200 rounded-md p-1.5 focus:outline-none focus:border-blue-500 cursor-pointer"
+                                  />
+                                </div>
                               </div>
 
                               {/* 2. Frequência */}
@@ -922,6 +963,55 @@ export default function StudyTracker() {
                                   </div>
                                 )}
                               </div>
+
+                            {/* 5. Metas Diárias Fixas por Dia da Semana (Avançado) */}
+                            {resource.frequency === 'daily' && resource.allocationMode === 'item_target' && (
+                              <div className="mt-3 pt-3 border-t border-gray-200/80">
+                                <label className="block text-[10px] text-gray-600 uppercase font-bold mb-2 flex items-center gap-1">
+                                  <CalendarDays className="w-3 h-3 text-indigo-600" />
+                                  Fixar Volume de Estudo (Opcional)
+                                </label>
+                                <p className="text-[9px] text-gray-400 mb-2">
+                                  Fixe um volume para a fonte inteira (Geral) ou para dias específicos. O restante do tempo será redistribuído mantendo a data da prova.
+                                </p>
+                                <div className="flex gap-2 flex-wrap items-end">
+                                  <div className="flex flex-col items-center border-r border-gray-200 pr-3 mr-1">
+                                    <span className="text-[10px] font-bold text-indigo-600 mb-1">Geral</span>
+                                    <input
+                                      type="number"
+                                      placeholder="Auto"
+                                      className="w-14 h-8 text-center text-xs font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 rounded focus:border-indigo-500 focus:outline-none placeholder:font-normal placeholder:text-indigo-300"
+                                      value={resource.fixedGlobalVolume ?? ''}
+                                      onChange={(e) => {
+                                        const val = e.target.value === '' ? null : Number(e.target.value);
+                                        updateResource(resource.id, { fixedGlobalVolume: val });
+                                      }}
+                                    />
+                                  </div>
+                                  {DAYS_OF_WEEK.map(day => (
+                                    <div key={day.id} className="flex flex-col items-center">
+                                      <span className="text-[10px] font-bold text-gray-500 mb-1">{day.short}</span>
+                                      <input
+                                        type="number"
+                                        placeholder="Auto"
+                                        className="w-12 h-8 text-center text-xs font-bold text-indigo-900 bg-white border border-gray-200 rounded focus:border-indigo-500 focus:outline-none placeholder:font-normal placeholder:text-gray-400"
+                                        value={resource.fixedVolumeByDayOfWeek?.[day.id] ?? ''}
+                                        onChange={(e) => {
+                                          const val = e.target.value === '' ? null : Number(e.target.value);
+                                          const currentFixed = { ...(resource.fixedVolumeByDayOfWeek || {}) };
+                                          if (val === null) {
+                                            delete currentFixed[day.id];
+                                          } else {
+                                            currentFixed[day.id] = val;
+                                          }
+                                          updateResource(resource.id, { fixedVolumeByDayOfWeek: currentFixed });
+                                        }}
+                                      />
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
 
                             </div>
                           )}
@@ -1131,6 +1221,18 @@ export default function StudyTracker() {
                                   <div className="text-[10px] text-gray-500 mt-0.5 leading-relaxed">
                                     {task.note}
                                   </div>
+                                )}
+                                {task.calculationBreakdown && task.calculationBreakdown.length > 0 && (
+                                  <details className="mt-2 text-[10px] text-gray-600 bg-white/60 p-1.5 rounded border border-gray-100">
+                                    <summary className="font-semibold cursor-pointer hover:text-blue-600 flex items-center gap-1 select-none">
+                                      <BarChart3 className="w-3 h-3" /> Ver Detalhes do Cálculo
+                                    </summary>
+                                    <ul className="mt-1.5 pl-4 list-disc space-y-0.5 text-gray-500">
+                                      {task.calculationBreakdown.map((line, idx) => (
+                                        <li key={idx}>{line}</li>
+                                      ))}
+                                    </ul>
+                                  </details>
                                 )}
                               </div>
                             </div>
