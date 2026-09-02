@@ -31,6 +31,7 @@ import {
   Lock,
   Download,
   Upload,
+  Flag,
 } from "lucide-react";
 import { useStudyPlan } from "../hooks/useStudyPlan";
 import { cn } from "../lib/utils";
@@ -1089,6 +1090,32 @@ export default function StudyTracker() {
                             {plan.totalExclusiveDays > 0 
                               ? `(${plan.totalExclusiveDays}d para simulados+correção)` 
                               : `(${plan.studyDays} dias totais)`}
+                          </div>
+                        </div>
+                        
+                        {plan.daysToExamTotal !== undefined && (
+                          <div className="p-3.5 rounded-xl bg-gray-50 border border-gray-100">
+                            <div className="text-[10px] text-gray-400 uppercase font-semibold mb-1 flex items-center gap-1">
+                              <CalendarIcon className="w-3 h-3 text-red-400" /> Para a Prova
+                            </div>
+                            <div className="text-sm sm:text-base font-bold text-gray-900">
+                              {plan.daysToExamTotal} <span className="text-xs font-normal text-gray-500">dias totais</span>
+                            </div>
+                            <div className="text-[10px] text-gray-500 mt-0.5 font-medium">
+                              {plan.daysToExamStudy} dias úteis
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="p-3.5 rounded-xl bg-gray-50 border border-gray-100">
+                          <div className="text-[10px] text-gray-400 uppercase font-semibold mb-1 flex items-center gap-1">
+                            <Flag className="w-3 h-3 text-green-500" /> Para o Prazo Limite
+                          </div>
+                          <div className="text-sm sm:text-base font-bold text-gray-900">
+                            {plan.daysToDeadlineTotal} <span className="text-xs font-normal text-gray-500">dias totais</span>
+                          </div>
+                          <div className="text-[10px] text-gray-500 mt-0.5 font-medium">
+                            {plan.daysToDeadlineStudy} dias úteis
                           </div>
                         </div>
                       </div>

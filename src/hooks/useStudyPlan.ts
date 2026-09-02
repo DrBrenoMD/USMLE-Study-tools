@@ -664,6 +664,11 @@ export function useStudyPlan(
         }
       });
 
+      const daysToExamTotal = differenceInCalendarDays(examDate, today);
+      const daysToExamStudy = countStudyDays(today, examDate);
+      const daysToDeadlineTotal = differenceInCalendarDays(targetFinishDate, today);
+      const daysToDeadlineStudy = countStudyDays(today, targetFinishDate);
+
       return {
         totalDays: totalDaysToFinish,
         studyDays: totalStudyDays,
@@ -673,6 +678,10 @@ export function useStudyPlan(
         targetFinishDate,
         examDate,
         bufferDays: validBuffer,
+        daysToExamTotal,
+        daysToExamStudy,
+        daysToDeadlineTotal,
+        daysToDeadlineStudy,
         resourcesSchedule,
         dailyTasks,
         totalDailyMinutes,
@@ -1020,10 +1029,18 @@ export function useStudyPlan(
 
       let daysRemainingAfterFinish: number | undefined = undefined;
       let examDate: Date | null = null;
+      let daysToExamTotal: number | undefined;
+      let daysToExamStudy: number | undefined;
+      
       if (examDateStr) {
         examDate = startOfDay(new Date(examDateStr));
         daysRemainingAfterFinish = differenceInCalendarDays(examDate, maxEndDate);
+        daysToExamTotal = differenceInCalendarDays(examDate, today);
+        daysToExamStudy = countStudyDays(today, examDate);
       }
+      
+      const daysToDeadlineTotal = differenceInCalendarDays(maxEndDate, today);
+      const daysToDeadlineStudy = countStudyDays(today, maxEndDate);
 
       return {
         totalDays,
@@ -1034,6 +1051,10 @@ export function useStudyPlan(
         examDate,
         bufferDays: validBuffer,
         daysRemainingAfterFinish,
+        daysToExamTotal,
+        daysToExamStudy,
+        daysToDeadlineTotal,
+        daysToDeadlineStudy,
         resourcesSchedule,
         dailyTasks,
         totalDailyMinutes,

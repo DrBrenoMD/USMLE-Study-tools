@@ -216,6 +216,12 @@ export interface StudyPlan {
   bufferDays: number;
   daysRemainingAfterFinish?: number;
   
+  // Contagem de dias até prazos
+  daysToExamTotal?: number;
+  daysToExamStudy?: number;
+  daysToDeadlineTotal?: number;
+  daysToDeadlineStudy?: number;
+  
   // Desmembramento detalhado
   resourcesSchedule: ResourceScheduleCalculation[];
   dailyTasks: DailySchedule[];
