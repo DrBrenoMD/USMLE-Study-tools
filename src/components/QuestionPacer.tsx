@@ -1,5 +1,5 @@
-import React, { useRef } from 'react';
-import { Play, Square, FastForward, Clock, Activity, TrendingUp, TrendingDown, Volume2, VolumeX, Settings2, Pause } from 'lucide-react';
+import React, { useRef, useState, useEffect } from 'react';
+import { Play, Square, FastForward, Clock, Activity, TrendingUp, TrendingDown, Volume2, VolumeX, Settings2, Pause, Save, X } from 'lucide-react';
 import { useTimerStore } from '../store/useTimerStore';
 
 export function QuestionPacer({ className }: { className?: string }) {
@@ -11,9 +11,13 @@ export function QuestionPacer({ className }: { className?: string }) {
     pacerCurrentQuestionTime: currentQuestionTime, 
     pacerCompletedQuestionsTime: completedQuestionsTime, 
     pacerSoundEnabled: soundEnabled,
+    pacerShowSummary: showSummary,
     setPacerState,
     nextPacerQuestion,
     stopPacer,
+    finishPacerSession,
+    closePacerSummary,
+    addNetTime,
     setTimerState,
     phase,
     timerState
@@ -87,9 +91,58 @@ export function QuestionPacer({ className }: { className?: string }) {
     nextPacerQuestion();
   };
 
+  const [selectedResource, setSelectedResource] = useState<string>('');
+  const [correctPercent, setCorrectPercent] = useState<string>('');
+  const [editableAmount, setEditableAmount] = useState<number>(totalQuestionsDone);
+  const [availableResources, setAvailableResources] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (showSummary) {
+      setEditableAmount(totalQuestionsDone);
+      const saved = localStorage.getItem('usmle_resources_v4');
+      if (saved) {
+        const res = JSON.parse(saved);
+        setAvailableResources(res);
+        if (res.length > 0) setSelectedResource(res[0].id);
+      }
+    }
+  }, [showSummary]);
+
   const handleStop = () => {
-    stopPacer();
+    finishPacerSession();
     setTimerState('idle');
+  };
+
+  const handleSaveSession = () => {
+    if (!selectedResource) return;
+    
+    const resource = availableResources.find(r => r.id === selectedResource);
+    if (!resource) return;
+
+    const logEntry = {
+      id: crypto.randomUUID(),
+      date: new Date().toISOString().split('T')[0],
+      resourceId: resource.id,
+      resourceName: resource.name,
+      resourceType: resource.type,
+      amount: editableAmount,
+      unit: 'questões',
+      minutesSpent: Math.round(globalElapsedTime / 60),
+      scorePercent: parseFloat(correctPercent) || undefined,
+      notes: 'Sessão Pacer',
+      createdAt: new Date().toISOString()
+    };
+
+    const savedLogs = localStorage.getItem('usmle_study_logs_v4');
+    const logs = savedLogs ? JSON.parse(savedLogs) : [];
+    logs.push(logEntry);
+    localStorage.setItem('usmle_study_logs_v4', JSON.stringify(logs));
+    window.dispatchEvent(new Event('usmle_logs_updated'));
+    
+    // Subtract to avoid double counting, since it was already counted by the global timer while running
+    addNetTime(-globalElapsedTime);
+    
+    closePacerSummary();
   };
 
   const formatTime = (seconds: number) => {
@@ -122,7 +175,83 @@ export function QuestionPacer({ className }: { className?: string }) {
       </div>
 
       <div className="p-6 flex flex-col gap-6">
-        {!isActive && completedQuestionsTime.length === 0 ? (
+        {showSummary ? (
+          <div className="flex flex-col gap-5 py-2">
+            <div className="text-center mb-2">
+              <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">Sessão Finalizada</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Registre o progresso no seu heatmap diário</p>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-gray-50 dark:bg-gray-800/50 p-4 rounded-xl border border-gray-100 dark:border-gray-800 text-center">
+                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase">Tempo Total</span>
+                <div className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-1">{formatTime(globalElapsedTime)}</div>
+              </div>
+              <div className="bg-gray-50 dark:bg-gray-800/50 p-4 rounded-xl border border-gray-100 dark:border-gray-800 text-center flex flex-col justify-center">
+                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase">Questões</span>
+                <input 
+                  type="number"
+                  min="1"
+                  value={editableAmount}
+                  onChange={(e) => setEditableAmount(parseInt(e.target.value) || 0)}
+                  className="w-full bg-transparent border-none text-center text-2xl font-bold text-gray-900 dark:text-gray-100 mt-1 p-0 focus:ring-0"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-4 mt-2">
+              <div>
+                <label className="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-2 block">
+                  Banco de Questões / Recurso
+                </label>
+                <select 
+                  value={selectedResource}
+                  onChange={(e) => setSelectedResource(e.target.value)}
+                  className="w-full bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm rounded-xl focus:ring-blue-500 focus:border-blue-500 block p-3 font-semibold shadow-sm transition-colors"
+                >
+                  <option value="" disabled>Selecione um recurso...</option>
+                  {availableResources.map(r => (
+                    <option key={r.id} value={r.id}>{r.name}</option>
+                  ))}
+                </select>
+                {availableResources.length === 0 && (
+                  <p className="text-xs text-amber-600 mt-1">Crie recursos no Tracker primeiro.</p>
+                )}
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-2 block">
+                  Porcentagem de Acertos (%) <span className="text-gray-400 font-normal lowercase">(Opcional)</span>
+                </label>
+                <input 
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={correctPercent}
+                  onChange={(e) => setCorrectPercent(e.target.value)}
+                  placeholder="Ex: 75"
+                  className="w-full bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm rounded-xl focus:ring-blue-500 focus:border-blue-500 block p-3 font-semibold shadow-sm transition-colors"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 pt-4 border-t border-gray-100 dark:border-gray-800 mt-2">
+              <button
+                onClick={closePacerSummary}
+                className="flex-1 py-3 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl font-bold transition-colors"
+              >
+                Descartar
+              </button>
+              <button
+                onClick={handleSaveSession}
+                disabled={!selectedResource}
+                className="flex-1 py-3 bg-blue-600 dark:bg-blue-500 hover:bg-blue-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Save className="w-4 h-4" />
+                Registrar
+              </button>
+            </div>
+          </div>
+        ) : !isActive ? (
           <div className="flex flex-col gap-6 py-4">
             <div className="text-gray-500 dark:text-gray-400 text-sm text-center">
               Configure sua sessão de questões. O pacer ajudará a manter seu ritmo.

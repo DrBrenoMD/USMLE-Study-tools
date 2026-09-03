@@ -23,6 +23,7 @@ interface TimerStore {
   pacerCurrentQuestionTime: number;
   pacerCompletedQuestionsTime: number[];
   pacerSoundEnabled: boolean;
+  pacerShowSummary: boolean;
 
   // Actions
   setTimerState: (state: TimerState) => void;
@@ -38,6 +39,8 @@ interface TimerStore {
   setPacerState: (updates: Partial<TimerStore>) => void;
   tickPacer: (deltaSecs: number) => void;
   nextPacerQuestion: () => void;
+  finishPacerSession: () => void;
+  closePacerSummary: () => void;
   stopPacer: () => void;
 }
 
@@ -58,6 +61,7 @@ export const useTimerStore = create<TimerStore>()(
       pacerCurrentQuestionTime: 0,
       pacerCompletedQuestionsTime: [],
       pacerSoundEnabled: true,
+      pacerShowSummary: false,
       
       setTimerState: (state) => set({ timerState: state }),
       setPhase: (phase) => set({ phase }),
@@ -95,8 +99,20 @@ export const useTimerStore = create<TimerStore>()(
         pacerCurrentQuestionTime: 0
       })),
 
+      finishPacerSession: () => set({
+        pacerIsActive: false,
+        pacerShowSummary: true
+      }),
+
+      closePacerSummary: () => set({
+        pacerShowSummary: false,
+        pacerCurrentQuestionTime: 0,
+        pacerCompletedQuestionsTime: []
+      }),
+
       stopPacer: () => set({
         pacerIsActive: false,
+        pacerShowSummary: false,
         pacerCurrentQuestionTime: 0,
         pacerCompletedQuestionsTime: []
       })

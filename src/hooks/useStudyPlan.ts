@@ -14,7 +14,28 @@ import {
   StudyMode,
   ResourceScheduleCalculation,
   DailySchedule,
+  FrequencyType
 } from '../types';
+
+const generatePeriodicDates = (startDate: Date, frequency: FrequencyType, sessions: number, preferredDow?: number): Date[] => {
+  let dates: Date[] = [];
+  if (sessions <= 0) return dates;
+  let cur = startOfDay(startDate);
+  const targetDow = preferredDow ?? 6; // default 6 = Sábado
+  while (cur.getDay() !== targetDow) {
+    cur = addDays(cur, 1);
+  }
+  let step = 7;
+  if (frequency === 'biweekly') step = 14;
+  else if (frequency === 'monthly') step = 28;
+  else if (frequency === 'sporadic') step = 21; // roughly spread
+  
+  for (let i = 0; i < sessions; i++) {
+    dates.push(new Date(cur));
+    cur = addDays(cur, step);
+  }
+  return dates;
+};
 
 export function useStudyPlan(
   resources: Resource[],
@@ -197,26 +218,6 @@ export function useStudyPlan(
 
       // Cálculo recursivo respeitando ordem topológica
       const calculatedMap = new Map<string, ResourceScheduleCalculation>();
-
-      const generatePeriodicDates = (startDate: Date, frequency: FrequencyType, sessions: number, preferredDow?: number): Date[] => {
-        let dates: Date[] = [];
-        if (sessions <= 0) return dates;
-        let cur = startOfDay(startDate);
-        const targetDow = preferredDow ?? 6; // default 6 = Sábado
-        while (cur.getDay() !== targetDow) {
-          cur = addDays(cur, 1);
-        }
-        let step = 7;
-        if (frequency === 'biweekly') step = 14;
-        else if (frequency === 'monthly') step = 28;
-        else if (frequency === 'sporadic') step = 21; // roughly spread
-        
-        for (let i = 0; i < sessions; i++) {
-          dates.push(new Date(cur));
-          cur = addDays(cur, step);
-        }
-        return dates;
-      };
 
       const calculateResourceByDate = (r: Resource): ResourceScheduleCalculation => {
         if (calculatedMap.has(r.id)) {

@@ -147,6 +147,18 @@ export default function StudyTracker() {
     return []; // Vazio por padrão, sem registros falsos de exemplo
   });
 
+  // Escuta atualizações de logs de outras janelas/componentes (como o QuestionPacer)
+  useEffect(() => {
+    const handleLogsUpdated = () => {
+      const saved = localStorage.getItem('usmle_study_logs_v4');
+      if (saved) {
+        setStudyLogs(JSON.parse(saved));
+      }
+    };
+    window.addEventListener('usmle_logs_updated', handleLogsUpdated);
+    return () => window.removeEventListener('usmle_logs_updated', handleLogsUpdated);
+  }, []);
+
   // Salvar no localStorage automaticamente
   useEffect(() => {
     localStorage.setItem('usmle_mode_v4', mode);
