@@ -135,7 +135,8 @@ export function TopBarTimer() {
             }
 
             // 2. Pacer Logic
-            if (state.pacerIsActive && state.phase === 'study' && state.timerState === 'running') {
+            const isStudyingAndActive = state.pacerIsActive && state.phase === 'study' && (state.timerState === 'running' || state.timerState === 'waiting_transition');
+            if (isStudyingAndActive) {
                const newPacerTime = state.pacerCurrentQuestionTime + deltaSecs;
                state.tickPacer(deltaSecs);
                
@@ -307,32 +308,32 @@ export function TopBarTimer() {
 
         {/* Controls */}
         <div className={`flex items-center gap-1 ml-1 pr-1 border-r border-gray-200 dark:border-gray-700`}>
-          {timerState === 'waiting_transition' ? (
-             <div className="flex items-center gap-1">
-               <button 
-                  onClick={handleTransition}
-                  title={`Iniciar ${phase === 'study' ? 'Descanso' : 'Estudo'}`}
-                  className="p-1.5 rounded-md bg-white dark:bg-gray-900 shadow-sm text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:text-blue-400 transition-colors"
-               >
-                  {phase === 'study' ? <Coffee className="w-4 h-4" /> : <BookOpen className="w-4 h-4" />}
-               </button>
-               {phase === 'study' && (
-                 <button 
-                    onClick={handleSkipRest}
-                    title="Pular Descanso"
-                    className="p-1.5 rounded-md bg-white dark:bg-gray-900 shadow-sm text-gray-700 dark:text-gray-300 hover:text-amber-600 transition-colors"
-                 >
-                    <FastForward className="w-4 h-4" />
-                 </button>
-               )}
-             </div>
-          ) : (
+          {timerState !== 'waiting_transition' && (
             <button 
               onClick={toggleTimer}
+              title={timerState === 'running' ? 'Pausar' : 'Iniciar'}
               className={`p-1.5 rounded-md transition-colors shadow-sm ${timerState === 'running' ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:bg-gray-800/50 hover:text-blue-600 dark:text-blue-400'}`}
             >
               {timerState === 'running' ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current" />}
             </button>
+          )}
+
+          <button 
+            onClick={handleTransition}
+            title={`Mudar para ${phase === 'study' ? 'Descanso' : 'Estudo'}`}
+            className="p-1.5 rounded-md bg-white dark:bg-gray-900 shadow-sm text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:text-blue-400 transition-colors"
+          >
+            {phase === 'study' ? <Coffee className="w-4 h-4" /> : <BookOpen className="w-4 h-4" />}
+          </button>
+          
+          {timerState === 'waiting_transition' && phase === 'study' && (
+             <button 
+                onClick={handleSkipRest}
+                title="Pular Descanso"
+                className="p-1.5 rounded-md bg-white dark:bg-gray-900 shadow-sm text-gray-700 dark:text-gray-300 hover:text-amber-600 transition-colors"
+             >
+                <FastForward className="w-4 h-4" />
+             </button>
           )}
 
           <button 

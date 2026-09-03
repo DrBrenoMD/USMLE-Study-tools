@@ -217,7 +217,7 @@ export function QuestionPacer({ className }: { className?: string }) {
                   <div className="absolute top-0 inset-x-0 bg-blue-500 text-white text-[9px] font-bold uppercase py-0.5">
                     Modo de Descanso Ativo
                   </div>
-                ) : timerState !== 'running' ? (
+                ) : timerState === 'paused' || timerState === 'idle' ? (
                   <div className="absolute top-0 inset-x-0 bg-gray-500 text-white text-[9px] font-bold uppercase py-0.5">
                     Pausado
                   </div>
@@ -229,7 +229,7 @@ export function QuestionPacer({ className }: { className?: string }) {
                 <div className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2 mt-2">
                   Questão Atual
                 </div>
-                <div className={`text-5xl font-black tracking-tight ${currentQuestionTime >= effectiveTarget && phase === 'study' && timerState === 'running' ? 'text-red-500' : 'text-gray-900 dark:text-gray-100'}`}>
+                <div className={`text-5xl font-black tracking-tight ${currentQuestionTime >= effectiveTarget && phase === 'study' && (timerState === 'running' || timerState === 'waiting_transition') ? 'text-red-500' : 'text-gray-900 dark:text-gray-100'}`}>
                   {formatTime(currentQuestionTime)}
                 </div>
                 <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mt-2">
