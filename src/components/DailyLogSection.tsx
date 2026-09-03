@@ -89,11 +89,11 @@ export function DailyLogSection({ resources, activeDateStr, onActiveDateChange, 
 
   if (resources.length === 0) {
     return (
-      <section className="bg-white rounded-2xl border border-gray-200/90 p-6 shadow-sm">
+      <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200/90 dark:border-gray-700/90 p-6 shadow-sm">
         <div className="text-center py-6">
           <BookOpen className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-          <h3 className="text-sm font-semibold text-gray-800">Nenhum material cadastrado</h3>
-          <p className="text-xs text-gray-500 mt-1">
+          <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200">Nenhum material cadastrado</h3>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
             Adicione seus materiais de estudo na aba Planejamento para começar a registrar suas sessões diárias.
           </p>
         </div>
@@ -102,13 +102,13 @@ export function DailyLogSection({ resources, activeDateStr, onActiveDateChange, 
   }
 
   return (
-    <section className="bg-white rounded-2xl border border-gray-200/90 p-5 sm:p-6 shadow-sm">
-      <div className="flex items-center justify-between pb-4 mb-5 border-b border-gray-100 flex-wrap gap-2">
+    <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200/90 dark:border-gray-700/90 p-5 sm:p-6 shadow-sm">
+      <div className="flex items-center justify-between pb-4 mb-5 border-b border-gray-100 dark:border-gray-800 flex-wrap gap-2">
         <div>
-          <h2 className="text-xs font-bold uppercase tracking-wider text-gray-400">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
             Lançamento Rápido de Progresso
           </h2>
-          <p className="text-xs text-gray-500 mt-0.5">
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
             Insira o que você estudou hoje para atualizar suas metas e o heatmap.
           </p>
         </div>
@@ -128,7 +128,7 @@ export function DailyLogSection({ resources, activeDateStr, onActiveDateChange, 
           {/* Data */}
           <div className="sm:col-span-5">
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-[10px] text-gray-500 uppercase font-semibold">
+              <label className="block text-[10px] text-gray-500 dark:text-gray-400 uppercase font-semibold">
                 Data da Sessão
               </label>
               <div className="flex gap-1">
@@ -137,7 +137,7 @@ export function DailyLogSection({ resources, activeDateStr, onActiveDateChange, 
                   onClick={() => onActiveDateChange(todayStr)}
                   className={cn(
                     "px-2 py-0.5 text-[10px] font-bold rounded border transition-colors cursor-pointer",
-                    activeDateStr === todayStr ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100"
+                    activeDateStr === todayStr ? "bg-blue-50 dark:bg-blue-900/30 border-blue-200 text-blue-700 dark:text-blue-300" : "bg-gray-50 dark:bg-gray-800/50 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:bg-gray-800"
                   )}
                 >
                   Hoje
@@ -147,7 +147,7 @@ export function DailyLogSection({ resources, activeDateStr, onActiveDateChange, 
                   onClick={() => onActiveDateChange(yesterdayStr)}
                   className={cn(
                     "px-2 py-0.5 text-[10px] font-bold rounded border transition-colors cursor-pointer",
-                    activeDateStr === yesterdayStr ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100"
+                    activeDateStr === yesterdayStr ? "bg-blue-50 dark:bg-blue-900/30 border-blue-200 text-blue-700 dark:text-blue-300" : "bg-gray-50 dark:bg-gray-800/50 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:bg-gray-800"
                   )}
                 >
                   Ontem
@@ -158,19 +158,19 @@ export function DailyLogSection({ resources, activeDateStr, onActiveDateChange, 
               type="date"
               value={activeDateStr}
               onChange={(e) => onActiveDateChange(e.target.value)}
-              className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500 focus:bg-white"
+              className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500 focus:bg-white dark:bg-gray-900"
             />
           </div>
 
           {/* Material de Estudo */}
           <div className="sm:col-span-7">
-            <label className="block text-[10px] text-gray-500 uppercase font-semibold mb-1">
+            <label className="block text-[10px] text-gray-500 dark:text-gray-400 uppercase font-semibold mb-1">
               Material Estudado
             </label>
             <select
               value={selectedResourceId}
               onChange={(e) => setSelectedResourceId(e.target.value)}
-              className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500 focus:bg-white cursor-pointer"
+              className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500 focus:bg-white dark:bg-gray-900 cursor-pointer"
             >
               {resources.map((res) => (
                 <option key={res.id} value={res.id}>
@@ -187,7 +187,7 @@ export function DailyLogSection({ resources, activeDateStr, onActiveDateChange, 
           
           {/* Quantidade Realizada */}
           <div>
-            <label className="block text-[10px] text-gray-500 uppercase font-semibold mb-1">
+            <label className="block text-[10px] text-gray-500 dark:text-gray-400 uppercase font-semibold mb-1">
               {selectedResource?.allocationMode === 'fixed_time' 
                 ? 'Minutos Estudados' 
                 : `Quantidade (${selectedResource?.unit || 'itens'})`}
@@ -199,10 +199,10 @@ export function DailyLogSection({ resources, activeDateStr, onActiveDateChange, 
                 value={amount}
                 onChange={(e) => handleAmountChange(e.target.value ? Number(e.target.value) : '')}
                 placeholder="40"
-                className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-bold text-gray-900 focus:outline-none focus:border-blue-500 focus:bg-white"
+                className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-bold text-gray-900 dark:text-gray-100 focus:outline-none focus:border-blue-500 focus:bg-white dark:bg-gray-900"
                 required
               />
-              <span className="absolute right-3 top-2.5 text-xs text-gray-400 font-medium pointer-events-none">
+              <span className="absolute right-3 top-2.5 text-xs text-gray-400 dark:text-gray-500 font-medium pointer-events-none">
                 {selectedResource?.allocationMode === 'fixed_time' ? 'min' : selectedResource?.unit}
               </span>
             </div>
@@ -210,8 +210,8 @@ export function DailyLogSection({ resources, activeDateStr, onActiveDateChange, 
 
           {/* Tempo Dedicado */}
           <div>
-            <label className="block text-[10px] text-gray-500 uppercase font-semibold mb-1 flex items-center gap-1">
-              <Clock className="w-3 h-3 text-blue-600" />
+            <label className="block text-[10px] text-gray-500 dark:text-gray-400 uppercase font-semibold mb-1 flex items-center gap-1">
+              <Clock className="w-3 h-3 text-blue-600 dark:text-blue-400" />
               Tempo Total Dedicado
             </label>
             <div className="relative">
@@ -221,10 +221,10 @@ export function DailyLogSection({ resources, activeDateStr, onActiveDateChange, 
                 value={minutesSpent}
                 onChange={(e) => setMinutesSpent(e.target.value ? Number(e.target.value) : '')}
                 placeholder="60"
-                className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-bold text-gray-900 focus:outline-none focus:border-blue-500 focus:bg-white"
+                className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-bold text-gray-900 dark:text-gray-100 focus:outline-none focus:border-blue-500 focus:bg-white dark:bg-gray-900"
                 required
               />
-              <span className="absolute right-3 top-2.5 text-xs text-gray-400 font-medium pointer-events-none">
+              <span className="absolute right-3 top-2.5 text-xs text-gray-400 dark:text-gray-500 font-medium pointer-events-none">
                 minutos
               </span>
             </div>
@@ -232,7 +232,7 @@ export function DailyLogSection({ resources, activeDateStr, onActiveDateChange, 
 
           {/* % de Acerto (Opcional) */}
           <div>
-            <label className="block text-[10px] text-gray-500 uppercase font-semibold mb-1 flex items-center gap-1">
+            <label className="block text-[10px] text-gray-500 dark:text-gray-400 uppercase font-semibold mb-1 flex items-center gap-1">
               <Percent className="w-3 h-3 text-emerald-600" />
               % Acertos (Opcional)
             </label>
@@ -245,9 +245,9 @@ export function DailyLogSection({ resources, activeDateStr, onActiveDateChange, 
                 value={scorePercent}
                 onChange={(e) => setScorePercent(e.target.value !== '' ? Number(e.target.value) : '')}
                 placeholder="Ex: 72.5"
-                className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-gray-900 focus:outline-none focus:border-blue-500 focus:bg-white"
+                className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium text-gray-900 dark:text-gray-100 focus:outline-none focus:border-blue-500 focus:bg-white dark:bg-gray-900"
               />
-              <span className="absolute right-3 top-2.5 text-xs text-gray-400 font-medium pointer-events-none">
+              <span className="absolute right-3 top-2.5 text-xs text-gray-400 dark:text-gray-500 font-medium pointer-events-none">
                 %
               </span>
             </div>
@@ -257,8 +257,8 @@ export function DailyLogSection({ resources, activeDateStr, onActiveDateChange, 
 
         {/* Linha 3: Notas / Tópicos Estudados */}
         <div>
-          <label className="block text-[10px] text-gray-500 uppercase font-semibold mb-1 flex items-center gap-1">
-            <FileText className="w-3 h-3 text-gray-400" />
+          <label className="block text-[10px] text-gray-500 dark:text-gray-400 uppercase font-semibold mb-1 flex items-center gap-1">
+            <FileText className="w-3 h-3 text-gray-400 dark:text-gray-500" />
             Tópicos Estudados / Observações (Opcional)
           </label>
           <input
@@ -266,25 +266,25 @@ export function DailyLogSection({ resources, activeDateStr, onActiveDateChange, 
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             placeholder="Ex: Farmacologia Cardíaca, Erros no NBME 26, Foco em Imunologia..."
-            className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500 focus:bg-white"
+            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500 focus:bg-white dark:bg-gray-900"
           />
         </div>
 
         {/* Linha 4: Checkbox de sincronização e Botão de Ação */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-gray-100">
-          <label className="flex items-center gap-2 text-xs font-medium text-gray-700 cursor-pointer">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-gray-100 dark:border-gray-800">
+          <label className="flex items-center gap-2 text-xs font-medium text-gray-700 dark:text-gray-300 cursor-pointer">
             <input
               type="checkbox"
               checked={syncWithResource}
               onChange={(e) => setSyncWithResource(e.target.checked)}
-              className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+              className="w-4 h-4 text-blue-600 dark:text-blue-400 rounded border-gray-300 dark:border-gray-600 focus:ring-blue-500"
             />
             <span>Somar automaticamente à barra de progresso do material ({selectedResource?.name || 'Material'})</span>
           </label>
 
           <button
             type="submit"
-            className="flex items-center justify-center gap-1.5 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+            className="flex items-center justify-center gap-1.5 px-5 py-2.5 bg-blue-600 dark:bg-blue-500 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             Lançar Registro

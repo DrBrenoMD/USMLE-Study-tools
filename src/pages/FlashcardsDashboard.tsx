@@ -210,26 +210,26 @@ export default function FlashcardsDashboard() {
   const COLORS = ["#22c55e", "#ef4444"];
 
   return (
-    <div className="flex-1 bg-gray-50 min-h-[calc(100vh-56px)] overflow-y-auto p-6 sm:p-8 font-sans relative">
+    <div className="flex-1 bg-gray-50 dark:bg-gray-800/50 min-h-[calc(100vh-56px)] overflow-y-auto p-6 sm:p-8 font-sans relative">
       <div className="max-w-6xl mx-auto flex flex-col gap-8">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-200 pb-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-200 dark:border-gray-700 pb-6">
           <div>
             <button
               onClick={() => navigate("/flashcards")}
-              className="text-blue-600 hover:underline text-sm font-bold flex items-center gap-1 mb-2"
+              className="text-blue-600 dark:text-blue-400 hover:underline text-sm font-bold flex items-center gap-1 mb-2"
             >
               <ChevronLeft className="w-4 h-4" /> Voltar ao Painel
             </button>
-            <h1 className="text-3xl font-black text-gray-900">
-              Relatório: <span className="text-blue-600">{simName}</span>
+            <h1 className="text-3xl font-black text-gray-900 dark:text-gray-100">
+              Relatório: <span className="text-blue-600 dark:text-blue-400">{simName}</span>
             </h1>
           </div>
           <button
             onClick={() =>
               navigate(`/flashcards/editor?sim=${encodeURIComponent(simName)}`)
             }
-            className="px-6 py-3 bg-white border border-gray-300 text-gray-700 rounded-xl font-bold hover:bg-gray-50 shadow-sm transition-colors"
+            className="px-6 py-3 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-xl font-bold hover:bg-gray-50 dark:bg-gray-800/50 shadow-sm transition-colors"
           >
             Voltar à Correção
           </button>
@@ -239,7 +239,7 @@ export default function FlashcardsDashboard() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <button
             onClick={exportCSV}
-            className="flex flex-col items-center justify-center p-6 bg-blue-600 text-white rounded-2xl shadow-sm hover:bg-blue-700 transition-colors"
+            className="flex flex-col items-center justify-center p-6 bg-blue-600 dark:bg-blue-500 text-white rounded-2xl shadow-sm hover:bg-blue-700 transition-colors"
           >
             <Download className="w-8 h-8 mb-2" />
             <span className="font-bold text-lg">Gerar para Anki (.txt)</span>
@@ -260,41 +260,41 @@ export default function FlashcardsDashboard() {
 
         {/* Stats Summary */}
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-6">
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 flex flex-col items-center justify-center text-center">
-            <h3 className="font-bold text-gray-500 text-sm">
+          <div className="bg-white dark:bg-gray-900 p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col items-center justify-center text-center">
+            <h3 className="font-bold text-gray-500 dark:text-gray-400 text-sm">
               Taxa de Acerto Geral
             </h3>
-            <div className="text-4xl font-black text-blue-600 mt-2">
+            <div className="text-4xl font-black text-blue-600 dark:text-blue-400 mt-2">
               {stats.taxaGeral}%
             </div>
-            <div className="text-xs mt-1 text-gray-400 font-medium">
+            <div className="text-xs mt-1 text-gray-400 dark:text-gray-500 font-medium">
               {stats.total} questões analisadas
             </div>
           </div>
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 flex flex-col items-center justify-center text-center">
-            <h3 className="font-bold text-gray-500 text-sm">Tema Mais Forte</h3>
+          <div className="bg-white dark:bg-gray-900 p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col items-center justify-center text-center">
+            <h3 className="font-bold text-gray-500 dark:text-gray-400 text-sm">Tema Mais Forte</h3>
             <div className="text-xl font-bold text-green-600 mt-2 truncate w-full">
               {stats.forte.nome}
             </div>
-            <div className="text-xs mt-1 text-gray-400 font-medium">
+            <div className="text-xs mt-1 text-gray-400 dark:text-gray-500 font-medium">
               {stats.forte.taxa !== -1 ? `${stats.forte.taxa}% de acerto` : "-"}
             </div>
           </div>
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 flex flex-col items-center justify-center text-center">
-            <h3 className="font-bold text-gray-500 text-sm">
+          <div className="bg-white dark:bg-gray-900 p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col items-center justify-center text-center">
+            <h3 className="font-bold text-gray-500 dark:text-gray-400 text-sm">
               Calcanhar de Aquiles
             </h3>
             <div className="text-xl font-bold text-red-600 mt-2 truncate w-full">
               {stats.fraco.nome}
             </div>
-            <div className="text-xs mt-1 text-gray-400 font-medium">
+            <div className="text-xs mt-1 text-gray-400 dark:text-gray-500 font-medium">
               {stats.fraco.taxa !== 101
                 ? `${stats.fraco.taxa}% de acerto`
                 : "-"}
             </div>
           </div>
-          <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 flex flex-col items-center justify-center">
-            <h3 className="font-bold text-gray-500 text-sm mb-2">
+          <div className="bg-white dark:bg-gray-900 p-4 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col items-center justify-center">
+            <h3 className="font-bold text-gray-500 dark:text-gray-400 text-sm mb-2">
               Visão Geral
             </h3>
             <div className="h-24 w-full">
@@ -327,8 +327,8 @@ export default function FlashcardsDashboard() {
 
         {/* Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 flex flex-col gap-2">
-            <h3 className="text-center font-bold text-gray-900">
+          <div className="bg-white dark:bg-gray-900 p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col gap-2">
+            <h3 className="text-center font-bold text-gray-900 dark:text-gray-100">
               Volume de Acertos vs Erros por Tema
             </h3>
             <div className="h-64 w-full">
@@ -359,8 +359,8 @@ export default function FlashcardsDashboard() {
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 flex flex-col gap-2">
-            <h3 className="text-center font-bold text-gray-900">
+          <div className="bg-white dark:bg-gray-900 p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col gap-2">
+            <h3 className="text-center font-bold text-gray-900 dark:text-gray-100">
               Motivos de Erro
             </h3>
             <div className="h-64 w-full">
@@ -387,7 +387,7 @@ export default function FlashcardsDashboard() {
 
         {/* Preview Cards */}
         <div className="flex flex-col gap-4">
-          <h2 className="text-2xl font-bold text-gray-900">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
             Pré-visualização dos Flashcards
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -410,16 +410,16 @@ export default function FlashcardsDashboard() {
                   <div
                     key={q.id}
                     onClick={() => setPreviewQ(q)}
-                    className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5 flex flex-col cursor-pointer hover:shadow-md hover:border-blue-400 transition-all transform hover:-translate-y-1"
+                    className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-sm p-5 flex flex-col cursor-pointer hover:shadow-md hover:border-blue-400 transition-all transform hover:-translate-y-1"
                   >
-                    <div className="text-sm font-black text-blue-600 mb-3 border-b border-gray-100 pb-2 flex justify-between items-center">
+                    <div className="text-sm font-black text-blue-600 dark:text-blue-400 mb-3 border-b border-gray-100 dark:border-gray-800 pb-2 flex justify-between items-center">
                       <span>Questão {q.id}</span>
-                      <Expand className="w-4 h-4 text-gray-400" />
+                      <Expand className="w-4 h-4 text-gray-400 dark:text-gray-500" />
                     </div>
-                    <div className="flex-1 text-sm text-gray-600 italic mb-4">
+                    <div className="flex-1 text-sm text-gray-600 dark:text-gray-400 italic mb-4">
                       "{resumoFront || "Sem texto na frente"}"
                     </div>
-                    <div className="mt-auto text-xs font-bold bg-gray-50 border border-gray-100 text-gray-500 p-2 rounded-lg text-center">
+                    <div className="mt-auto text-xs font-bold bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-800 text-gray-500 dark:text-gray-400 p-2 rounded-lg text-center">
                       Ver conteúdo completo →
                     </div>
                   </div>
@@ -432,21 +432,21 @@ export default function FlashcardsDashboard() {
       {/* Modal Preview */}
       {previewQ && (
         <div className="fixed inset-0 z-[100] bg-gray-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-3xl max-h-[90vh] rounded-2xl shadow-xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-              <h2 className="text-xl font-bold text-gray-900">
+          <div className="bg-white dark:bg-gray-900 w-full max-w-3xl max-h-[90vh] rounded-2xl shadow-xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 flex justify-between items-center">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
                 Questão {previewQ.id}
               </h2>
               <button
                 onClick={() => setPreviewQ(null)}
-                className="text-gray-400 hover:text-red-500 transition-colors"
+                className="text-gray-400 dark:text-gray-500 hover:text-red-500 transition-colors"
               >
                 <ChevronLeft className="w-6 h-6 rotate-180" />
               </button>
             </div>
-            <div className="p-6 overflow-y-auto flex-1 flex flex-col gap-6 text-gray-800">
+            <div className="p-6 overflow-y-auto flex-1 flex flex-col gap-6 text-gray-800 dark:text-gray-200">
               <div>
-                <h3 className="font-bold text-blue-600 border-b border-gray-100 pb-1 mb-3">
+                <h3 className="font-bold text-blue-600 dark:text-blue-400 border-b border-gray-100 dark:border-gray-800 pb-1 mb-3">
                   Frente
                 </h3>
                 <div
@@ -457,7 +457,7 @@ export default function FlashcardsDashboard() {
                 />
               </div>
               <div>
-                <h3 className="font-bold text-blue-600 border-b border-gray-100 pb-1 mb-3">
+                <h3 className="font-bold text-blue-600 dark:text-blue-400 border-b border-gray-100 dark:border-gray-800 pb-1 mb-3">
                   Verso
                 </h3>
                 <div
@@ -474,10 +474,10 @@ export default function FlashcardsDashboard() {
                 </div>
               )}
             </div>
-            <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
+            <div className="p-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 flex justify-end gap-3">
               <button
                 onClick={() => setPreviewQ(null)}
-                className="px-5 py-2 bg-white border border-gray-300 text-gray-700 rounded-xl font-bold hover:bg-gray-50 transition-colors"
+                className="px-5 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-xl font-bold hover:bg-gray-50 dark:bg-gray-800/50 transition-colors"
               >
                 Fechar
               </button>
@@ -487,7 +487,7 @@ export default function FlashcardsDashboard() {
                     `/flashcards/editor?sim=${encodeURIComponent(simName)}&q=${previewQ.id}`,
                   )
                 }
-                className="px-5 py-2 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors"
+                className="px-5 py-2 bg-blue-600 dark:bg-blue-500 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors"
               >
                 Ir para Edição
               </button>

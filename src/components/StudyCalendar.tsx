@@ -38,8 +38,8 @@ export function StudyCalendar({ plan, resources, studyLogs, onAddLog }: StudyCal
         <div
           key={day.toString()}
           onClick={() => setSelectedDate(cloneDay)}
-          className={`p-2 border border-gray-100 flex items-center justify-center cursor-pointer transition-colors ${
-            !isCurrentMonth ? 'text-gray-300' : isSelected ? 'bg-blue-600 text-white font-bold rounded-lg shadow-sm' : isToday ? 'bg-blue-50 text-blue-700 font-bold' : 'text-gray-700 hover:bg-gray-50'
+          className={`p-2 border border-gray-100 dark:border-gray-800 flex items-center justify-center cursor-pointer transition-colors ${
+            !isCurrentMonth ? 'text-gray-300' : isSelected ? 'bg-blue-600 dark:bg-blue-500 text-white font-bold rounded-lg shadow-sm' : isToday ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-bold' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:bg-gray-800/50'
           }`}
         >
           <span>{formattedDate}</span>
@@ -82,18 +82,18 @@ export function StudyCalendar({ plan, resources, studyLogs, onAddLog }: StudyCal
   };
 
   return (
-    <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-xs">
+    <div className="bg-white dark:bg-gray-900 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xs">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-bold text-gray-900">Calendário de Atividades</h2>
+        <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Calendário de Atividades</h2>
         <div className="flex items-center gap-4">
-          <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="p-1 hover:bg-gray-100 rounded">
-            <ChevronLeft className="w-5 h-5 text-gray-600" />
+          <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="p-1 hover:bg-gray-100 dark:bg-gray-800 rounded">
+            <ChevronLeft className="w-5 h-5 text-gray-600 dark:text-gray-400" />
           </button>
-          <span className="font-semibold text-gray-800 capitalize">
+          <span className="font-semibold text-gray-800 dark:text-gray-200 capitalize">
             {format(currentMonth, 'MMMM yyyy', { locale: ptBR })}
           </span>
-          <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="p-1 hover:bg-gray-100 rounded">
-            <ChevronRight className="w-5 h-5 text-gray-600" />
+          <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="p-1 hover:bg-gray-100 dark:bg-gray-800 rounded">
+            <ChevronRight className="w-5 h-5 text-gray-600 dark:text-gray-400" />
           </button>
         </div>
       </div>
@@ -101,7 +101,7 @@ export function StudyCalendar({ plan, resources, studyLogs, onAddLog }: StudyCal
       <div className="mb-6">
         <div className="grid grid-cols-7 gap-1 mb-2">
           {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(d => (
-            <div key={d} className="text-center text-xs font-bold text-gray-400">
+            <div key={d} className="text-center text-xs font-bold text-gray-400 dark:text-gray-500">
               {d}
             </div>
           ))}
@@ -110,7 +110,7 @@ export function StudyCalendar({ plan, resources, studyLogs, onAddLog }: StudyCal
       </div>
 
       <div>
-        <h3 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
+        <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200 mb-3 flex items-center gap-2">
           Checklist do Dia - {format(selectedDate, "dd 'de' MMMM", { locale: ptBR })}
         </h3>
         {activeTasks.length > 0 ? (
@@ -118,19 +118,19 @@ export function StudyCalendar({ plan, resources, studyLogs, onAddLog }: StudyCal
             {activeTasks.map(task => {
               const isDone = studyLogs.some(log => log.date === selectedDateStr && log.resourceId === task.resourceId);
               return (
-                <div key={task.resourceId} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100">
+                <div key={task.resourceId} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-100 dark:border-gray-800">
                   <div className="flex items-center gap-3">
                     <button 
                       onClick={() => handleToggleCheck(task)}
-                      className={`transition-colors ${isDone ? 'text-emerald-500' : 'text-gray-400 hover:text-blue-500'}`}
+                      className={`transition-colors ${isDone ? 'text-emerald-500' : 'text-gray-400 dark:text-gray-500 hover:text-blue-500'}`}
                     >
                       {isDone ? <CheckCircle2 className="w-6 h-6" /> : <Circle className="w-6 h-6" />}
                     </button>
                     <div>
-                      <div className={`font-semibold text-sm ${isDone ? 'text-gray-500 line-through' : 'text-gray-900'}`}>
+                      <div className={`font-semibold text-sm ${isDone ? 'text-gray-500 dark:text-gray-400 line-through' : 'text-gray-900 dark:text-gray-100'}`}>
                         {task.resourceName}
                       </div>
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
                         {task.dailyAmount > 0 ? `${task.dailyAmount} ${task.unit} • ` : ''}{task.dailyMinutes} min
                       </div>
                     </div>
@@ -140,7 +140,7 @@ export function StudyCalendar({ plan, resources, studyLogs, onAddLog }: StudyCal
             })}
           </div>
         ) : (
-          <div className="text-sm text-gray-500 text-center py-4 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+          <div className="text-sm text-gray-500 dark:text-gray-400 text-center py-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-dashed border-gray-200 dark:border-gray-700">
             Nenhuma atividade programada para este dia.
           </div>
         )}

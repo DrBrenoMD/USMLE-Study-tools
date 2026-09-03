@@ -275,18 +275,18 @@ export default function FlashcardsEditor() {
   for (let i = 1; i <= maxQuestion; i++) qList.push(i);
 
   return (
-    <div className="flex flex-1 h-[calc(100vh-56px)] bg-gray-50 overflow-hidden font-sans">
+    <div className="flex flex-1 h-[calc(100vh-56px)] bg-gray-50 dark:bg-gray-800/50 overflow-hidden font-sans">
       {/* Sidebar */}
-      <div className="w-64 bg-white border-r border-gray-200 flex flex-col flex-shrink-0">
-        <div className="p-4 border-b border-gray-200 bg-gray-50 flex flex-col gap-3">
+      <div className="w-64 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 flex flex-col flex-shrink-0">
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 flex flex-col gap-3">
           <div className="flex items-center gap-2">
             <button
               onClick={() => navigate("/flashcards")}
-              className="text-gray-500 hover:text-gray-900 transition-colors"
+              className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:text-gray-100 transition-colors"
             >
               <ChevronLeft className="w-5 h-5" />
             </button>
-            <span className="font-bold text-gray-900 truncate">{simName}</span>
+            <span className="font-bold text-gray-900 dark:text-gray-100 truncate">{simName}</span>
           </div>
           <button
             onClick={() =>
@@ -294,7 +294,7 @@ export default function FlashcardsEditor() {
                 `/flashcards/dashboard?sim=${encodeURIComponent(simName)}`,
               )
             }
-            className="w-full py-2 bg-blue-50 text-blue-700 font-bold rounded-lg border border-blue-100 hover:bg-blue-100 transition-colors flex items-center justify-center gap-2"
+            className="w-full py-2 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-bold rounded-lg border border-blue-100 hover:bg-blue-100 dark:bg-blue-900/50 transition-colors flex items-center justify-center gap-2"
           >
             <BarChart2 className="w-4 h-4" />
             Dashboard
@@ -309,7 +309,7 @@ export default function FlashcardsEditor() {
               <div
                 key={i}
                 onClick={() => loadQuestion(data, i)}
-                className={`p-3 rounded-lg cursor-pointer text-sm font-semibold transition-colors flex items-center justify-between ${i === currentId ? "bg-blue-100 text-blue-900" : "hover:bg-gray-100 text-gray-600"}`}
+                className={`p-3 rounded-lg cursor-pointer text-sm font-semibold transition-colors flex items-center justify-between ${i === currentId ? "bg-blue-100 dark:bg-blue-900/50 text-blue-900" : "hover:bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400"}`}
               >
                 <span>Questão {i}</span>
                 {isCerta && <Check className="w-4 h-4 text-green-600" />}
@@ -319,7 +319,7 @@ export default function FlashcardsEditor() {
           })}
           <div
             onClick={() => loadQuestion(data, maxQuestion + 1)}
-            className="p-3 text-center cursor-pointer text-blue-600 hover:bg-blue-50 font-bold rounded-lg border border-transparent hover:border-blue-100 transition-colors text-sm"
+            className="p-3 text-center cursor-pointer text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:bg-blue-900/30 font-bold rounded-lg border border-transparent hover:border-blue-100 transition-colors text-sm"
           >
             + Nova Questão
           </div>
@@ -327,23 +327,23 @@ export default function FlashcardsEditor() {
       </div>
 
       {/* Main Area */}
-      <div className="flex-1 flex flex-col overflow-y-auto bg-gray-50 p-6 sm:p-8">
+      <div className="flex-1 flex flex-col overflow-y-auto bg-gray-50 dark:bg-gray-800/50 p-6 sm:p-8">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-4">
-            <h1 className="text-3xl font-black text-gray-900">
+            <h1 className="text-3xl font-black text-gray-900 dark:text-gray-100">
               Questão {currentId}
             </h1>
             <div className="flex gap-1">
               <button
                 onClick={() => navigateQ(-1)}
-                className="p-1 text-gray-400 hover:text-gray-900 hover:bg-gray-200 rounded"
+                className="p-1 text-gray-400 dark:text-gray-500 hover:text-gray-900 dark:text-gray-100 hover:bg-gray-200 dark:bg-gray-700 rounded"
               >
                 <ChevronLeft className="w-5 h-5" />
               </button>
               <button
                 onClick={() => navigateQ(1)}
-                className="p-1 text-gray-400 hover:text-gray-900 hover:bg-gray-200 rounded"
+                className="p-1 text-gray-400 dark:text-gray-500 hover:text-gray-900 dark:text-gray-100 hover:bg-gray-200 dark:bg-gray-700 rounded"
               >
                 <ChevronRight className="w-5 h-5" />
               </button>
@@ -351,12 +351,12 @@ export default function FlashcardsEditor() {
           </div>
 
           <div className="flex items-center gap-4 flex-wrap">
-            <div className="px-4 py-2 bg-white border border-gray-200 rounded-xl shadow-sm flex items-center gap-2 font-bold text-blue-700">
+            <div className="px-4 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm flex items-center gap-2 font-bold text-blue-700 dark:text-blue-300">
               <Target className="w-4 h-4" />
               <span>
                 {score.corretas}/{score.total}
               </span>
-              <span className="text-gray-400 text-xs ml-1">
+              <span className="text-gray-400 dark:text-gray-500 text-xs ml-1">
                 (
                 {score.total > 0
                   ? Math.round((score.corretas / score.total) * 100)
@@ -365,7 +365,7 @@ export default function FlashcardsEditor() {
               </span>
             </div>
             <div
-              className={`px-4 py-2 font-mono font-bold rounded-xl shadow-sm border ${pace > 180 ? "bg-red-50 text-red-700 border-red-200" : pace > 120 ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-white text-green-700 border-gray-200"}`}
+              className={`px-4 py-2 font-mono font-bold rounded-xl shadow-sm border ${pace > 180 ? "bg-red-50 text-red-700 border-red-200" : pace > 120 ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-white dark:bg-gray-900 text-green-700 border-gray-200 dark:border-gray-700"}`}
             >
               {String(Math.floor(pace / 60)).padStart(2, "0")}:
               {String(pace % 60).padStart(2, "0")}
@@ -373,13 +373,13 @@ export default function FlashcardsEditor() {
             <div className="flex gap-2">
               <button
                 onClick={() => handleUpdate({ result: 1 })}
-                className={`px-5 py-2 font-bold rounded-xl shadow-sm transition-colors border ${qData.result === 1 ? "bg-green-500 text-white border-green-600" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
+                className={`px-5 py-2 font-bold rounded-xl shadow-sm transition-colors border ${qData.result === 1 ? "bg-green-500 text-white border-green-600" : "bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:bg-gray-800/50"}`}
               >
                 Certo
               </button>
               <button
                 onClick={() => handleUpdate({ result: 0 })}
-                className={`px-5 py-2 font-bold rounded-xl shadow-sm transition-colors border ${qData.result === 0 ? "bg-red-500 text-white border-red-600" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
+                className={`px-5 py-2 font-bold rounded-xl shadow-sm transition-colors border ${qData.result === 0 ? "bg-red-500 text-white border-red-600" : "bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:bg-gray-800/50"}`}
               >
                 Errado
               </button>
@@ -390,32 +390,32 @@ export default function FlashcardsEditor() {
         {/* Info Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-bold text-gray-700">Tema</label>
+            <label className="text-sm font-bold text-gray-700 dark:text-gray-300">Tema</label>
             <input
               type="text"
               value={qData.tema || ""}
               onChange={(e) => handleUpdate({ tema: e.target.value })}
-              className="px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none"
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-bold text-gray-700">Subtema</label>
+            <label className="text-sm font-bold text-gray-700 dark:text-gray-300">Subtema</label>
             <input
               type="text"
               value={qData.subtema || ""}
               onChange={(e) => handleUpdate({ subtema: e.target.value })}
-              className="px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none"
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-bold text-gray-700">
+            <label className="text-sm font-bold text-gray-700 dark:text-gray-300">
               Motivo do Erro
             </label>
             <input
               type="text"
               value={qData.motivo_erro || ""}
               onChange={(e) => handleUpdate({ motivo_erro: e.target.value })}
-              className="px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none"
             />
           </div>
         </div>
@@ -432,7 +432,7 @@ export default function FlashcardsEditor() {
             </div>
             <button
               onClick={() => handleUpdate({ io_cards: [] })}
-              className="px-3 py-1 bg-white text-red-600 font-bold border border-red-200 rounded-lg hover:bg-red-50 text-sm"
+              className="px-3 py-1 bg-white dark:bg-gray-900 text-red-600 font-bold border border-red-200 rounded-lg hover:bg-red-50 text-sm"
             >
               Limpar IO
             </button>
@@ -441,17 +441,17 @@ export default function FlashcardsEditor() {
 
         {/* Flashcard Editors */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 min-h-[400px]">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col overflow-hidden">
-            <div className="p-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-              <h3 className="font-bold text-blue-700">Frente do Card</h3>
+          <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden">
+            <div className="p-3 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 flex items-center justify-between">
+              <h3 className="font-bold text-blue-700 dark:text-blue-300">Frente do Card</h3>
               <button
                 onClick={openIO}
-                className="text-xs font-bold bg-white px-2 py-1 border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700 flex gap-1 items-center"
+                className="text-xs font-bold bg-white dark:bg-gray-900 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded shadow-sm hover:bg-gray-50 dark:bg-gray-800/50 text-gray-700 dark:text-gray-300 flex gap-1 items-center"
               >
                 <ImageIcon className="w-3 h-3" /> Gerar IO
               </button>
             </div>
-            <div className="flex-1 bg-white">
+            <div className="flex-1 bg-white dark:bg-gray-900">
               <ReactQuill
                 theme="snow"
                 value={qData.front || ""}
@@ -461,11 +461,11 @@ export default function FlashcardsEditor() {
               />
             </div>
           </div>
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col overflow-hidden">
-            <div className="p-3 border-b border-gray-100 bg-gray-50">
-              <h3 className="font-bold text-blue-700">Verso do Card</h3>
+          <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden">
+            <div className="p-3 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
+              <h3 className="font-bold text-blue-700 dark:text-blue-300">Verso do Card</h3>
             </div>
-            <div className="flex-1 bg-white">
+            <div className="flex-1 bg-white dark:bg-gray-900">
               <ReactQuill
                 theme="snow"
                 value={qData.back || ""}
@@ -489,13 +489,13 @@ export default function FlashcardsEditor() {
               <div className="h-6 w-px bg-gray-600 mx-2"></div>
               <button
                 onClick={() => setIoTool("pen")}
-                className={`px-3 py-1 rounded font-bold ${ioTool === "pen" ? "bg-blue-600" : "bg-gray-700"}`}
+                className={`px-3 py-1 rounded font-bold ${ioTool === "pen" ? "bg-blue-600 dark:bg-blue-500" : "bg-gray-700"}`}
               >
                 Desenho
               </button>
               <button
                 onClick={() => setIoTool("mask")}
-                className={`px-3 py-1 rounded font-bold ${ioTool === "mask" ? "bg-blue-600" : "bg-gray-700"}`}
+                className={`px-3 py-1 rounded font-bold ${ioTool === "mask" ? "bg-blue-600 dark:bg-blue-500" : "bg-gray-700"}`}
               >
                 Máscara
               </button>
@@ -509,7 +509,7 @@ export default function FlashcardsEditor() {
             <div className="flex gap-3">
               <button
                 onClick={() => saveIO("single")}
-                className="px-4 py-2 bg-blue-600 font-bold rounded shadow hover:bg-blue-500"
+                className="px-4 py-2 bg-blue-600 dark:bg-blue-500 font-bold rounded shadow hover:bg-blue-500"
               >
                 1 Card (Juntos)
               </button>
@@ -528,7 +528,7 @@ export default function FlashcardsEditor() {
             </div>
           </div>
           <div className="flex-1 overflow-auto flex justify-center items-center p-8">
-            <div className="shadow-2xl border-4 border-gray-700 bg-white inline-block">
+            <div className="shadow-2xl border-4 border-gray-700 bg-white dark:bg-gray-900 inline-block">
               <canvas ref={canvasRef}></canvas>
             </div>
           </div>

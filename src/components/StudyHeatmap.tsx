@@ -181,38 +181,38 @@ export function StudyHeatmap({ logs, resources, onAddLog, onDeleteLog, onSelectD
       case 4:
         return 'bg-emerald-800 border-emerald-900 text-white shadow-xs';
       default:
-        return 'bg-gray-100 border-gray-200/80 hover:border-gray-300';
+        return 'bg-gray-100 dark:bg-gray-800 border-gray-200/80 dark:border-gray-700/80 hover:border-gray-300 dark:border-gray-600';
     }
   };
 
   const dayLabels = ['Seg', '', 'Qua', '', 'Sex', '', 'Dom'];
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm flex flex-col gap-6">
+    <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 shadow-sm flex flex-col gap-6">
       
       {/* Header & Métricas de Streak */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-gray-100">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-gray-100 dark:border-gray-800">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-gray-400">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
               Evolução & Heatmap de Estudo
             </h2>
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-bold">
               <Sparkles className="w-3 h-3" /> Tempo Real
             </span>
           </div>
-          <p className="text-xs text-gray-500 mt-0.5">
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
             Registro diário de questões, páginas, flashcards e carga horária estudada.
           </p>
         </div>
 
         {/* Seletor de filtro por material */}
         <div className="flex items-center gap-2">
-          <Filter className="w-3.5 h-3.5 text-gray-400" />
+          <Filter className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
           <select
             value={filterResourceId}
             onChange={(e) => setFilterResourceId(e.target.value)}
-            className="text-xs font-medium text-gray-700 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-blue-500 cursor-pointer"
+            className="text-xs font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-blue-500 cursor-pointer"
           >
             <option value="all">Todos os Materiais</option>
             {resources.map(r => (
@@ -225,7 +225,7 @@ export function StudyHeatmap({ logs, resources, onAddLog, onDeleteLog, onSelectD
           <select
             value={weeksToShow}
             onChange={(e) => setWeeksToShow(Number(e.target.value))}
-            className="text-xs font-medium text-gray-700 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-blue-500 cursor-pointer"
+            className="text-xs font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-blue-500 cursor-pointer"
           >
             <option value={12}>Últimos 3 meses</option>
             <option value={18}>Últimos 4.5 meses</option>
@@ -261,12 +261,12 @@ export function StudyHeatmap({ logs, resources, onAddLog, onDeleteLog, onSelectD
         </div>
 
         <div className="p-3.5 rounded-xl bg-blue-50/60 border border-blue-200/80 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold shadow-xs">
+          <div className="w-10 h-10 rounded-xl bg-blue-600 dark:bg-blue-500 text-white flex items-center justify-center font-bold shadow-xs">
             <Clock className="w-5 h-5" />
           </div>
           <div>
             <div className="text-[10px] uppercase font-bold text-blue-900">Total Estudado</div>
-            <div className="text-lg font-bold text-blue-700">
+            <div className="text-lg font-bold text-blue-700 dark:text-blue-300">
               {stats.totalHours} <span className="text-xs font-medium">horas</span>
             </div>
           </div>
@@ -289,7 +289,7 @@ export function StudyHeatmap({ logs, resources, onAddLog, onDeleteLog, onSelectD
       <div className="flex flex-col gap-2 overflow-x-auto pb-2">
         <div className="flex gap-1.5 min-w-max">
           {/* Rótulos dos dias da semana */}
-          <div className="flex flex-col gap-1.5 justify-between pr-2 text-[10px] font-semibold text-gray-400 select-none">
+          <div className="flex flex-col gap-1.5 justify-between pr-2 text-[10px] font-semibold text-gray-400 dark:text-gray-500 select-none">
             {dayLabels.map((lbl, idx) => (
               <span key={idx} className="h-3.5 flex items-center leading-none">
                 {lbl}
@@ -327,11 +327,11 @@ export function StudyHeatmap({ logs, resources, onAddLog, onDeleteLog, onSelectD
         </div>
 
         {/* Legenda de Intensidade */}
-        <div className="flex items-center justify-between text-[11px] text-gray-400 pt-2 border-t border-gray-100 flex-wrap gap-2">
+        <div className="flex items-center justify-between text-[11px] text-gray-400 dark:text-gray-500 pt-2 border-t border-gray-100 dark:border-gray-800 flex-wrap gap-2">
           <span>Clique em qualquer dia do heatmap para ver detalhes ou lançar registros</span>
           <div className="flex items-center gap-1.5">
             <span>Menos</span>
-            <div className="w-3 h-3 rounded-xs bg-gray-100 border border-gray-200"></div>
+            <div className="w-3 h-3 rounded-xs bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700"></div>
             <div className="w-3 h-3 rounded-xs bg-emerald-200 border border-emerald-300"></div>
             <div className="w-3 h-3 rounded-xs bg-emerald-400 border border-emerald-500"></div>
             <div className="w-3 h-3 rounded-xs bg-emerald-600 border border-emerald-700"></div>
@@ -342,15 +342,15 @@ export function StudyHeatmap({ logs, resources, onAddLog, onDeleteLog, onSelectD
       </div>
 
       {/* Painel do Dia Selecionado */}
-      <div className="p-4 rounded-xl bg-gray-50 border border-gray-200 flex flex-col gap-3">
+      <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 flex flex-col gap-3">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
-            <CalendarIcon className="w-4 h-4 text-blue-600" />
-            <span className="text-xs font-bold text-gray-900">
+            <CalendarIcon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+            <span className="text-xs font-bold text-gray-900 dark:text-gray-100">
               {format(parseISO(selectedDateStr), "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
             </span>
             {isSameDay(parseISO(selectedDateStr), new Date()) && (
-              <span className="px-1.5 py-0.5 text-[10px] font-bold bg-blue-100 text-blue-700 rounded">
+              <span className="px-1.5 py-0.5 text-[10px] font-bold bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded">
                 Hoje
               </span>
             )}
@@ -365,14 +365,14 @@ export function StudyHeatmap({ logs, resources, onAddLog, onDeleteLog, onSelectD
               const avgScore = totalAmountScored > 0 ? Math.round(totalScoreWeighted / totalAmountScored) : 0;
 
               return totalQuestions > 0 ? (
-                <div className="flex items-center gap-3 text-xs bg-white px-2 py-1 rounded-md border border-gray-200">
+                <div className="flex items-center gap-3 text-xs bg-white dark:bg-gray-900 px-2 py-1 rounded-md border border-gray-200 dark:border-gray-700">
                   <div className="flex items-center gap-1.5">
                     <CheckSquare className="w-3.5 h-3.5 text-blue-500" />
-                    <span className="font-semibold text-gray-700">{totalQuestions} questões</span>
+                    <span className="font-semibold text-gray-700 dark:text-gray-300">{totalQuestions} questões</span>
                   </div>
                   {totalAmountScored > 0 && (
                     <>
-                      <div className="w-px h-3 bg-gray-200"></div>
+                      <div className="w-px h-3 bg-gray-200 dark:bg-gray-700"></div>
                       <div className="flex items-center gap-1.5">
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
                         <span className="font-semibold text-emerald-700">{avgScore}% acertos</span>
@@ -382,14 +382,14 @@ export function StudyHeatmap({ logs, resources, onAddLog, onDeleteLog, onSelectD
                 </div>
               ) : null;
             })()}
-            <div className="text-xs font-semibold text-gray-700 bg-white px-2 py-1 rounded-md border border-gray-200">
-              Total do Dia: <span className="font-bold text-blue-600">{Math.floor(selectedDayTotalMinutes / 60)}h {selectedDayTotalMinutes % 60}m</span>
+            <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900 px-2 py-1 rounded-md border border-gray-200 dark:border-gray-700">
+              Total do Dia: <span className="font-bold text-blue-600 dark:text-blue-400">{Math.floor(selectedDayTotalMinutes / 60)}h {selectedDayTotalMinutes % 60}m</span>
             </div>
           </div>
         </div>
 
         {selectedDayLogs.length === 0 ? (
-          <div className="text-xs text-gray-400 py-3 text-center bg-white rounded-lg border border-dashed border-gray-200">
+          <div className="text-xs text-gray-400 dark:text-gray-500 py-3 text-center bg-white dark:bg-gray-900 rounded-lg border border-dashed border-gray-200 dark:border-gray-700">
             Nenhum estudo registrado nesta data. Use o formulário abaixo para registrar suas questões e revisões do dia.
           </div>
         ) : (
@@ -397,21 +397,21 @@ export function StudyHeatmap({ logs, resources, onAddLog, onDeleteLog, onSelectD
             {selectedDayLogs.map((log) => {
               const Icon = getCategoryIcon(log.resourceType);
               return (
-                <div key={log.id} className="flex items-center justify-between p-2.5 rounded-lg bg-white border border-gray-200 text-xs">
+                <div key={log.id} className="flex items-center justify-between p-2.5 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-xs">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-md bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center font-bold">
+                    <div className="w-7 h-7 rounded-md bg-blue-50 dark:bg-blue-900/30 border border-blue-100 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold">
                       <Icon className="w-3.5 h-3.5" />
                     </div>
                     <div>
-                      <div className="font-semibold text-gray-900">{log.resourceName}</div>
-                      <div className="text-[10px] text-gray-500">
+                      <div className="font-semibold text-gray-900 dark:text-gray-100">{log.resourceName}</div>
+                      <div className="text-[10px] text-gray-500 dark:text-gray-400">
                         {log.amount} {log.unit} • {log.minutesSpent} min
                         {log.scorePercent !== undefined && (
                           <span className="font-semibold text-emerald-600 ml-1">({log.scorePercent}% acertos)</span>
                         )}
                       </div>
                       {log.notes && (
-                        <div className="text-[10px] text-gray-400 italic truncate max-w-[180px]">
+                        <div className="text-[10px] text-gray-400 dark:text-gray-500 italic truncate max-w-[180px]">
                           {log.notes}
                         </div>
                       )}

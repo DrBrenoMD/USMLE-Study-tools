@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useTimerStore } from '../store/useTimerStore';
-import { Play, Pause, Square, Coffee, BookOpen, Settings2, RotateCcw, Activity } from 'lucide-react';
+import { Play, Pause, Square, Coffee, BookOpen, Settings2, RotateCcw, Activity, FastForward } from 'lucide-react';
 import { format, startOfDay } from 'date-fns';
 import { QuestionPacer } from './QuestionPacer';
 
@@ -176,8 +176,14 @@ export function TopBarTimer() {
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
       }
       setTimerState('running');
+      if (pacerTotalQuestions > 0 && pacerCompletedQuestionsTime.length < pacerTotalQuestions) {
+        setPacerState({ pacerIsActive: true });
+      }
     } else if (timerState === 'running') {
       setTimerState('paused');
+      if (pacerIsActive) {
+        setPacerState({ pacerIsActive: false });
+      }
     }
   };
 
@@ -185,12 +191,21 @@ export function TopBarTimer() {
     setTimerState('idle');
     setPhase('study');
     setTimeLeft(studyDuration);
+    if (pacerIsActive) {
+      setPacerState({ pacerIsActive: false });
+    }
   };
 
   const handleTransition = () => {
     const nextPhase = phase === 'study' ? 'rest' : 'study';
     setPhase(nextPhase);
     setTimeLeft(nextPhase === 'study' ? studyDuration : restDuration);
+    setTimerState('running');
+  };
+
+  const handleSkipRest = () => {
+    setPhase('study');
+    setTimeLeft(studyDuration);
     setTimerState('running');
   };
 
@@ -222,13 +237,13 @@ export function TopBarTimer() {
     <div className="flex items-center gap-2 relative">
       {/* Settings Popover */}
       {showSettings && (
-        <div className="absolute top-full right-0 mt-2 bg-white rounded-xl shadow-xl border border-gray-200 p-4 w-64 z-50">
+        <div className="absolute top-full right-0 mt-2 bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-4 w-64 z-50">
           <div className="flex justify-between items-center mb-3">
-             <h3 className="font-bold text-sm text-gray-800">Configurações do Timer</h3>
+             <h3 className="font-bold text-sm text-gray-800 dark:text-gray-200">Configurações do Timer</h3>
           </div>
           <div className="space-y-3">
             <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Estudo (min)</label>
+              <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Estudo (min)</label>
               <input 
                 type="number" 
                 value={studyDuration / 60}
@@ -237,11 +252,11 @@ export function TopBarTimer() {
                   setStudyDuration(val);
                   if (timerState === 'idle' && phase === 'study') setTimeLeft(val);
                 }}
-                className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm font-semibold"
+                className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-semibold"
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Descanso (min)</label>
+              <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Descanso (min)</label>
               <input 
                 type="number" 
                 value={restDuration / 60}
@@ -250,10 +265,10 @@ export function TopBarTimer() {
                   setRestDuration(val);
                   if (timerState === 'idle' && phase === 'rest') setTimeLeft(val);
                 }}
-                className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm font-semibold"
+                className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-semibold"
               />
             </div>
-            <div className="pt-3 border-t border-gray-100">
+            <div className="pt-3 border-t border-gray-100 dark:border-gray-800">
                <button 
                   onClick={resetTodayNetTime}
                   className="w-full flex items-center justify-center gap-1 mt-2 text-xs font-bold text-red-600 hover:bg-red-50 py-1.5 rounded-md transition-colors"
@@ -266,28 +281,28 @@ export function TopBarTimer() {
       )}
 
       {/* Global Net Hours */}
-      <div className="hidden lg:flex items-center gap-1.5 mr-2 bg-white/50 px-3 py-1 rounded-lg border border-gray-200 shadow-sm">
-        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Líquido</span>
-        <span className="text-sm font-black text-blue-600">{formatTimeHM(todayNetSeconds)}</span>
+      <div className="hidden lg:flex items-center gap-1.5 mr-2 bg-white/50 dark:bg-gray-800/50 px-3 py-1 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
+        <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Líquido</span>
+        <span className="text-sm font-black text-blue-600 dark:text-blue-400">{formatTimeHM(todayNetSeconds)}</span>
       </div>
 
       {/* Quick Add Minutes Buttons */}
       {(timerState === 'waiting_transition' || showAddButtons) && (
         <div className="hidden lg:flex items-center gap-1 mr-2 animate-in fade-in zoom-in-95 duration-200">
-          <button onClick={() => extendTime(1)} className="px-2 py-1 text-[10px] font-bold text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors">+1</button>
-          <button onClick={() => extendTime(5)} className="px-2 py-1 text-[10px] font-bold text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors">+5</button>
-          <button onClick={() => extendTime(10)} className="px-2 py-1 text-[10px] font-bold text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors">+10</button>
+          <button onClick={() => extendTime(1)} className="px-2 py-1 text-[10px] font-bold text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:bg-gray-800 rounded-md transition-colors">+1</button>
+          <button onClick={() => extendTime(5)} className="px-2 py-1 text-[10px] font-bold text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:bg-gray-800 rounded-md transition-colors">+5</button>
+          <button onClick={() => extendTime(10)} className="px-2 py-1 text-[10px] font-bold text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:bg-gray-800 rounded-md transition-colors">+10</button>
         </div>
       )}
 
-      <div className="flex items-center bg-gray-100 rounded-lg p-1">
+      <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
         {/* Main Display */}
         <button 
           onClick={() => setShowAddButtons(!showAddButtons)}
           className={`flex items-center gap-2 px-3 py-1 rounded-md min-w-[130px] justify-between cursor-pointer transition-colors
             ${timerState === 'waiting_transition' ? 'bg-red-100 text-red-700 animate-pulse hover:bg-red-200' : 
-              phase === 'study' ? (timerState === 'running' ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' : 'bg-transparent text-gray-700 hover:bg-gray-200') : 
-              (timerState === 'running' ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-transparent text-gray-700 hover:bg-gray-200')}
+              phase === 'study' ? (timerState === 'running' ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 hover:bg-blue-200' : 'bg-transparent text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:bg-gray-700') : 
+              (timerState === 'running' ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-transparent text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:bg-gray-700')}
         `}>
           <div className="flex items-center gap-1.5">
             {phase === 'study' ? <BookOpen className="w-3.5 h-3.5" /> : <Coffee className="w-3.5 h-3.5" />}
@@ -298,19 +313,30 @@ export function TopBarTimer() {
         </button>
 
         {/* Controls */}
-        <div className={`flex items-center gap-1 ml-1 pr-1 border-r border-gray-200`}>
+        <div className={`flex items-center gap-1 ml-1 pr-1 border-r border-gray-200 dark:border-gray-700`}>
           {timerState === 'waiting_transition' ? (
-             <button 
-                onClick={handleTransition}
-                title={`Iniciar ${phase === 'study' ? 'Descanso' : 'Estudo'}`}
-                className="p-1.5 rounded-md bg-white shadow-sm text-gray-700 hover:text-blue-600 transition-colors"
-             >
-                <Play className="w-4 h-4 fill-current" />
-             </button>
+             <div className="flex items-center gap-1">
+               <button 
+                  onClick={handleTransition}
+                  title={`Iniciar ${phase === 'study' ? 'Descanso' : 'Estudo'}`}
+                  className="p-1.5 rounded-md bg-white dark:bg-gray-900 shadow-sm text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:text-blue-400 transition-colors"
+               >
+                  {phase === 'study' ? <Coffee className="w-4 h-4" /> : <BookOpen className="w-4 h-4" />}
+               </button>
+               {phase === 'study' && (
+                 <button 
+                    onClick={handleSkipRest}
+                    title="Pular Descanso"
+                    className="p-1.5 rounded-md bg-white dark:bg-gray-900 shadow-sm text-gray-700 dark:text-gray-300 hover:text-amber-600 transition-colors"
+                 >
+                    <FastForward className="w-4 h-4" />
+                 </button>
+               )}
+             </div>
           ) : (
             <button 
               onClick={toggleTimer}
-              className={`p-1.5 rounded-md transition-colors shadow-sm ${timerState === 'running' ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-white text-gray-700 hover:bg-gray-50 hover:text-blue-600'}`}
+              className={`p-1.5 rounded-md transition-colors shadow-sm ${timerState === 'running' ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:bg-gray-800/50 hover:text-blue-600 dark:text-blue-400'}`}
             >
               {timerState === 'running' ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current" />}
             </button>
@@ -319,14 +345,14 @@ export function TopBarTimer() {
           <button 
             onClick={handleStop}
             disabled={timerState === 'idle'}
-            className="p-1.5 rounded-md bg-transparent text-gray-400 hover:text-gray-700 disabled:opacity-30 disabled:hover:text-gray-400 transition-colors"
+            className="p-1.5 rounded-md bg-transparent text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:text-gray-300 disabled:opacity-30 disabled:hover:text-gray-400 dark:text-gray-500 transition-colors"
           >
             <Square className="w-4 h-4 fill-current" />
           </button>
 
           <button 
             onClick={() => { setShowSettings(!showSettings); setShowPacer(false); }}
-            className="p-1.5 rounded-md bg-transparent text-gray-400 hover:text-gray-700 transition-colors ml-1"
+            className="p-1.5 rounded-md bg-transparent text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:text-gray-300 transition-colors ml-1"
           >
             <Settings2 className="w-4 h-4" />
           </button>
@@ -335,7 +361,7 @@ export function TopBarTimer() {
         <div className="relative flex items-center gap-1 ml-1">
           {/* Pacer Inline Stats */}
           {pacerIsActive && (
-            <div className="hidden xl:flex items-center gap-2 bg-blue-100 text-blue-800 px-2 py-1.5 rounded-md text-xs font-bold font-mono">
+            <div className="hidden xl:flex items-center gap-2 bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-200 px-2 py-1.5 rounded-md text-xs font-bold font-mono">
               <div className="flex items-center gap-1"><Activity className="w-3.5 h-3.5" /></div>
               <div>Q: {pacerCompletedQuestionsTime.length + 1}/{pacerTotalQuestions}</div>
               <div className={pacerCurrentQuestionTime >= pacerTargetTimeSeconds ? 'text-red-600' : ''}>
@@ -346,7 +372,7 @@ export function TopBarTimer() {
 
           <button 
             onClick={() => { setShowPacer(!showPacer); setShowSettings(false); }}
-            className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md transition-colors ${pacerIsActive ? 'bg-blue-100 text-blue-700 shadow-sm' : 'text-gray-500 hover:text-blue-600 hover:bg-blue-50'}`}
+            className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md transition-colors ${pacerIsActive ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:bg-blue-900/30'}`}
           >
             <Activity className="w-4 h-4" />
             <span className="text-xs font-bold hidden sm:inline">Pacer</span>
@@ -355,7 +381,7 @@ export function TopBarTimer() {
           {/* Pacer Popover */}
           {showPacer && (
             <div className="absolute top-full right-0 mt-3 z-50 w-[90vw] max-w-3xl">
-               <QuestionPacer className="shadow-2xl border-gray-200 m-0 w-full" />
+               <QuestionPacer className="shadow-2xl border-gray-200 dark:border-gray-700 m-0 w-full" />
             </div>
           )}
         </div>

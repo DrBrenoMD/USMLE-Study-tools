@@ -62,11 +62,11 @@ export default function NBMECalculator() {
   const getScoreColor = () => {
     if (step === 'Step 1') {
       if (estimatedScore >= 210) return 'text-emerald-600';
-      if (estimatedScore >= 196) return 'text-blue-600';
+      if (estimatedScore >= 196) return 'text-blue-600 dark:text-blue-400';
       return 'text-amber-600';
     } else {
       if (estimatedScore >= 240) return 'text-emerald-600';
-      if (estimatedScore >= 220) return 'text-blue-600';
+      if (estimatedScore >= 220) return 'text-blue-600 dark:text-blue-400';
       return 'text-amber-600';
     }
   };
@@ -74,24 +74,24 @@ export default function NBMECalculator() {
   return (
     <div className="relative flex flex-1 flex-col items-center py-10 px-6 font-sans">
       <MouseInteractiveBackground />
-      <div className="z-10 w-full max-w-2xl bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="bg-blue-600 px-6 py-5 flex items-center gap-3 text-white">
+      <div className="z-10 w-full max-w-2xl bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div className="bg-blue-600 dark:bg-blue-500 px-6 py-5 flex items-center gap-3 text-white">
           <Calculator className="w-6 h-6" />
           <h2 className="text-xl font-bold">Calculadora de Score NBME / UWSA</h2>
         </div>
         
         <div className="p-6 flex flex-col gap-6">
           {/* Abas */}
-          <div className="flex bg-gray-100 p-1 rounded-xl">
+          <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
             <button 
               onClick={() => setStep('Step 1')}
-              className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${step === 'Step 1' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${step === 'Step 1' ? 'bg-white dark:bg-gray-900 text-blue-700 dark:text-blue-300 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300'}`}
             >
               Step 1
             </button>
             <button 
               onClick={() => setStep('Step 2')}
-              className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${step === 'Step 2' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${step === 'Step 2' ? 'bg-white dark:bg-gray-900 text-blue-700 dark:text-blue-300 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300'}`}
             >
               Step 2 CK
             </button>
@@ -99,11 +99,11 @@ export default function NBMECalculator() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="flex flex-col gap-1.5 sm:col-span-2">
-              <label className="text-sm font-semibold text-gray-700">Selecione o Exame</label>
+              <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Selecione o Exame</label>
               <select
                 value={selectedExamId}
                 onChange={(e) => setSelectedExamId(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-lg text-gray-900 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-900"
               >
                 {exams.map(exam => (
                   <option key={exam.id} value={exam.id}>{exam.name} ({exam.totalQuestions} questões)</option>
@@ -113,7 +113,7 @@ export default function NBMECalculator() {
             
             <div className="flex flex-col gap-1.5 sm:col-span-2 mt-2">
               <div className="flex items-center justify-between">
-                <label className="text-sm font-semibold text-gray-700">
+                <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">
                   {inputMode === 'incorrects' ? 'Número de Erros (Incorrects)' : 'Porcentagem de Acertos (%)'}
                 </label>
                 <button 
@@ -121,7 +121,7 @@ export default function NBMECalculator() {
                     setInputMode(prev => prev === 'incorrects' ? 'percent' : 'incorrects');
                     setInputValue('0');
                   }}
-                  className="flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-800 transition-colors bg-blue-50 px-2 py-1 rounded"
+                  className="flex items-center gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:text-blue-200 transition-colors bg-blue-50 dark:bg-blue-900/30 px-2 py-1 rounded"
                 >
                   <ArrowRightLeft className="w-3 h-3" />
                   Mudar para {inputMode === 'incorrects' ? '%' : 'Erros'}
@@ -132,9 +132,9 @@ export default function NBMECalculator() {
                 value={inputValue}
                 onChange={e => setInputValue(e.target.value)}
                 step={inputMode === 'percent' ? "0.1" : "1"}
-                className="px-3 py-3 border border-gray-300 rounded-lg text-2xl font-black text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center"
+                className="px-3 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-2xl font-black text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center"
               />
-              <div className="text-center text-xs font-medium text-gray-500 mt-1">
+              <div className="text-center text-xs font-medium text-gray-500 dark:text-gray-400 mt-1">
                 {inputMode === 'incorrects' 
                   ? `Equivale a ${percentCorrect.toFixed(1)}% de acertos` 
                   : `Equivale a aproximadamente ${incorrects} erros`}
@@ -143,30 +143,30 @@ export default function NBMECalculator() {
           </div>
 
           {/* Resultado */}
-          <div className="mt-4 p-6 bg-gray-50 border border-gray-200 rounded-xl flex flex-col items-center justify-center text-center gap-2">
+          <div className="mt-4 p-6 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl flex flex-col items-center justify-center text-center gap-2">
             
             <div className={`text-6xl font-black ${getScoreColor()}`}>
               {estimatedScore}
             </div>
-            <div className="text-sm font-bold text-gray-700">
+            <div className="text-sm font-bold text-gray-700 dark:text-gray-300">
               Score Estimado (3 Dígitos)
             </div>
-            <div className="text-xs font-semibold text-gray-500 mt-1 bg-white px-3 py-1 rounded-full border border-gray-200">
+            <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mt-1 bg-white dark:bg-gray-900 px-3 py-1 rounded-full border border-gray-200 dark:border-gray-700">
               Range de Score: {estimatedScore - currentExam.margin} a {estimatedScore + currentExam.margin}
             </div>
             
             {step === 'Step 1' && passProbability !== undefined && (
-              <div className="mt-4 pt-4 border-t border-gray-200 w-full flex flex-col items-center">
+              <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 w-full flex flex-col items-center">
                 {percentCorrect < 55 ? (
                   <div className="text-3xl font-black text-red-600 uppercase">
                     LOW PASS
                   </div>
                 ) : (
                   <>
-                    <div className={`text-3xl font-black ${passProbability >= 95 ? 'text-emerald-600' : passProbability >= 80 ? 'text-blue-600' : 'text-amber-600'}`}>
+                    <div className={`text-3xl font-black ${passProbability >= 95 ? 'text-emerald-600' : passProbability >= 80 ? 'text-blue-600 dark:text-blue-400' : 'text-amber-600'}`}>
                       {passProbability.toFixed(1)}%
                     </div>
-                    <div className="text-xs font-bold text-gray-700 uppercase tracking-wider mt-1">
+                    <div className="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mt-1">
                       Chance estimada de aprovação (Pass)
                     </div>
                   </>
@@ -174,7 +174,7 @@ export default function NBMECalculator() {
               </div>
             )}
             
-            <div className="flex items-start gap-2 mt-6 text-[10px] text-gray-400 bg-white p-3 rounded-lg border border-gray-100 text-left w-full">
+            <div className="flex items-start gap-2 mt-6 text-[10px] text-gray-400 dark:text-gray-500 bg-white dark:bg-gray-900 p-3 rounded-lg border border-gray-100 dark:border-gray-800 text-left w-full">
               <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
               <p>
                 As estimativas de score são baseadas em regressões de dados comunitários coletados no Reddit (r/Step1, r/Step2) e aproximações matemáticas para formulários offline. 
@@ -186,7 +186,7 @@ export default function NBMECalculator() {
           <div className="flex flex-col items-center gap-3 mt-2">
             <button 
               onClick={handleSave}
-              className="w-full py-3 bg-gray-900 hover:bg-black text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-sm transition-all"
+              className="w-full py-3 bg-gray-900 dark:bg-gray-50 hover:bg-black text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-sm transition-all"
             >
               <Save className="w-4 h-4" />
               Salvar no Preditor de Scores

@@ -334,23 +334,23 @@ export default function StudyTracker() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50/50 font-sans pb-20 text-gray-900">
+    <div className="flex flex-col font-sans pb-20 text-gray-900 dark:text-gray-100">
       {/* Header Minimalista e Fluido */}
-      <header className="bg-white border-b border-gray-200/80 pt-6 pb-4 shrink-0">
+      <header className="bg-white dark:bg-gray-900 border-b border-gray-200/80 dark:border-gray-700/80 pt-6 pb-4 shrink-0">
         <div className="w-full max-w-[1550px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-3">
             <Link 
               to="/" 
-              className="p-2 rounded-xl hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-900 border border-gray-200/60"
+              className="p-2 rounded-xl hover:bg-gray-100 dark:bg-gray-800 transition-colors text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:text-gray-100 border border-gray-200/60 dark:border-gray-700/60"
               title="Voltar ao Início"
             >
               <ArrowLeft className="w-4 h-4" />
             </Link>
             <div>
-              <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-gray-900">
+              <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">
                 Breno Md
               </h1>
-              <p className="text-xs text-gray-500 hidden sm:block">
+              <p className="text-xs text-gray-500 dark:text-gray-400 hidden sm:block">
                 Planejador e rastreador de estudos para o USMLE & Residência Médica
               </p>
             </div>
@@ -361,19 +361,19 @@ export default function StudyTracker() {
             <button
               type="button"
               onClick={handleExportBackup}
-              className="flex items-center gap-1.5 text-xs font-medium text-gray-700 hover:text-blue-700 px-3 py-1.5 rounded-lg border border-gray-200 hover:border-blue-200 hover:bg-blue-50/50 transition-all cursor-pointer shadow-xs"
+              className="flex items-center gap-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 hover:text-blue-700 dark:text-blue-300 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-blue-200 hover:bg-blue-50/50 transition-all cursor-pointer shadow-xs"
               title="Baixar cópia de segurança com materiais e histórico em arquivo JSON"
             >
-              <Download className="w-3.5 h-3.5 text-blue-600" />
+              <Download className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
               <span>Baixar Backup</span>
             </button>
 
             {/* Upload Backup */}
             <label
-              className="flex items-center gap-1.5 text-xs font-medium text-gray-700 hover:text-blue-700 px-3 py-1.5 rounded-lg border border-gray-200 hover:border-blue-200 hover:bg-blue-50/50 transition-all cursor-pointer shadow-xs"
+              className="flex items-center gap-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 hover:text-blue-700 dark:text-blue-300 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-blue-200 hover:bg-blue-50/50 transition-all cursor-pointer shadow-xs"
               title="Restaurar backup a partir de um arquivo JSON"
             >
-              <Upload className="w-3.5 h-3.5 text-blue-600" />
+              <Upload className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
               <span>Importar Backup</span>
               <input
                 type="file"
@@ -387,7 +387,7 @@ export default function StudyTracker() {
             <button
               type="button"
               onClick={handleClearAllData}
-              className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-red-600 px-3 py-1.5 rounded-lg border border-gray-200 hover:border-red-200 hover:bg-red-50/50 transition-all cursor-pointer"
+              className="flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-red-600 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-red-200 hover:bg-red-50/50 transition-all cursor-pointer"
               title="Limpar todos os dados e começar do zero"
             >
               <RotateCcw className="w-3.5 h-3.5" />
@@ -398,15 +398,15 @@ export default function StudyTracker() {
 
         {/* Abas de Navegação */}
         <div className="w-full max-w-[1550px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 mt-4">
-          <nav className="flex space-x-6 sm:space-x-8 border-b border-gray-100 text-xs sm:text-sm">
+          <nav className="flex space-x-6 sm:space-x-8 border-b border-gray-100 dark:border-gray-800 text-xs sm:text-sm">
             <button
               type="button"
               onClick={() => setActiveTab('planner')}
               className={cn(
                 "font-medium pb-3 transition-all flex items-center gap-2 cursor-pointer border-b-2",
                 activeTab === 'planner'
-                  ? "text-blue-600 border-blue-600 font-semibold"
-                  : "text-gray-500 border-transparent hover:text-gray-800"
+                  ? "text-blue-600 dark:text-blue-400 border-blue-600 font-semibold"
+                  : "text-gray-500 dark:text-gray-400 border-transparent hover:text-gray-800 dark:text-gray-200"
               )}
             >
               <CalendarDays className="w-4 h-4" />
@@ -419,8 +419,8 @@ export default function StudyTracker() {
               className={cn(
                 "font-medium pb-3 transition-all flex items-center gap-2 cursor-pointer border-b-2",
                 activeTab === 'timeline'
-                  ? "text-blue-600 border-blue-600 font-semibold"
-                  : "text-gray-500 border-transparent hover:text-gray-800"
+                  ? "text-blue-600 dark:text-blue-400 border-blue-600 font-semibold"
+                  : "text-gray-500 dark:text-gray-400 border-transparent hover:text-gray-800 dark:text-gray-200"
               )}
             >
               <BarChart3 className="w-4 h-4" />
@@ -433,8 +433,8 @@ export default function StudyTracker() {
               className={cn(
                 "font-medium pb-3 transition-all flex items-center gap-2 cursor-pointer border-b-2",
                 activeTab === 'heatmap'
-                  ? "text-blue-600 border-blue-600 font-semibold"
-                  : "text-gray-500 border-transparent hover:text-gray-800"
+                  ? "text-blue-600 dark:text-blue-400 border-blue-600 font-semibold"
+                  : "text-gray-500 dark:text-gray-400 border-transparent hover:text-gray-800 dark:text-gray-200"
               )}
             >
               <Activity className="w-4 h-4" />
@@ -457,22 +457,22 @@ export default function StudyTracker() {
               <div className="xl:col-span-7 flex flex-col gap-6">
                 
                 {/* Configurações da Prova */}
-                <section className="bg-white rounded-2xl border border-gray-200/90 p-5 sm:p-6 shadow-sm">
-                  <div className="flex items-center justify-between mb-4 flex-wrap gap-2 pb-3 border-b border-gray-100">
+                <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200/90 dark:border-gray-700/90 p-5 sm:p-6 shadow-sm">
+                  <div className="flex items-center justify-between mb-4 flex-wrap gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
                     <div>
-                      <h2 className="text-xs font-bold uppercase tracking-wider text-gray-400">
+                      <h2 className="text-xs font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
                         Configurações da Prova
                       </h2>
-                      <p className="text-xs text-gray-500 mt-0.5">
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                         Defina a data limite ou o ritmo de estudo desejado.
                       </p>
                     </div>
-                    <div className="flex bg-gray-100 p-1 rounded-lg">
+                    <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
                       <button
                         onClick={() => setMode('by_date')}
                         className={cn(
                           "px-3 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer",
-                          mode === 'by_date' ? "bg-white text-blue-600 shadow-xs" : "text-gray-500 hover:text-gray-800"
+                          mode === 'by_date' ? "bg-white dark:bg-gray-900 text-blue-600 dark:text-blue-400 shadow-xs" : "text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:text-gray-200"
                         )}
                       >
                         Por Data da Prova
@@ -481,7 +481,7 @@ export default function StudyTracker() {
                         onClick={() => setMode('by_pace')}
                         className={cn(
                           "px-3 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer",
-                          mode === 'by_pace' ? "bg-white text-blue-600 shadow-xs" : "text-gray-500 hover:text-gray-800"
+                          mode === 'by_pace' ? "bg-white dark:bg-gray-900 text-blue-600 dark:text-blue-400 shadow-xs" : "text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:text-gray-200"
                         )}
                       >
                         Por Ritmo Diário
@@ -491,25 +491,25 @@ export default function StudyTracker() {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-[10px] text-gray-500 uppercase font-semibold mb-1">
+                      <label className="block text-[10px] text-gray-500 dark:text-gray-400 uppercase font-semibold mb-1">
                         Data Alvo da Prova (Exam Date)
                       </label>
                       <input 
                         type="date" 
                         value={examDateStr}
                         onChange={(e) => setExamDateStr(e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
+                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500 focus:bg-white dark:bg-gray-900 transition-all"
                       />
                     </div>
 
                     {mode === 'by_date' ? (
                       <div>
                         <div className="flex items-center justify-between mb-1">
-                          <label className="block text-[10px] text-gray-500 uppercase font-semibold flex items-center gap-1">
-                            <ShieldCheck className="w-3.5 h-3.5 text-blue-600 inline" />
+                          <label className="block text-[10px] text-gray-500 dark:text-gray-400 uppercase font-semibold flex items-center gap-1">
+                            <ShieldCheck className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 inline" />
                             Margem de Segurança (Buffer)
                           </label>
-                          <span className="text-xs font-semibold text-blue-600">{bufferDays} dias livres</span>
+                          <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">{bufferDays} dias livres</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <input 
@@ -519,7 +519,7 @@ export default function StudyTracker() {
                             value={bufferDays}
                             onChange={(e) => setBufferDays(Math.max(0, parseInt(e.target.value) || 0))}
                             placeholder="14"
-                            className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
+                            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500 focus:bg-white dark:bg-gray-900 transition-all"
                           />
                           <div className="flex gap-1">
                             {[0, 7, 14, 21].map((preset) => (
@@ -530,8 +530,8 @@ export default function StudyTracker() {
                                 className={cn(
                                   "px-2 py-1.5 text-xs font-semibold rounded border transition-colors cursor-pointer",
                                   bufferDays === preset
-                                    ? "bg-blue-50 border-blue-200 text-blue-700"
-                                    : "bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100"
+                                    ? "bg-blue-50 dark:bg-blue-900/30 border-blue-200 text-blue-700 dark:text-blue-300"
+                                    : "bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:bg-gray-800"
                                 )}
                               >
                                 {preset}d
@@ -542,21 +542,21 @@ export default function StudyTracker() {
                       </div>
                     ) : (
                       <div>
-                        <label className="block text-[10px] text-gray-500 uppercase font-semibold mb-1">
+                        <label className="block text-[10px] text-gray-500 dark:text-gray-400 uppercase font-semibold mb-1">
                           Modo Ritmo Livre
                         </label>
-                        <div className="p-2 bg-blue-50/50 border border-blue-100 rounded-lg text-xs text-blue-800">
+                        <div className="p-2 bg-blue-50/50 border border-blue-100 rounded-lg text-xs text-blue-800 dark:text-blue-200">
                           A data de término é estimada automaticamente a partir do ritmo fixado para cada material.
                         </div>
                       </div>
                     )}
 
-                    <div className="sm:col-span-2 pt-3 border-t border-gray-100">
+                    <div className="sm:col-span-2 pt-3 border-t border-gray-100 dark:border-gray-800">
                       <div className="flex items-center justify-between mb-2">
-                        <label className="block text-[10px] text-gray-500 uppercase font-semibold">
+                        <label className="block text-[10px] text-gray-500 dark:text-gray-400 uppercase font-semibold">
                           Dias de Folga Semanais (Off Days)
                         </label>
-                        <span className="text-xs text-gray-400">
+                        <span className="text-xs text-gray-400 dark:text-gray-500">
                           {daysOff.length === 0 ? "Sem dias de folga" : `${daysOff.length} dia(s) livre(s) por semana`}
                         </span>
                       </div>
@@ -572,8 +572,8 @@ export default function StudyTracker() {
                               className={cn(
                                 "flex-1 h-9 flex items-center justify-center rounded-lg text-xs font-bold transition-all cursor-pointer",
                                 isOff 
-                                  ? "bg-gray-100 text-gray-400 border border-gray-200 hover:bg-gray-200" 
-                                  : "bg-blue-600 text-white hover:bg-blue-700 shadow-xs"
+                                  ? "bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 border border-gray-200 dark:border-gray-700 hover:bg-gray-200 dark:bg-gray-700" 
+                                  : "bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 shadow-xs"
                               )}
                             >
                               <span>{day.short}</span>
@@ -586,13 +586,13 @@ export default function StudyTracker() {
                 </section>
 
                 {/* Materiais de Estudo & Fases */}
-                <section className="bg-white rounded-2xl border border-gray-200/90 p-5 sm:p-6 shadow-sm">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 pb-4 border-b border-gray-100">
+                <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200/90 dark:border-gray-700/90 p-5 sm:p-6 shadow-sm">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 pb-4 border-b border-gray-100 dark:border-gray-800">
                     <div>
-                      <h2 className="text-xs font-bold uppercase tracking-wider text-gray-400">
+                      <h2 className="text-xs font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
                         Materiais de Estudo & Fases
                       </h2>
-                      <p className="text-xs text-gray-500 mt-0.5">
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                         Adicione QBanks, livros, vídeos, flashcards e simulados.
                       </p>
                     </div>
@@ -606,10 +606,10 @@ export default function StudyTracker() {
                             key={type}
                             type="button"
                             onClick={() => addResource(type)}
-                            className="flex items-center gap-1.5 text-xs font-medium text-gray-700 bg-gray-50 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 border border-gray-200 px-2.5 py-1.5 rounded-lg transition-all cursor-pointer"
+                            className="flex items-center gap-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/50 hover:bg-blue-50 dark:bg-blue-900/30 hover:text-blue-700 dark:text-blue-300 hover:border-blue-200 border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 rounded-lg transition-all cursor-pointer"
                             title={`Adicionar ${RESOURCE_CATEGORIES[type].label}`}
                           >
-                            <Icon className="w-3.5 h-3.5 text-blue-600" />
+                            <Icon className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                             <span>+ {type === 'qbank' ? 'QBank' : type === 'book' ? 'Livro' : type === 'video' ? 'Vídeo' : type === 'flashcard' ? 'Flashcards' : type === 'nbme' ? 'Simulado' : 'Outro'}</span>
                           </button>
                         );
@@ -640,19 +640,19 @@ export default function StudyTracker() {
                             "relative flex flex-col gap-3 p-4 rounded-xl border transition-all",
                             isDependent 
                               ? "bg-slate-50/60 border-slate-200 border-l-4 border-l-blue-500" 
-                              : "bg-white border-gray-200 hover:border-gray-300"
+                              : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:border-gray-600"
                           )}
                         >
                           {/* Header do Card */}
                           <div className="flex items-center justify-between flex-wrap gap-2">
                             <div className="flex items-center gap-2 flex-wrap min-w-0">
-                              <div className="w-7 h-7 rounded-lg bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center shrink-0">
+                              <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-900/30 border border-blue-100 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
                                 <Icon className="w-3.5 h-3.5" />
                               </div>
                               <select
                                 value={resource.type}
                                 onChange={(e) => handleTypeChange(resource.id, e.target.value as ResourceType)}
-                                className="text-xs font-semibold text-gray-700 bg-gray-50 border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:border-blue-500 cursor-pointer"
+                                className="text-xs font-semibold text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-md px-2 py-1 focus:outline-none focus:border-blue-500 cursor-pointer"
                               >
                                 {(Object.keys(RESOURCE_CATEGORIES) as ResourceType[]).map(t => (
                                   <option key={t} value={t}>
@@ -681,7 +681,7 @@ export default function StudyTracker() {
                               )}
 
                               {isDependent && parentResource && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-50 border border-blue-100 text-blue-700 text-[10px] font-semibold">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-900/30 border border-blue-100 text-blue-700 dark:text-blue-300 text-[10px] font-semibold">
                                   <Link2 className="w-3 h-3" /> Após: {parentResource.name || 'Material anterior'}
                                 </span>
                               )}
@@ -693,7 +693,7 @@ export default function StudyTracker() {
                                 onClick={() => setExpandedSettingsId(isExpanded ? null : resource.id)}
                                 className={cn(
                                   "flex items-center gap-1 text-xs font-medium px-2 py-1 rounded transition-colors cursor-pointer",
-                                  isExpanded ? "bg-blue-50 text-blue-700" : "text-gray-500 hover:bg-gray-100"
+                                  isExpanded ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300" : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:bg-gray-800"
                                 )}
                                 title="Configurações de dependência, frequência e medição"
                               >
@@ -703,7 +703,7 @@ export default function StudyTracker() {
 
                               <button 
                                 onClick={() => removeResource(resource.id)}
-                                className="text-gray-400 hover:text-red-600 transition-colors p-1 rounded hover:bg-red-50 cursor-pointer"
+                                className="text-gray-400 dark:text-gray-500 hover:text-red-600 transition-colors p-1 rounded hover:bg-red-50 cursor-pointer"
                                 title="Remover material"
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -714,7 +714,7 @@ export default function StudyTracker() {
                           {/* Inputs Principais com Espaçamento Amplo */}
                           <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
                             <div className="sm:col-span-5">
-                              <label className="block text-[10px] text-gray-500 uppercase font-semibold mb-1">
+                              <label className="block text-[10px] text-gray-500 dark:text-gray-400 uppercase font-semibold mb-1">
                                 Nome do Material
                               </label>
                               <input 
@@ -722,7 +722,7 @@ export default function StudyTracker() {
                                 value={resource.name}
                                 placeholder="Ex: UWorld Step 1, First Aid, Amboss..."
                                 onChange={(e) => updateResource(resource.id, { name: e.target.value })}
-                                className="w-full px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500 focus:bg-white"
+                                className="w-full px-3 py-1.5 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500 focus:bg-white dark:bg-gray-900"
                               />
                             </div>
                             
@@ -740,12 +740,12 @@ export default function StudyTracker() {
                                       placeholder="60"
                                       className="w-full px-3 py-1.5 bg-purple-50/40 border border-purple-200 rounded-lg text-sm font-bold text-purple-900 focus:outline-none focus:border-purple-400"
                                     />
-                                    <span className="text-xs font-semibold text-gray-500">min/dia</span>
+                                    <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">min/dia</span>
                                   </div>
                                 </div>
 
                                 <div className="sm:col-span-3">
-                                  <label className="block text-[10px] text-gray-500 uppercase font-semibold mb-1">
+                                  <label className="block text-[10px] text-gray-500 dark:text-gray-400 uppercase font-semibold mb-1">
                                     Concluído
                                   </label>
                                   <input 
@@ -753,52 +753,52 @@ export default function StudyTracker() {
                                     value={resource.completed || ''}
                                     placeholder="0"
                                     onChange={(e) => updateResource(resource.id, { completed: Number(e.target.value) })}
-                                    className="w-full px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500"
+                                    className="w-full px-3 py-1.5 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500"
                                   />
                                 </div>
                               </>
                             ) : (
                               <>
                                 <div className="sm:col-span-2">
-                                  <label className="block text-[10px] text-gray-500 uppercase font-semibold mb-1">
+                                  <label className="block text-[10px] text-gray-500 dark:text-gray-400 uppercase font-semibold mb-1">
                                     Total ({resource.unit})
                                   </label>
                                   <input 
                                     type="number" 
                                     value={resource.total || ''}
                                     onChange={(e) => updateResource(resource.id, { total: Number(e.target.value) })}
-                                    className="w-full px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500 focus:bg-white"
+                                    className="w-full px-3 py-1.5 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500 focus:bg-white dark:bg-gray-900"
                                   />
                                 </div>
 
                                 <div className="sm:col-span-2">
-                                  <label className="block text-[10px] text-gray-500 uppercase font-semibold mb-1">
+                                  <label className="block text-[10px] text-gray-500 dark:text-gray-400 uppercase font-semibold mb-1">
                                     Concluído
                                   </label>
                                   <input 
                                     type="number" 
                                     value={resource.completed || ''}
                                     onChange={(e) => updateResource(resource.id, { completed: Number(e.target.value) })}
-                                    className="w-full px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500 focus:bg-white"
+                                    className="w-full px-3 py-1.5 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500 focus:bg-white dark:bg-gray-900"
                                   />
                                 </div>
 
                                 <div className="sm:col-span-3">
                                   {mode === 'by_pace' ? (
                                     <div>
-                                      <label className="block text-[10px] text-gray-500 uppercase font-semibold mb-1">
+                                      <label className="block text-[10px] text-gray-500 dark:text-gray-400 uppercase font-semibold mb-1">
                                         Meta Diária ({resource.unit}/dia)
                                       </label>
                                       <input 
                                         type="number" 
                                         value={resource.targetDailyPace || ''}
                                         onChange={(e) => updateResource(resource.id, { targetDailyPace: Number(e.target.value) })}
-                                        className="w-full px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500"
+                                        className="w-full px-3 py-1.5 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500"
                                       />
                                     </div>
                                   ) : (
                                     <div>
-                                      <label className="block text-[10px] text-gray-500 uppercase font-semibold mb-1 truncate" title="Tempo médio por item">
+                                      <label className="block text-[10px] text-gray-500 dark:text-gray-400 uppercase font-semibold mb-1 truncate" title="Tempo médio por item">
                                         Minutos por {resource.unit}
                                       </label>
                                       <input 
@@ -806,7 +806,7 @@ export default function StudyTracker() {
                                         step="0.1"
                                         value={resource.minutesPerItem || ''}
                                         onChange={(e) => updateResource(resource.id, { minutesPerItem: Number(e.target.value) })}
-                                        className="w-full px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500"
+                                        className="w-full px-3 py-1.5 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500"
                                       />
                                     </div>
                                   )}
@@ -818,13 +818,13 @@ export default function StudyTracker() {
                           {/* Progress Bar */}
                           {resource.total > 0 && resource.allocationMode !== 'fixed_time' && (
                             <div className="flex items-center gap-2 mt-1">
-                              <div className="flex-1 bg-gray-100 h-1.5 rounded-full overflow-hidden border border-gray-200/60">
+                              <div className="flex-1 bg-gray-100 dark:bg-gray-800 h-1.5 rounded-full overflow-hidden border border-gray-200/60 dark:border-gray-700/60">
                                 <div 
-                                  className="bg-blue-600 h-full rounded-full transition-all duration-300" 
+                                  className="bg-blue-600 dark:bg-blue-500 h-full rounded-full transition-all duration-300" 
                                   style={{ width: `${progressPercent}%` }}
                                 ></div>
                               </div>
-                              <span className="text-[10px] text-gray-500 font-medium shrink-0">
+                              <span className="text-[10px] text-gray-500 dark:text-gray-400 font-medium shrink-0">
                                 {progressPercent}% ({remaining} restantes)
                               </span>
                             </div>
@@ -846,19 +846,19 @@ export default function StudyTracker() {
 
                           {/* Gaveta de Opções Avançadas */}
                           {isExpanded && (
-                            <div className="mt-2 pt-3 border-t border-gray-200/80 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-gray-50/80 p-3 rounded-lg">
+                            <div className="mt-2 pt-3 border-t border-gray-200/80 dark:border-gray-700/80 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-gray-50/80 p-3 rounded-lg">
                               
                               {/* 1. Dependência Sequencial e Data Limite */}
                               <div className="flex flex-col gap-3">
                                 <div>
-                                  <label className="block text-[10px] text-gray-600 uppercase font-bold mb-1 flex items-center gap-1">
-                                    <Link2 className="w-3 h-3 text-blue-600" />
+                                  <label className="block text-[10px] text-gray-600 dark:text-gray-400 uppercase font-bold mb-1 flex items-center gap-1">
+                                    <Link2 className="w-3 h-3 text-blue-600 dark:text-blue-400" />
                                     Dependência
                                   </label>
                                   <select
                                     value={resource.dependsOnId || ''}
                                     onChange={(e) => updateResource(resource.id, { dependsOnId: e.target.value || null })}
-                                    className="w-full text-xs font-medium text-gray-800 bg-white border border-gray-200 rounded-md p-1.5 focus:outline-none focus:border-blue-500 cursor-pointer"
+                                    className="w-full text-xs font-medium text-gray-800 dark:text-gray-200 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md p-1.5 focus:outline-none focus:border-blue-500 cursor-pointer"
                                   >
                                     <option value="">Nenhum (Início Imediato)</option>
                                     {availableDependencies.map(dep => (
@@ -867,12 +867,12 @@ export default function StudyTracker() {
                                       </option>
                                     ))}
                                   </select>
-                                  <p className="text-[9px] text-gray-400 mt-1">
+                                  <p className="text-[9px] text-gray-400 dark:text-gray-500 mt-1">
                                     Inicia após terminar o pré-requisito.
                                   </p>
                                 </div>
                                 <div>
-                                  <label className="block text-[10px] text-gray-600 uppercase font-bold mb-1 flex items-center gap-1">
+                                  <label className="block text-[10px] text-gray-600 dark:text-gray-400 uppercase font-bold mb-1 flex items-center gap-1">
                                     <CalendarDays className="w-3 h-3 text-emerald-600" />
                                     Data de Início (Opcional)
                                   </label>
@@ -880,11 +880,11 @@ export default function StudyTracker() {
                                     type="date"
                                     value={resource.targetStartDate || ''}
                                     onChange={(e) => updateResource(resource.id, { targetStartDate: e.target.value || null })}
-                                    className="w-full text-xs font-medium text-gray-800 bg-white border border-gray-200 rounded-md p-1.5 mb-3 focus:outline-none focus:border-blue-500 cursor-pointer"
+                                    className="w-full text-xs font-medium text-gray-800 dark:text-gray-200 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md p-1.5 mb-3 focus:outline-none focus:border-blue-500 cursor-pointer"
                                   />
                                 </div>
                                 <div>
-                                  <label className="block text-[10px] text-gray-600 uppercase font-bold mb-1 flex items-center gap-1">
+                                  <label className="block text-[10px] text-gray-600 dark:text-gray-400 uppercase font-bold mb-1 flex items-center gap-1">
                                     <CalendarDays className="w-3 h-3 text-emerald-600" />
                                     Data Limite (Opcional)
                                   </label>
@@ -892,21 +892,21 @@ export default function StudyTracker() {
                                     type="date"
                                     value={resource.targetEndDate || ''}
                                     onChange={(e) => updateResource(resource.id, { targetEndDate: e.target.value || null })}
-                                    className="w-full text-xs font-medium text-gray-800 bg-white border border-gray-200 rounded-md p-1.5 focus:outline-none focus:border-blue-500 cursor-pointer"
+                                    className="w-full text-xs font-medium text-gray-800 dark:text-gray-200 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md p-1.5 focus:outline-none focus:border-blue-500 cursor-pointer"
                                   />
                                 </div>
                               </div>
 
                               {/* 2. Frequência */}
                               <div>
-                                <label className="block text-[10px] text-gray-600 uppercase font-bold mb-1 flex items-center gap-1">
+                                <label className="block text-[10px] text-gray-600 dark:text-gray-400 uppercase font-bold mb-1 flex items-center gap-1">
                                   <Repeat className="w-3 h-3 text-amber-600" />
                                   Frequência
                                 </label>
                                 <select
                                   value={resource.frequency}
                                   onChange={(e) => updateResource(resource.id, { frequency: e.target.value as FrequencyType })}
-                                  className="w-full text-xs font-medium text-gray-800 bg-white border border-gray-200 rounded-md p-1.5 focus:outline-none focus:border-blue-500 cursor-pointer"
+                                  className="w-full text-xs font-medium text-gray-800 dark:text-gray-200 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md p-1.5 focus:outline-none focus:border-blue-500 cursor-pointer"
                                 >
                                   <option value="daily">Diário (Dias de Estudo)</option>
                                   <option value="weekly">Semanal (ex: Simulados)</option>
@@ -918,14 +918,14 @@ export default function StudyTracker() {
 
                               {/* 3. Modo de Medição */}
                               <div>
-                                <label className="block text-[10px] text-gray-600 uppercase font-bold mb-1 flex items-center gap-1">
+                                <label className="block text-[10px] text-gray-600 dark:text-gray-400 uppercase font-bold mb-1 flex items-center gap-1">
                                   <Timer className="w-3 h-3 text-purple-600" />
                                   Tipo de Medição
                                 </label>
                                 <select
                                   value={resource.allocationMode}
                                   onChange={(e) => updateResource(resource.id, { allocationMode: e.target.value as AllocationMode })}
-                                  className="w-full text-xs font-medium text-gray-800 bg-white border border-gray-200 rounded-md p-1.5 focus:outline-none focus:border-blue-500 cursor-pointer"
+                                  className="w-full text-xs font-medium text-gray-800 dark:text-gray-200 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md p-1.5 focus:outline-none focus:border-blue-500 cursor-pointer"
                                 >
                                   <option value="item_target">Por Quantidade (QBank/Livro)</option>
                                   <option value="fixed_time">Tempo Fixo Reservado (Anki)</option>
@@ -933,12 +933,12 @@ export default function StudyTracker() {
                               </div>
 
                               {/* 4. Dias Exclusivos & Correção (NBME) */}
-                              <div className="bg-white p-2 rounded-md border border-gray-200">
+                              <div className="bg-white dark:bg-gray-900 p-2 rounded-md border border-gray-200 dark:border-gray-700">
                                 <label className="block text-[10px] text-rose-800 uppercase font-bold mb-1 flex items-center gap-1">
                                   <Award className="w-3 h-3 text-rose-600" />
                                   Dia Exclusivo & Correção
                                 </label>
-                                <label className="flex items-center gap-1.5 text-xs text-gray-700 font-medium mb-1 cursor-pointer">
+                                <label className="flex items-center gap-1.5 text-xs text-gray-700 dark:text-gray-300 font-medium mb-1 cursor-pointer">
                                   <input
                                     type="checkbox"
                                     checked={isExclusive}
@@ -950,7 +950,7 @@ export default function StudyTracker() {
                                 
                                 {isExclusive && (
                                   <div className="flex items-center gap-1 mt-1">
-                                    <label className="text-[10px] text-gray-500 whitespace-nowrap">
+                                    <label className="text-[10px] text-gray-500 dark:text-gray-400 whitespace-nowrap">
                                       + Dias Correção:
                                     </label>
                                     <input
@@ -959,7 +959,7 @@ export default function StudyTracker() {
                                       max="5"
                                       value={resource.reviewDaysPerItem ?? 1}
                                       onChange={(e) => updateResource(resource.id, { reviewDaysPerItem: Math.max(0, parseInt(e.target.value) || 0) })}
-                                      className="w-12 px-1.5 py-0.5 text-xs font-bold bg-gray-50 border border-gray-200 rounded text-center"
+                                      className="w-12 px-1.5 py-0.5 text-xs font-bold bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded text-center"
                                     />
                                   </div>
                                 )}
@@ -967,16 +967,16 @@ export default function StudyTracker() {
 
                             {/* 5. Metas Diárias Fixas por Dia da Semana (Avançado) */}
                             {resource.frequency === 'daily' && resource.allocationMode === 'item_target' && (
-                              <div className="mt-3 pt-3 border-t border-gray-200/80">
-                                <label className="block text-[10px] text-gray-600 uppercase font-bold mb-2 flex items-center gap-1">
+                              <div className="mt-3 pt-3 border-t border-gray-200/80 dark:border-gray-700/80">
+                                <label className="block text-[10px] text-gray-600 dark:text-gray-400 uppercase font-bold mb-2 flex items-center gap-1">
                                   <CalendarDays className="w-3 h-3 text-indigo-600" />
                                   Fixar Volume de Estudo (Opcional)
                                 </label>
-                                <p className="text-[9px] text-gray-400 mb-2">
+                                <p className="text-[9px] text-gray-400 dark:text-gray-500 mb-2">
                                   Fixe um volume para a fonte inteira (Geral) ou para dias específicos. O restante do tempo será redistribuído mantendo a data da prova.
                                 </p>
                                 <div className="flex gap-2 flex-wrap items-end">
-                                  <div className="flex flex-col items-center border-r border-gray-200 pr-3 mr-1">
+                                  <div className="flex flex-col items-center border-r border-gray-200 dark:border-gray-700 pr-3 mr-1">
                                     <span className="text-[10px] font-bold text-indigo-600 mb-1">Geral</span>
                                     <input
                                       type="number"
@@ -991,11 +991,11 @@ export default function StudyTracker() {
                                   </div>
                                   {DAYS_OF_WEEK.map(day => (
                                     <div key={day.id} className="flex flex-col items-center">
-                                      <span className="text-[10px] font-bold text-gray-500 mb-1">{day.short}</span>
+                                      <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 mb-1">{day.short}</span>
                                       <input
                                         type="number"
                                         placeholder="Auto"
-                                        className="w-12 h-8 text-center text-xs font-bold text-indigo-900 bg-white border border-gray-200 rounded focus:border-indigo-500 focus:outline-none placeholder:font-normal placeholder:text-gray-400"
+                                        className="w-12 h-8 text-center text-xs font-bold text-indigo-900 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded focus:border-indigo-500 focus:outline-none placeholder:font-normal placeholder:text-gray-400 dark:text-gray-500"
                                         value={resource.fixedVolumeByDayOfWeek?.[day.id] ?? ''}
                                         onChange={(e) => {
                                           const val = e.target.value === '' ? null : Number(e.target.value);
@@ -1021,10 +1021,10 @@ export default function StudyTracker() {
                     })}
 
                     {resources.length === 0 && (
-                      <div className="text-center py-10 border border-dashed border-gray-200 rounded-xl bg-gray-50/50">
+                      <div className="text-center py-10 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50/50 dark:bg-gray-900">
                         <BookOpen className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                        <p className="text-sm font-medium text-gray-700">Nenhum material adicionado ainda.</p>
-                        <p className="text-xs text-gray-400 mt-1">Clique nos botões acima para cadastrar seu QBank, Anki ou Simulados.</p>
+                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Nenhum material adicionado ainda.</p>
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Clique nos botões acima para cadastrar seu QBank, Anki ou Simulados.</p>
                       </div>
                     )}
                   </div>
@@ -1036,14 +1036,14 @@ export default function StudyTracker() {
               <div className="xl:col-span-5 flex flex-col gap-6">
                 
                 {/* Dashboard de Projeção */}
-                <section className="bg-white rounded-2xl border border-gray-200/90 shadow-sm p-5 sm:p-6 overflow-hidden">
-                  <div className="flex justify-between items-start mb-5 pb-3 border-b border-gray-100">
+                <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200/90 dark:border-gray-700/90 shadow-sm p-5 sm:p-6 overflow-hidden">
+                  <div className="flex justify-between items-start mb-5 pb-3 border-b border-gray-100 dark:border-gray-800">
                     <div>
-                      <h2 className="text-xs font-bold uppercase tracking-wider text-gray-400">
+                      <h2 className="text-xs font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
                         Projeção & Carga Horária
                       </h2>
                       {plan.isValid && plan.bufferDays > 0 && mode === 'by_date' && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 mt-1 rounded bg-blue-50 border border-blue-100 text-blue-700 text-[10px] font-semibold">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 mt-1 rounded bg-blue-50 dark:bg-blue-900/30 border border-blue-100 text-blue-700 dark:text-blue-300 text-[10px] font-semibold">
                           <ShieldCheck className="w-3 h-3" /> {plan.bufferDays} dias de margem
                         </span>
                       )}
@@ -1051,42 +1051,42 @@ export default function StudyTracker() {
 
                     {plan.isValid && (
                       <div className="text-right">
-                        <div className="text-[10px] text-gray-400 uppercase font-semibold">Carga Diária Média</div>
-                        <div className="text-xl font-bold text-gray-900">
-                          {Math.floor(plan.totalDailyMinutes / 60)}h {plan.totalDailyMinutes % 60}m <span className="text-xs text-gray-400 font-normal">/ dia</span>
+                        <div className="text-[10px] text-gray-400 dark:text-gray-500 uppercase font-semibold">Carga Diária Média</div>
+                        <div className="text-xl font-bold text-gray-900 dark:text-gray-100">
+                          {Math.floor(plan.totalDailyMinutes / 60)}h {plan.totalDailyMinutes % 60}m <span className="text-xs text-gray-400 dark:text-gray-500 font-normal">/ dia</span>
                         </div>
                       </div>
                     )}
                   </div>
                   
                   {!plan.isValid ? (
-                    <div className="flex items-start gap-3 bg-gray-50 rounded-xl p-4 text-xs font-medium text-gray-600 border border-gray-200">
+                    <div className="flex items-start gap-3 bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4 text-xs font-medium text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
                       <HelpCircle className="w-4 h-4 shrink-0 text-blue-500 mt-0.5" />
                       <span>{plan.message || "Preencha a data da prova ou as metas diárias para calcular a projeção."}</span>
                     </div>
                   ) : (
                     <div className="space-y-4">
                       <div className="grid grid-cols-2 gap-3">
-                        <div className="p-3.5 rounded-xl bg-gray-50 border border-gray-100">
-                          <div className="text-[10px] text-gray-400 uppercase font-semibold mb-1">
+                        <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-800">
+                          <div className="text-[10px] text-gray-400 dark:text-gray-500 uppercase font-semibold mb-1">
                             {mode === 'by_date' ? "Término dos Conteúdos" : "Término Previsto"}
                           </div>
-                          <div className="text-sm sm:text-base font-bold text-blue-600">
+                          <div className="text-sm sm:text-base font-bold text-blue-600 dark:text-blue-400">
                             {plan.estimatedEndDate ? format(plan.estimatedEndDate, "dd 'de' MMM, yyyy", { locale: ptBR }) : '-'}
                           </div>
                           {mode === 'by_date' && plan.bufferDays > 0 && (
-                            <div className="text-[10px] text-gray-500 mt-0.5">
+                            <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
                               {plan.bufferDays}d livres antes da prova
                             </div>
                           )}
                         </div>
 
-                        <div className="p-3.5 rounded-xl bg-gray-50 border border-gray-100">
-                          <div className="text-[10px] text-gray-400 uppercase font-semibold mb-1">Dias de Estudo Diário</div>
-                          <div className="text-sm sm:text-base font-bold text-gray-900">
-                            {plan.effectiveDailyStudyDays} <span className="text-xs font-normal text-gray-500">dias úteis</span>
+                        <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-800">
+                          <div className="text-[10px] text-gray-400 dark:text-gray-500 uppercase font-semibold mb-1">Dias de Estudo Diário</div>
+                          <div className="text-sm sm:text-base font-bold text-gray-900 dark:text-gray-100">
+                            {plan.effectiveDailyStudyDays} <span className="text-xs font-normal text-gray-500 dark:text-gray-400">dias úteis</span>
                           </div>
-                          <div className="text-[10px] text-gray-400 mt-0.5">
+                          <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
                             {plan.totalExclusiveDays > 0 
                               ? `(${plan.totalExclusiveDays}d para simulados+correção)` 
                               : `(${plan.studyDays} dias totais)`}
@@ -1094,39 +1094,39 @@ export default function StudyTracker() {
                         </div>
                         
                         {plan.daysToExamTotal !== undefined && (
-                          <div className="p-3.5 rounded-xl bg-gray-50 border border-gray-100">
-                            <div className="text-[10px] text-gray-400 uppercase font-semibold mb-1 flex items-center gap-1">
+                          <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-800">
+                            <div className="text-[10px] text-gray-400 dark:text-gray-500 uppercase font-semibold mb-1 flex items-center gap-1">
                               <CalendarIcon className="w-3 h-3 text-red-400" /> Para a Prova
                             </div>
-                            <div className="text-sm sm:text-base font-bold text-gray-900">
-                              {plan.daysToExamTotal} <span className="text-xs font-normal text-gray-500">dias totais</span>
+                            <div className="text-sm sm:text-base font-bold text-gray-900 dark:text-gray-100">
+                              {plan.daysToExamTotal} <span className="text-xs font-normal text-gray-500 dark:text-gray-400">dias totais</span>
                             </div>
-                            <div className="text-[10px] text-gray-500 mt-0.5 font-medium">
+                            <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 font-medium">
                               {plan.daysToExamStudy} dias úteis
                             </div>
                           </div>
                         )}
 
-                        <div className="p-3.5 rounded-xl bg-gray-50 border border-gray-100">
-                          <div className="text-[10px] text-gray-400 uppercase font-semibold mb-1 flex items-center gap-1">
+                        <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-800">
+                          <div className="text-[10px] text-gray-400 dark:text-gray-500 uppercase font-semibold mb-1 flex items-center gap-1">
                             <Flag className="w-3 h-3 text-green-500" /> Para o Prazo Limite
                           </div>
-                          <div className="text-sm sm:text-base font-bold text-gray-900">
-                            {plan.daysToDeadlineTotal} <span className="text-xs font-normal text-gray-500">dias totais</span>
+                          <div className="text-sm sm:text-base font-bold text-gray-900 dark:text-gray-100">
+                            {plan.daysToDeadlineTotal} <span className="text-xs font-normal text-gray-500 dark:text-gray-400">dias totais</span>
                           </div>
-                          <div className="text-[10px] text-gray-500 mt-0.5 font-medium">
+                          <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 font-medium">
                             {plan.daysToDeadlineStudy} dias úteis
                           </div>
                         </div>
                       </div>
 
                       {/* Detalhamento do Tempo */}
-                      <div className="p-3.5 rounded-xl bg-gray-50 border border-gray-100 space-y-2">
-                        <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">
+                      <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-800 space-y-2">
+                        <div className="text-[10px] text-gray-500 dark:text-gray-400 uppercase font-bold tracking-wider">
                           Divisão da Carga Diária
                         </div>
                         <div className="flex justify-between items-center text-xs">
-                          <span className="text-gray-600 flex items-center gap-1.5">
+                          <span className="text-gray-600 dark:text-gray-400 flex items-center gap-1.5">
                             <Timer className="w-3.5 h-3.5 text-purple-600" /> Tempo Fixo Reservado (Anki/Revisão):
                           </span>
                           <span className="font-semibold text-purple-700">
@@ -1135,10 +1135,10 @@ export default function StudyTracker() {
                           </span>
                         </div>
                         <div className="flex justify-between items-center text-xs">
-                          <span className="text-gray-600 flex items-center gap-1.5">
-                            <CheckSquare className="w-3.5 h-3.5 text-blue-600" /> Conteúdo Ativo (QBank/Livros):
+                          <span className="text-gray-600 dark:text-gray-400 flex items-center gap-1.5">
+                            <CheckSquare className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" /> Conteúdo Ativo (QBank/Livros):
                           </span>
-                          <span className="font-semibold text-blue-700">
+                          <span className="font-semibold text-blue-700 dark:text-blue-300">
                             {Math.floor(plan.variableContentMinutes / 60) > 0 ? `${Math.floor(plan.variableContentMinutes / 60)}h ` : ''}
                             {plan.variableContentMinutes % 60}m
                           </span>
@@ -1148,16 +1148,16 @@ export default function StudyTracker() {
                       {mode === 'by_date' && plan.examDate && (
                         <div className="flex items-center justify-between p-3 rounded-xl bg-blue-50/50 border border-blue-100 text-xs">
                           <div className="flex items-center gap-2">
-                            <CalendarIcon className="w-4 h-4 text-blue-600" />
+                            <CalendarIcon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                             <div>
                               <div className="text-[10px] uppercase font-bold text-blue-900">Data Oficial da Prova</div>
-                              <div className="text-xs font-semibold text-blue-800">
+                              <div className="text-xs font-semibold text-blue-800 dark:text-blue-200">
                                 {format(plan.examDate, "dd 'de' MMMM, yyyy", { locale: ptBR })}
                               </div>
                             </div>
                           </div>
                           {plan.bufferDays > 0 && (
-                            <div className="text-right text-[11px] font-semibold text-blue-700">
+                            <div className="text-right text-[11px] font-semibold text-blue-700 dark:text-blue-300">
                               {plan.bufferDays}d de margem
                             </div>
                           )}
@@ -1169,12 +1169,12 @@ export default function StudyTracker() {
 
                 {/* Cronograma de Metas Diárias */}
                 {plan.isValid && plan.dailyTasks.length > 0 && (
-                  <section className="bg-white rounded-2xl border border-gray-200/90 shadow-sm p-5 sm:p-6">
-                    <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-100">
-                      <h2 className="text-xs font-bold uppercase tracking-wider text-gray-400">
+                  <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200/90 dark:border-gray-700/90 shadow-sm p-5 sm:p-6">
+                    <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-100 dark:border-gray-800">
+                      <h2 className="text-xs font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
                         Metas Diárias & Fases
                       </h2>
-                      <span className="text-[10px] text-gray-400 font-medium">{plan.dailyTasks.length} matérias</span>
+                      <span className="text-[10px] text-gray-400 dark:text-gray-500 font-medium">{plan.dailyTasks.length} matérias</span>
                     </div>
 
                     <div className="space-y-2.5">
@@ -1198,7 +1198,7 @@ export default function StudyTracker() {
                                   ? "bg-purple-50/30 border-purple-100"
                                   : isPeriodic
                                     ? "bg-rose-50/30 border-rose-100"
-                                    : "bg-gray-50 border-gray-100 hover:border-gray-200"
+                                    : "bg-gray-50 dark:bg-gray-800/50 border-gray-100 dark:border-gray-800 hover:border-gray-200 dark:border-gray-700"
                             )}
                           >
                             <div className="flex items-start sm:items-center space-x-3 min-w-0">
@@ -1212,12 +1212,12 @@ export default function StudyTracker() {
                                     ? "bg-purple-50 text-purple-600 border-purple-200"
                                     : isPeriodic
                                       ? "bg-rose-50 text-rose-600 border-rose-200"
-                                      : "bg-white text-blue-600 border-gray-200"
+                                      : "bg-white dark:bg-gray-900 text-blue-600 dark:text-blue-400 border-gray-200 dark:border-gray-700"
                               )}>
                                 {isCompleted ? <CheckCircle2 className="w-4 h-4" /> : <Icon className="w-4 h-4" />}
                               </div>
                               <div className="min-w-0">
-                                <div className="text-xs font-semibold text-gray-900 flex items-center gap-1.5 flex-wrap">
+                                <div className="text-xs font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-1.5 flex-wrap">
                                   <span>{task.resourceName || 'Material sem nome'}</span>
                                   {isCompleted ? (
                                     <span className="text-[9px] px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded font-medium flex items-center gap-0.5">
@@ -1228,7 +1228,7 @@ export default function StudyTracker() {
                                       <Lock className="w-2.5 h-2.5" /> Aguardando Fase
                                     </span>
                                   ) : (
-                                    <span className="text-[9px] px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded font-medium flex items-center gap-0.5">
+                                    <span className="text-[9px] px-1.5 py-0.5 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded font-medium flex items-center gap-0.5">
                                       <Zap className="w-2.5 h-2.5" /> Ativo
                                     </span>
                                   )}
@@ -1245,16 +1245,16 @@ export default function StudyTracker() {
                                 </div>
                                 
                                 {task.note && (
-                                  <div className="text-[10px] text-gray-500 mt-0.5 leading-relaxed">
+                                  <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">
                                     {task.note}
                                   </div>
                                 )}
                                 {task.calculationBreakdown && task.calculationBreakdown.length > 0 && (
-                                  <details className="mt-2 text-[10px] text-gray-600 bg-white/60 p-1.5 rounded border border-gray-100">
-                                    <summary className="font-semibold cursor-pointer hover:text-blue-600 flex items-center gap-1 select-none">
+                                  <details className="mt-2 text-[10px] text-gray-600 dark:text-gray-400 bg-white/60 dark:bg-gray-800/60 p-1.5 rounded border border-gray-100 dark:border-gray-800">
+                                    <summary className="font-semibold cursor-pointer hover:text-blue-600 dark:text-blue-400 flex items-center gap-1 select-none">
                                       <BarChart3 className="w-3 h-3" /> Ver Detalhes do Cálculo
                                     </summary>
-                                    <ul className="mt-1.5 pl-4 list-disc space-y-0.5 text-gray-500">
+                                    <ul className="mt-1.5 pl-4 list-disc space-y-0.5 text-gray-500 dark:text-gray-400">
                                       {task.calculationBreakdown.map((line, idx) => (
                                         <li key={idx}>{line}</li>
                                       ))}
@@ -1302,10 +1302,10 @@ export default function StudyTracker() {
                                 </>
                               ) : (
                                 <>
-                                  <div className="text-xs font-bold text-gray-900">
-                                    {task.amount} <span className="text-[11px] text-gray-500 font-medium">{task.unit}</span>
+                                  <div className="text-xs font-bold text-gray-900 dark:text-gray-100">
+                                    {task.amount} <span className="text-[11px] text-gray-500 dark:text-gray-400 font-medium">{task.unit}</span>
                                   </div>
-                                  <div className="text-[10px] text-gray-400 flex items-center sm:justify-end gap-1">
+                                  <div className="text-[10px] text-gray-400 dark:text-gray-500 flex items-center sm:justify-end gap-1">
                                     <Clock className="w-3 h-3" />
                                     {Math.floor(task.estimatedMinutes / 60) > 0 ? `${Math.floor(task.estimatedMinutes / 60)}h ` : ''}
                                     {task.estimatedMinutes % 60}m / dia
@@ -1324,7 +1324,7 @@ export default function StudyTracker() {
                 <button
                   type="button"
                   onClick={() => setActiveTab('heatmap')}
-                  className="flex items-center justify-center gap-2 p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-xs text-xs font-bold transition-all cursor-pointer"
+                  className="flex items-center justify-center gap-2 p-3 bg-blue-600 dark:bg-blue-500 hover:bg-blue-700 text-white rounded-xl shadow-xs text-xs font-bold transition-all cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
                   Registrar Sessão de Estudo de Hoje
@@ -1363,14 +1363,14 @@ export default function StudyTracker() {
                 examDateStr={examDateStr}
               />
             ) : (
-              <div className="bg-white rounded-2xl border border-gray-200/90 p-8 text-center">
+              <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200/90 dark:border-gray-700/90 p-8 text-center">
                 <HelpCircle className="w-8 h-8 text-blue-500 mx-auto mb-2" />
-                <p className="text-sm font-semibold text-gray-800">
+                <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">
                   {plan.message || "Adicione seus materiais e defina a data da prova para gerar o cronograma visual de fases."}
                 </p>
                 <button
                   onClick={() => setActiveTab('planner')}
-                  className="mt-3 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold cursor-pointer"
+                  className="mt-3 px-4 py-2 bg-blue-600 dark:bg-blue-500 hover:bg-blue-700 text-white rounded-xl text-xs font-bold cursor-pointer"
                 >
                   Ir para Planejamento
                 </button>

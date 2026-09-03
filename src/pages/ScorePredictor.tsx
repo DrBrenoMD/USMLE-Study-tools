@@ -37,20 +37,20 @@ export default function ScorePredictor() {
       <MouseInteractiveBackground />
       <div className="z-10 w-full max-w-5xl flex flex-col gap-6">
         {/* Header */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="bg-white dark:bg-gray-900 p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center">
+            <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 rounded-xl flex items-center justify-center">
               <TrendingUp className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-xl font-black text-gray-900">Score Predictor</h2>
-              <p className="text-sm text-gray-500 font-medium">Acompanhe sua evolução e previsão de notas</p>
+              <h2 className="text-xl font-black text-gray-900 dark:text-gray-100">Score Predictor</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">Acompanhe sua evolução e previsão de notas</p>
             </div>
           </div>
           <div className="flex gap-2">
             <button 
               onClick={() => setIsAddingScore(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-xl font-bold hover:bg-black transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-gray-50 text-white rounded-xl font-bold hover:bg-black transition-colors"
             >
               <Plus className="w-4 h-4" />
               Adicionar Simulado
@@ -61,23 +61,23 @@ export default function ScorePredictor() {
         {/* Predictions Overview */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Step 1 Prediction */}
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+          <div className="bg-white dark:bg-gray-900 p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700">
             <div className="flex items-center gap-2 mb-4">
-              <Target className="w-5 h-5 text-blue-600" />
-              <h3 className="font-bold text-gray-900">Previsão Step 1</h3>
+              <Target className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+              <h3 className="font-bold text-gray-900 dark:text-gray-100">Previsão Step 1</h3>
             </div>
             {step1Pred !== null ? (
-              <div className="flex flex-col items-center p-6 bg-gray-50 rounded-xl border border-gray-100">
-                <div className={`text-5xl font-black ${step1Pred >= 95 ? 'text-emerald-600' : step1Pred >= 80 ? 'text-blue-600' : 'text-amber-600'}`}>
+              <div className="flex flex-col items-center p-6 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-100 dark:border-gray-800">
+                <div className={`text-5xl font-black ${step1Pred >= 95 ? 'text-emerald-600' : step1Pred >= 80 ? 'text-blue-600 dark:text-blue-400' : 'text-amber-600'}`}>
                   {step1Pred.toFixed(1)}%
                 </div>
-                <div className="text-sm font-bold text-gray-700 mt-2 uppercase tracking-wider">Chance de Aprovação (Pass)</div>
-                <div className="mt-4 text-[10px] text-gray-500 bg-white px-3 py-2 rounded-lg border border-gray-200">
+                <div className="text-sm font-bold text-gray-700 dark:text-gray-300 mt-2 uppercase tracking-wider">Chance de Aprovação (Pass)</div>
+                <div className="mt-4 text-[10px] text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-900 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700">
                   Baseado na média móvel dos últimos {Math.min(3, step1Scores.length)} simulados.
                 </div>
               </div>
             ) : (
-              <div className="h-32 flex flex-col items-center justify-center text-gray-400 bg-gray-50 rounded-xl border border-gray-100 border-dashed">
+              <div className="h-32 flex flex-col items-center justify-center text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-100 dark:border-gray-800 border-dashed">
                 <AlertTriangle className="w-6 h-6 mb-2 opacity-50" />
                 <p className="text-sm font-medium">Nenhum simulado registrado</p>
               </div>
@@ -85,23 +85,23 @@ export default function ScorePredictor() {
           </div>
 
           {/* Step 2 Prediction */}
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+          <div className="bg-white dark:bg-gray-900 p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700">
             <div className="flex items-center gap-2 mb-4">
               <Target className="w-5 h-5 text-emerald-600" />
-              <h3 className="font-bold text-gray-900">Previsão Step 2 CK</h3>
+              <h3 className="font-bold text-gray-900 dark:text-gray-100">Previsão Step 2 CK</h3>
             </div>
             {step2Pred !== null ? (
-              <div className="flex flex-col items-center p-6 bg-gray-50 rounded-xl border border-gray-100">
+              <div className="flex flex-col items-center p-6 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-100 dark:border-gray-800">
                 <div className="text-5xl font-black text-emerald-600">
                   {step2Pred}
                 </div>
-                <div className="text-sm font-bold text-gray-700 mt-2 uppercase tracking-wider">Score 3-Dígitos Estimado</div>
-                <div className="mt-4 text-[10px] text-gray-500 bg-white px-3 py-2 rounded-lg border border-gray-200">
+                <div className="text-sm font-bold text-gray-700 dark:text-gray-300 mt-2 uppercase tracking-wider">Score 3-Dígitos Estimado</div>
+                <div className="mt-4 text-[10px] text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-900 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700">
                   Baseado na média móvel dos últimos {Math.min(3, step2Scores.length)} simulados.
                 </div>
               </div>
             ) : (
-              <div className="h-32 flex flex-col items-center justify-center text-gray-400 bg-gray-50 rounded-xl border border-gray-100 border-dashed">
+              <div className="h-32 flex flex-col items-center justify-center text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-100 dark:border-gray-800 border-dashed">
                 <AlertTriangle className="w-6 h-6 mb-2 opacity-50" />
                 <p className="text-sm font-medium">Nenhum simulado registrado</p>
               </div>
@@ -111,12 +111,12 @@ export default function ScorePredictor() {
 
         {/* Charts Section */}
         {scores.length > 0 && (
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 flex flex-col gap-8">
-            <h3 className="font-bold text-gray-900">Evolução do Desempenho</h3>
+          <div className="bg-white dark:bg-gray-900 p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col gap-8">
+            <h3 className="font-bold text-gray-900 dark:text-gray-100">Evolução do Desempenho</h3>
             
             {step1Scores.length > 0 && (
               <div className="w-full h-72">
-                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">Step 1 (% Acertos)</h4>
+                <h4 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-4">Step 1 (% Acertos)</h4>
                 <ResponsiveContainer width="100%" height="100%">
                   <RechartsLineChart data={step1Scores} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
@@ -137,7 +137,7 @@ export default function ScorePredictor() {
 
             {step2Scores.length > 0 && (
               <div className="w-full h-72">
-                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">Step 2 CK (Score)</h4>
+                <h4 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-4">Step 2 CK (Score)</h4>
                 <ResponsiveContainer width="100%" height="100%">
                   <RechartsLineChart data={step2Scores} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
@@ -157,18 +157,18 @@ export default function ScorePredictor() {
         )}
 
         {/* History Table */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+        <div className="bg-white dark:bg-gray-900 p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-bold text-gray-900">Histórico de Simulados</h3>
+            <h3 className="font-bold text-gray-900 dark:text-gray-100">Histórico de Simulados</h3>
           </div>
           {scores.length === 0 ? (
-            <div className="text-center py-8 text-gray-500 text-sm">
+            <div className="text-center py-8 text-gray-500 dark:text-gray-400 text-sm">
               Nenhum simulado salvo.
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm text-gray-600">
-                <thead className="text-[10px] uppercase font-bold text-gray-400 bg-gray-50 border-y border-gray-100">
+              <table className="w-full text-left text-sm text-gray-600 dark:text-gray-400">
+                <thead className="text-[10px] uppercase font-bold text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-800/50 border-y border-gray-100 dark:border-gray-800">
                   <tr>
                     <th className="px-4 py-3">Data</th>
                     <th className="px-4 py-3">Exame</th>
@@ -180,21 +180,21 @@ export default function ScorePredictor() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {scores.slice().reverse().map(score => (
-                    <tr key={score.id} className="hover:bg-gray-50/50 transition-colors">
+                    <tr key={score.id} className="hover:bg-gray-50/50 dark:bg-gray-900 transition-colors">
                       <td className="px-4 py-3 whitespace-nowrap flex items-center gap-2">
-                        <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                        <Calendar className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
                         {format(new Date(score.date), 'dd/MM/yyyy')}
                       </td>
-                      <td className="px-4 py-3 font-semibold text-gray-900">{score.examName}</td>
+                      <td className="px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">{score.examName}</td>
                       <td className="px-4 py-3">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${score.step === 'Step 1' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${score.step === 'Step 1' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' : 'bg-emerald-50 text-emerald-700'}`}>
                           {score.step}
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        {score.percentCorrect.toFixed(1)}% <span className="text-[10px] text-gray-400 ml-1">({score.totalQuestions - score.incorrects}/{score.totalQuestions})</span>
+                        {score.percentCorrect.toFixed(1)}% <span className="text-[10px] text-gray-400 dark:text-gray-500 ml-1">({score.totalQuestions - score.incorrects}/{score.totalQuestions})</span>
                       </td>
-                      <td className="px-4 py-3 text-right font-bold text-gray-900">
+                      <td className="px-4 py-3 text-right font-bold text-gray-900 dark:text-gray-100">
                         {score.step === 'Step 1' ? (
                           score.percentCorrect < 55 ? <span className="text-red-600">LOW PASS</span> : `${score.passProbability?.toFixed(1)}% Pass`
                         ) : (
@@ -204,7 +204,7 @@ export default function ScorePredictor() {
                       <td className="px-4 py-3 text-center">
                         <button 
                           onClick={() => removeScore(score.id)}
-                          className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                          className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
