@@ -14,7 +14,9 @@ export function QuestionPacer({ className }: { className?: string }) {
     setPacerState,
     nextPacerQuestion,
     stopPacer,
-    setTimerState
+    setTimerState,
+    phase,
+    timerState
   } = useTimerStore();
 
   const setTotalQuestions = (v: number) => setPacerState({ pacerTotalQuestions: v });
@@ -210,8 +212,16 @@ export function QuestionPacer({ className }: { className?: string }) {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {/* Tempo Atual */}
-              <div className="md:col-span-1 bg-white dark:bg-gray-900 rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm flex flex-col items-center justify-center text-center relative overflow-hidden">
-                {isAdaptive && effectiveTarget < targetTimeSeconds && (
+              <div className={`md:col-span-1 bg-white dark:bg-gray-900 rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm flex flex-col items-center justify-center text-center relative overflow-hidden ${phase === 'rest' ? 'opacity-80 bg-blue-50 dark:bg-blue-900/10' : ''}`}>
+                {phase === 'rest' ? (
+                  <div className="absolute top-0 inset-x-0 bg-blue-500 text-white text-[9px] font-bold uppercase py-0.5">
+                    Modo de Descanso Ativo
+                  </div>
+                ) : timerState !== 'running' ? (
+                  <div className="absolute top-0 inset-x-0 bg-gray-500 text-white text-[9px] font-bold uppercase py-0.5">
+                    Pausado
+                  </div>
+                ) : isAdaptive && effectiveTarget < targetTimeSeconds && (
                   <div className="absolute top-0 inset-x-0 bg-amber-500 text-white text-[9px] font-bold uppercase py-0.5">
                     Alarme Antecipado Ativo
                   </div>
@@ -219,7 +229,7 @@ export function QuestionPacer({ className }: { className?: string }) {
                 <div className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2 mt-2">
                   Questão Atual
                 </div>
-                <div className={`text-5xl font-black tracking-tight ${currentQuestionTime >= effectiveTarget ? 'text-red-500' : 'text-gray-900 dark:text-gray-100'}`}>
+                <div className={`text-5xl font-black tracking-tight ${currentQuestionTime >= effectiveTarget && phase === 'study' && timerState === 'running' ? 'text-red-500' : 'text-gray-900 dark:text-gray-100'}`}>
                   {formatTime(currentQuestionTime)}
                 </div>
                 <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mt-2">

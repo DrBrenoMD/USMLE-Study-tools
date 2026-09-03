@@ -135,7 +135,7 @@ export function TopBarTimer() {
             }
 
             // 2. Pacer Logic
-            if (state.pacerIsActive) {
+            if (state.pacerIsActive && state.phase === 'study' && state.timerState === 'running') {
                const newPacerTime = state.pacerCurrentQuestionTime + deltaSecs;
                state.tickPacer(deltaSecs);
                
@@ -150,13 +150,6 @@ export function TopBarTimer() {
                
                if (effectiveTarget > 0 && newPacerTime > 0 && newPacerTime % effectiveTarget === 0) {
                   playPacerBeep(state.pacerSoundEnabled);
-               }
-
-               const isTimerCounting = state.timerState === 'running' && state.phase === 'study';
-               const maxNetTimeForThisQuestion = state.pacerTargetTimeSeconds * 2;
-               
-               if (!isTimerCounting && newPacerTime <= maxNetTimeForThisQuestion) {
-                  state.addNetTime(deltaSecs);
                }
             }
         }
