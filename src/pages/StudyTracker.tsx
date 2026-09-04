@@ -1358,6 +1358,7 @@ export default function StudyTracker() {
                   plan={plan}
                   resources={resources}
                   studyLogs={studyLogs}
+                  daysOff={daysOff}
                   onAddLog={handleAddLog}
                 />
               </>

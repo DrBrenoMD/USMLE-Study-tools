@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { format, startOfWeek, addDays, isSameDay, parseISO, startOfMonth, endOfMonth, endOfWeek, isSameMonth, subMonths, addMonths } from 'date-fns';
+import { format, startOfWeek, addDays, isSameDay, parseISO, startOfMonth, endOfMonth, endOfWeek, isSameMonth, subMonths, addMonths, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, CheckCircle2, Circle } from 'lucide-react';
 import { StudyPlan, Resource, StudyLogEntry } from '../types';
@@ -8,10 +8,11 @@ interface StudyCalendarProps {
   plan: StudyPlan;
   resources: Resource[];
   studyLogs: StudyLogEntry[];
+  daysOff: number[];
   onAddLog: (log: Omit<StudyLogEntry, 'id' | 'createdAt'>) => void;
 }
 
-export function StudyCalendar({ plan, resources, studyLogs, onAddLog }: StudyCalendarProps) {
+export function StudyCalendar({ plan, resources, studyLogs, daysOff, onAddLog }: StudyCalendarProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
 
@@ -58,10 +59,31 @@ export function StudyCalendar({ plan, resources, studyLogs, onAddLog }: StudyCal
   // Find active tasks for the selected date
   const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
   const activeTasks = plan.resourcesSchedule.filter(task => {
-    // A task is active if the selected date is between its start and end date
-    const start = task.startDate;
-    const end = task.endDate;
-    return selectedDate >= start && selectedDate <= end;
+    const selDay = startOfDay(selectedDate);
+    const start = startOfDay(task.startDate);
+    const end = startOfDay(task.endDate);
+
+    if (selDay < start || selDay > end) return false;
+
+    if (task.frequency === 'daily') {
+      if (daysOff.includes(selectedDate.getDay())) return false;
+      
+      const hasExclusive = plan.resourcesSchedule.some(other => {
+        if (other.frequency !== 'daily' && other.scheduledDates) {
+           const resourceDef = resources.find(r => r.id === other.resourceId);
+           const isExclusive = resourceDef?.exclusiveStudyDay ?? (other.resourceType === 'nbme');
+           if (isExclusive && other.scheduledDates.some(d => isSameDay(d, selDay))) {
+             return true;
+           }
+        }
+        return false;
+      });
+      if (hasExclusive) return false;
+
+      return true;
+    } else {
+      return task.scheduledDates?.some(d => isSameDay(d, selDay));
+    }
   });
 
   const handleToggleCheck = (task: any) => {
@@ -117,24 +139,56 @@ export function StudyCalendar({ plan, resources, studyLogs, onAddLog }: StudyCal
           <div className="flex flex-col gap-2">
             {activeTasks.map(task => {
               const isDone = studyLogs.some(log => log.date === selectedDateStr && log.resourceId === task.resourceId);
+              
+              const resourceDef = resources.find(r => r.id === task.resourceId);
+              const completedUntilDay = studyLogs
+                .filter(log => log.resourceId === task.resourceId && log.date <= selectedDateStr)
+                .reduce((acc, log) => acc + (log.amount || 0), 0);
+              
+              let progressText = "";
+              let progressPercent = 0;
+              
+              if (resourceDef && resourceDef.total > 0) {
+                const remaining = Math.max(0, resourceDef.total - completedUntilDay);
+                progressPercent = Math.min(100, Math.round((completedUntilDay / resourceDef.total) * 100));
+                progressText = `${completedUntilDay} / ${resourceDef.total} ${task.unit} (${remaining} restantes)`;
+              }
+
               return (
-                <div key={task.resourceId} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-100 dark:border-gray-800">
-                  <div className="flex items-center gap-3">
-                    <button 
-                      onClick={() => handleToggleCheck(task)}
-                      className={`transition-colors ${isDone ? 'text-emerald-500' : 'text-gray-400 dark:text-gray-500 hover:text-blue-500'}`}
-                    >
-                      {isDone ? <CheckCircle2 className="w-6 h-6" /> : <Circle className="w-6 h-6" />}
-                    </button>
-                    <div>
-                      <div className={`font-semibold text-sm ${isDone ? 'text-gray-500 dark:text-gray-400 line-through' : 'text-gray-900 dark:text-gray-100'}`}>
-                        {task.resourceName}
-                      </div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">
-                        {task.dailyAmount > 0 ? `${task.dailyAmount} ${task.unit} • ` : ''}{task.dailyMinutes} min
+                <div key={task.resourceId} className="flex flex-col p-3 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-100 dark:border-gray-800 gap-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <button 
+                        onClick={() => handleToggleCheck(task)}
+                        className={`transition-colors ${isDone ? 'text-emerald-500' : 'text-gray-400 dark:text-gray-500 hover:text-blue-500'}`}
+                      >
+                        {isDone ? <CheckCircle2 className="w-6 h-6" /> : <Circle className="w-6 h-6" />}
+                      </button>
+                      <div>
+                        <div className={`font-semibold text-sm ${isDone ? 'text-gray-500 dark:text-gray-400 line-through' : 'text-gray-900 dark:text-gray-100'}`}>
+                          {task.resourceName}
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                          {task.dailyAmount > 0 ? `${task.dailyAmount} ${task.unit} • ` : ''}{task.dailyMinutes} min
+                        </div>
                       </div>
                     </div>
                   </div>
+                  
+                  {progressText && (
+                    <div className="ml-9 mt-1">
+                      <div className="flex justify-between items-center text-[10px] text-gray-500 dark:text-gray-400 mb-1 font-medium">
+                        <span>{progressText}</span>
+                        <span>{progressPercent}%</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-blue-500 dark:bg-blue-400 rounded-full transition-all duration-500"
+                          style={{ width: `${progressPercent}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
