@@ -2,7 +2,67 @@ import React, { useState } from 'react';
 import { format, startOfWeek, addDays, isSameDay, parseISO, startOfMonth, endOfMonth, endOfWeek, isSameMonth, subMonths, addMonths, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, CheckCircle2, Circle } from 'lucide-react';
-import { StudyPlan, Resource, StudyLogEntry } from '../types';
+import { StudyPlan, Resource, StudyLogEntry, ResourceScheduleCalculation } from '../types';
+
+function getProjectedDailyVolume(
+  task: ResourceScheduleCalculation,
+  resourceDef: Resource,
+  date: Date,
+  plan: StudyPlan,
+  daysOff: number[],
+  resources: Resource[]
+): { amount: number, minutes: number } {
+  const d = startOfDay(date);
+  const start = startOfDay(task.startDate);
+  const end = startOfDay(task.endDate);
+
+  if (d < start || d > end) return { amount: 0, minutes: 0 };
+
+  if (task.frequency !== 'daily') {
+    const isScheduled = task.scheduledDates?.some(sd => isSameDay(sd, d));
+    if (isScheduled) {
+      return { 
+        amount: 1, 
+        minutes: task.sessionDurationMinutes || resourceDef.minutesPerItem || 300 
+      };
+    }
+    return { amount: 0, minutes: 0 };
+  }
+
+  // It's daily
+  if (daysOff.includes(d.getDay())) return { amount: 0, minutes: 0 };
+
+  // Check exclusivity
+  const hasExclusive = plan.resourcesSchedule.some(other => {
+    if (other.frequency !== 'daily' && other.scheduledDates) {
+       const otherDef = resources.find(r => r.id === other.resourceId);
+       const isExclusive = otherDef?.exclusiveStudyDay ?? (other.resourceType === 'nbme');
+       if (isExclusive && other.scheduledDates.some(sd => isSameDay(sd, d))) {
+         return true;
+       }
+    }
+    return false;
+  });
+  if (hasExclusive) return { amount: 0, minutes: 0 };
+
+  // Calculate volume
+  if (resourceDef.allocationMode === 'fixed_time') {
+    const mins = resourceDef.fixedDailyMinutes || 45;
+    return { amount: mins, minutes: mins };
+  }
+
+  // item_target
+  let amount = task.projectedDailyAmount || task.dailyAmount || 0;
+  
+  if (resourceDef.fixedVolumeByDayOfWeek && (resourceDef.fixedVolumeByDayOfWeek as any)[d.getDay()] != null) {
+    amount = (resourceDef.fixedVolumeByDayOfWeek as any)[d.getDay()];
+  } else if (resourceDef.fixedGlobalVolume != null) {
+    amount = resourceDef.fixedGlobalVolume;
+  }
+  
+  const minutes = Math.round(amount * (resourceDef.minutesPerItem || 2));
+  return { amount, minutes };
+}
 
 interface StudyCalendarProps {
   plan: StudyPlan;
@@ -86,7 +146,7 @@ export function StudyCalendar({ plan, resources, studyLogs, daysOff, onAddLog }:
     }
   });
 
-  const handleToggleCheck = (task: any) => {
+  const handleToggleCheck = (task: any, volToday: { amount: number, minutes: number }) => {
     // If it's not done for today, we add a log.
     // If it is done, we could theoretically delete the log, but onAddLog is provided. Let's just allow checking for now, or assume it's checked if a log exists.
     const isDone = studyLogs.some(log => log.date === selectedDateStr && log.resourceId === task.resourceId);
@@ -96,9 +156,9 @@ export function StudyCalendar({ plan, resources, studyLogs, daysOff, onAddLog }:
         resourceId: task.resourceId,
         resourceName: task.resourceName,
         resourceType: task.resourceType,
-        amount: task.dailyAmount || 1, // fallback to 1 if no dailyAmount
+        amount: volToday.amount || 1, // fallback to 1 if no dailyAmount
         unit: task.unit,
-        minutesSpent: task.dailyMinutes || 0,
+        minutesSpent: volToday.minutes || 0,
       });
     }
   };
@@ -145,13 +205,46 @@ export function StudyCalendar({ plan, resources, studyLogs, daysOff, onAddLog }:
                 .filter(log => log.resourceId === task.resourceId && log.date <= selectedDateStr)
                 .reduce((acc, log) => acc + (log.amount || 0), 0);
               
-              let progressText = "";
+              // 1. Calculate Today's Volume for this specific date
+              const volToday = resourceDef ? getProjectedDailyVolume(task, resourceDef, selectedDate, plan, daysOff, resources) : { amount: task.dailyAmount, minutes: task.dailyMinutes };
+              
+              // 2. Calculate Projected Progress until this date
+              let projectedTotal = resourceDef?.completed || 0;
+              const todayDate = startOfDay(new Date());
+              const selDay = startOfDay(selectedDate);
+              
+              if (selDay > todayDate && resourceDef) {
+                let cur = addDays(todayDate, 1);
+                while (cur <= selDay) {
+                  const v = getProjectedDailyVolume(task, resourceDef, cur, plan, daysOff, resources);
+                  projectedTotal += v.amount;
+                  cur = addDays(cur, 1);
+                }
+              } else if (selDay < todayDate) {
+                // In the past, the projected goal is just what was actually completed
+                projectedTotal = completedUntilDay; 
+              }
+
+              if (resourceDef && resourceDef.total > 0) {
+                projectedTotal = Math.min(resourceDef.total, projectedTotal);
+              }
+
               let progressPercent = 0;
+              let projectedPercent = 0;
+              let progressText = "";
               
               if (resourceDef && resourceDef.total > 0) {
-                const remaining = Math.max(0, resourceDef.total - completedUntilDay);
                 progressPercent = Math.min(100, Math.round((completedUntilDay / resourceDef.total) * 100));
-                progressText = `${completedUntilDay} / ${resourceDef.total} ${task.unit} (${remaining} restantes)`;
+                projectedPercent = Math.min(100, Math.round((projectedTotal / resourceDef.total) * 100));
+                const remaining = Math.max(0, resourceDef.total - completedUntilDay);
+                
+                if (isSameDay(selDay, todayDate)) {
+                   progressText = `Progresso: ${completedUntilDay} / ${resourceDef.total} ${task.unit} (${remaining} restantes)`;
+                } else if (selDay > todayDate) {
+                   progressText = `Projetado: ${projectedTotal} | Atual: ${completedUntilDay} / ${resourceDef.total} ${task.unit}`;
+                } else {
+                   progressText = `Concluído: ${completedUntilDay} / ${resourceDef.total} ${task.unit}`;
+                }
               }
 
               return (
@@ -159,7 +252,7 @@ export function StudyCalendar({ plan, resources, studyLogs, daysOff, onAddLog }:
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <button 
-                        onClick={() => handleToggleCheck(task)}
+                        onClick={() => handleToggleCheck(task, volToday)}
                         className={`transition-colors ${isDone ? 'text-emerald-500' : 'text-gray-400 dark:text-gray-500 hover:text-blue-500'}`}
                       >
                         {isDone ? <CheckCircle2 className="w-6 h-6" /> : <Circle className="w-6 h-6" />}
@@ -169,7 +262,7 @@ export function StudyCalendar({ plan, resources, studyLogs, daysOff, onAddLog }:
                           {task.resourceName}
                         </div>
                         <div className="text-xs text-gray-500 dark:text-gray-400">
-                          {task.dailyAmount > 0 ? `${task.dailyAmount} ${task.unit} • ` : ''}{task.dailyMinutes} min
+                          {volToday.amount > 0 ? `${volToday.amount} ${task.unit} • ` : ''}{volToday.minutes} min
                         </div>
                       </div>
                     </div>
@@ -181,9 +274,16 @@ export function StudyCalendar({ plan, resources, studyLogs, daysOff, onAddLog }:
                         <span>{progressText}</span>
                         <span>{progressPercent}%</span>
                       </div>
-                      <div className="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                      <div className="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden relative">
+                        {selDay > todayDate && (
+                           <div 
+                             className="absolute top-0 left-0 h-full bg-blue-200 dark:bg-blue-900/50 transition-all duration-500"
+                             style={{ width: `${projectedPercent}%` }}
+                             title={`Projetado: ${projectedPercent}%`}
+                           />
+                        )}
                         <div 
-                          className="h-full bg-blue-500 dark:bg-blue-400 rounded-full transition-all duration-500"
+                          className="absolute top-0 left-0 h-full bg-blue-500 dark:bg-blue-400 rounded-full transition-all duration-500"
                           style={{ width: `${progressPercent}%` }}
                         />
                       </div>
