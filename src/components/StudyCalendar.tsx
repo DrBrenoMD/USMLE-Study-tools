@@ -10,7 +10,8 @@ function getProjectedDailyVolume(
   date: Date,
   plan: StudyPlan,
   daysOff: number[],
-  resources: Resource[]
+  resources: Resource[],
+  specificDaysOff: string[]
 ): { amount: number, minutes: number } {
   const d = startOfDay(date);
   const start = startOfDay(task.startDate);
@@ -18,7 +19,7 @@ function getProjectedDailyVolume(
 
   if (d < start || d > end) return { amount: 0, minutes: 0 };
 
-  if (task.frequency !== 'daily') {
+  if (task.frequency !== 'daily' && task.frequency !== 'custom_days') {
     const isScheduled = task.scheduledDates?.some(sd => isSameDay(sd, d));
     if (isScheduled) {
       return { 
@@ -29,12 +30,19 @@ function getProjectedDailyVolume(
     return { amount: 0, minutes: 0 };
   }
 
-  // It's daily
-  if (daysOff.includes(d.getDay())) return { amount: 0, minutes: 0 };
+  // It's daily or custom_days
+  const dateStr = format(d, 'yyyy-MM-dd');
+  if (daysOff.includes(d.getDay()) || specificDaysOff.includes(dateStr)) return { amount: 0, minutes: 0 };
+  
+  if (task.frequency === 'custom_days') {
+    if (resourceDef?.customDaysOfWeek && !resourceDef.customDaysOfWeek.includes(d.getDay())) {
+      return { amount: 0, minutes: 0 };
+    }
+  }
 
   // Check exclusivity
   const hasExclusive = plan.resourcesSchedule.some(other => {
-    if (other.frequency !== 'daily' && other.scheduledDates) {
+    if (other.frequency !== 'daily' && other.frequency !== 'custom_days' && other.scheduledDates) {
        const otherDef = resources.find(r => r.id === other.resourceId);
        const isExclusive = otherDef?.exclusiveStudyDay ?? (other.resourceType === 'nbme');
        if (isExclusive && other.scheduledDates.some(sd => isSameDay(sd, d))) {
@@ -118,8 +126,8 @@ export function StudyCalendar({ plan, resources, studyLogs, daysOff, specificDay
         >
           <span>{formattedDate}</span>
           <div className="flex flex-wrap justify-center gap-0.5 mt-1">
-            {isExam && <div className="w-1.5 h-1.5 rounded-full bg-red-500" title="Dia da Prova" />}
-            {isBufferStart && <div className="w-1.5 h-1.5 rounded-full bg-amber-500" title="Início da Margem de Segurança" />}
+            {isExam && <div className="w-1.5 h-1.5 rounded-full bg-yellow-500" title="Dia da Prova" />}
+            {isBufferStart && <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" title="Início da Margem de Segurança" />}
             {isSimulado && <div className="w-1.5 h-1.5 rounded-full bg-purple-500" title="Simulado/NBME" />}
             {customMark && <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: customMark.color }} title={customMark.label || 'Marcador Personalizado'} />}
           </div>
@@ -144,11 +152,18 @@ export function StudyCalendar({ plan, resources, studyLogs, daysOff, specificDay
 
     if (selDay < start || selDay > end) return false;
 
-    if (task.frequency === 'daily') {
-      if (daysOff.includes(selectedDate.getDay())) return false;
+    if (task.frequency === 'daily' || task.frequency === 'custom_days') {
+      if (daysOff.includes(selectedDate.getDay()) || specificDaysOff.includes(selectedDateStr)) return false;
+      
+      if (task.frequency === 'custom_days') {
+        const resourceDef = resources.find(r => r.id === task.resourceId);
+        if (resourceDef?.customDaysOfWeek && !resourceDef.customDaysOfWeek.includes(selectedDate.getDay())) {
+          return false;
+        }
+      }
       
       const hasExclusive = plan.resourcesSchedule.some(other => {
-        if (other.frequency !== 'daily' && other.scheduledDates) {
+        if (other.frequency !== 'daily' && other.frequency !== 'custom_days' && other.scheduledDates) {
            const resourceDef = resources.find(r => r.id === other.resourceId);
            const isExclusive = resourceDef?.exclusiveStudyDay ?? (other.resourceType === 'nbme');
            if (isExclusive && other.scheduledDates.some(d => isSameDay(d, selDay))) {
@@ -202,10 +217,10 @@ export function StudyCalendar({ plan, resources, studyLogs, daysOff, specificDay
       {/* Legend */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-4 text-xs text-gray-500 dark:text-gray-400 font-medium">
         <div className="flex items-center gap-1.5">
-          <div className="w-2 h-2 rounded-full bg-red-500" /> Prova
+          <div className="w-2 h-2 rounded-full bg-yellow-500" /> Prova
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-2 h-2 rounded-full bg-amber-500" /> Início Segurança
+          <div className="w-2 h-2 rounded-full bg-emerald-500" /> Início Segurança
         </div>
         <div className="flex items-center gap-1.5">
           <div className="w-2 h-2 rounded-full bg-purple-500" /> Simulado/Exame
@@ -241,7 +256,7 @@ export function StudyCalendar({ plan, resources, studyLogs, daysOff, specificDay
                 .reduce((acc, log) => acc + (log.amount || 0), 0);
               
               // 1. Calculate Today's Volume for this specific date
-              const volToday = resourceDef ? getProjectedDailyVolume(task, resourceDef, selectedDate, plan, daysOff, resources) : { amount: task.dailyAmount, minutes: task.dailyMinutes };
+              const volToday = resourceDef ? getProjectedDailyVolume(task, resourceDef, selectedDate, plan, daysOff, resources, specificDaysOff) : { amount: task.dailyAmount, minutes: task.dailyMinutes };
               
               // 2. Calculate Projected Progress until this date
               let projectedTotal = resourceDef?.completed || 0;
@@ -251,7 +266,7 @@ export function StudyCalendar({ plan, resources, studyLogs, daysOff, specificDay
               if (selDay > todayDate && resourceDef) {
                 let cur = addDays(todayDate, 1);
                 while (cur <= selDay) {
-                  const v = getProjectedDailyVolume(task, resourceDef, cur, plan, daysOff, resources);
+                  const v = getProjectedDailyVolume(task, resourceDef, cur, plan, daysOff, resources, specificDaysOff);
                   projectedTotal += v.amount;
                   cur = addDays(cur, 1);
                 }

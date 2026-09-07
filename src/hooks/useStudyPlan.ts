@@ -17,26 +17,6 @@ import {
   FrequencyType
 } from '../types';
 
-const generatePeriodicDates = (startDate: Date, frequency: FrequencyType, sessions: number, preferredDow?: number): Date[] => {
-  let dates: Date[] = [];
-  if (sessions <= 0) return dates;
-  let cur = startOfDay(startDate);
-  const targetDow = preferredDow ?? 6; // default 6 = Sábado
-  while (cur.getDay() !== targetDow) {
-    cur = addDays(cur, 1);
-  }
-  let step = 7;
-  if (frequency === 'biweekly') step = 14;
-  else if (frequency === 'monthly') step = 28;
-  else if (frequency === 'sporadic') step = 21; // roughly spread
-  
-  for (let i = 0; i < sessions; i++) {
-    dates.push(new Date(cur));
-    cur = addDays(cur, step);
-  }
-  return dates;
-};
-
 export function useStudyPlan(
   resources: Resource[],
   examDateStr: string,
@@ -75,8 +55,55 @@ export function useStudyPlan(
       return daysOff.includes(date.getDay()) || specificDaysOff.includes(dateStr);
     };
 
+    // Gera datas periódicas respeitando os dias de folga
+    const generatePeriodicDates = (startDate: Date, frequency: FrequencyType, sessions: number, preferredDow?: number): Date[] => {
+      let dates: Date[] = [];
+      if (sessions <= 0) return dates;
+      
+      let step = 7;
+      if (frequency === 'biweekly') step = 14;
+      else if (frequency === 'monthly') step = 28;
+      else if (frequency === 'sporadic') step = 21; 
+
+      // Define target day, default is 6 (Saturday), but if Saturday is a day off, find a valid day
+      let targetDow = preferredDow ?? 6;
+      let fallbackDow = targetDow;
+      
+      // If the preferred/target day is generally an off day (e.g. they selected Saturday but Saturday is in daysOff)
+      // we need to find another day in the week that isn't. Let's step backwards.
+      if (daysOff.includes(targetDow)) {
+        for (let i = 1; i <= 6; i++) {
+          let check = (targetDow - i + 7) % 7;
+          if (!daysOff.includes(check)) {
+            fallbackDow = check;
+            break;
+          }
+        }
+      }
+
+      let cur = startOfDay(startDate);
+      // Advance to the nearest day matching fallbackDow
+      while (cur.getDay() !== fallbackDow) {
+        cur = addDays(cur, 1);
+      }
+      
+      for (let i = 0; i < sessions; i++) {
+        // Before pushing, ensure this specific date is not a specific off day.
+        // If it is, shift backward by 1 day until valid.
+        let actualDate = new Date(cur);
+        let safeCounter = 0;
+        while (isDayOff(actualDate) && safeCounter < 7) {
+          actualDate = subDays(actualDate, 1);
+          safeCounter++;
+        }
+        dates.push(actualDate);
+        cur = addDays(cur, step);
+      }
+      return dates;
+    };
+
     // Conta quantos dias de estudo (não-folga) existem no intervalo [startDate, endDate]
-    const countStudyDays = (startDate: Date, endDate: Date): number => {
+    const countStudyDays = (startDate: Date, endDate: Date, customDaysOfWeek?: number[]): number => {
       if (isBefore(endDate, startDate)) return 0;
       let count = 0;
       let cur = startOfDay(startDate);
@@ -84,7 +111,9 @@ export function useStudyPlan(
 
       while (cur <= end) {
         if (!isDayOff(cur)) {
-          count++;
+          if (!customDaysOfWeek || customDaysOfWeek.length === 0 || customDaysOfWeek.includes(cur.getDay())) {
+            count++;
+          }
         }
         cur = addDays(cur, 1);
       }
@@ -92,14 +121,16 @@ export function useStudyPlan(
     };
 
     // Encontra a data após N dias de estudo a partir de startDate
-    const findDateAfterStudyDays = (startDate: Date, neededStudyDays: number): Date => {
+    const findDateAfterStudyDays = (startDate: Date, neededStudyDays: number, customDaysOfWeek?: number[]): Date => {
       if (neededStudyDays <= 0) return startDate;
       let cur = startOfDay(startDate);
       let foundDays = 0;
 
       while (foundDays < neededStudyDays) {
         if (!isDayOff(cur)) {
-          foundDays++;
+          if (!customDaysOfWeek || customDaysOfWeek.length === 0 || customDaysOfWeek.includes(cur.getDay())) {
+            foundDays++;
+          }
         }
         if (foundDays >= neededStudyDays) {
           break;
@@ -355,17 +386,19 @@ export function useStudyPlan(
           return calc;
         }
 
+        const customDays = r.frequency === 'custom_days' ? (r.customDaysOfWeek || []) : undefined;
+
         // Caso 3: Tempo Fixo Reservado (Anki / Flashcards)
         if (r.allocationMode === 'fixed_time') {
           const dailyMinutes = Math.max(0, r.fixedDailyMinutes || 45);
-          const daysFromStart = countStudyDays(startDate, targetFinishDate);
+          const daysFromStart = countStudyDays(startDate, targetFinishDate, customDays);
           
           const calc: ResourceScheduleCalculation = {
             resourceId: r.id,
             resourceName: r.name || 'Sem nome',
             resourceType: r.type,
             allocationMode: 'fixed_time',
-            frequency: 'daily',
+            frequency: r.frequency,
             dependsOnId: r.dependsOnId,
             dependsOnName: waitingForName,
             startDate,
@@ -389,7 +422,7 @@ export function useStudyPlan(
         }
 
         // Caso 4: Material por Quantidade (QBanks, Livros, Vídeos)
-        const totalStudyDaysFromStart = Math.max(1, countStudyDays(startDate, targetFinishDate));
+        const totalStudyDaysFromStart = Math.max(1, countStudyDays(startDate, targetFinishDate, customDays));
         const effectiveStudyDaysFromStart = Math.max(1, Math.round(
           totalStudyDaysFromStart * (effectiveDailyStudyDays / Math.max(1, totalStudyDays))
         ));
@@ -400,17 +433,18 @@ export function useStudyPlan(
 
         let allocatedEffectiveDays = effectiveStudyDaysFromStart;
         let endDate = targetFinishDate;
+
         if (children.length > 0 && downstreamWork > 0 && selfWork > 0) {
           const fraction = Math.min(1, Math.max(0.05, selfWork / downstreamWork));
           allocatedEffectiveDays = Math.max(1, Math.round(effectiveStudyDaysFromStart * fraction));
           const rawStudyDays = Math.max(1, Math.round(totalStudyDaysFromStart * fraction));
-          endDate = findDateAfterStudyDays(startDate, rawStudyDays);
+          endDate = findDateAfterStudyDays(startDate, rawStudyDays, customDays);
         }
 
         if (r.targetEndDate) {
             const customEnd = startOfDay(new Date(r.targetEndDate));
             endDate = customEnd;
-            allocatedEffectiveDays = Math.max(1, countStudyDays(startDate, endDate));
+            allocatedEffectiveDays = Math.max(1, countStudyDays(startDate, endDate, customDays));
         }
 
         let amountPerDay = 0;
@@ -575,7 +609,7 @@ export function useStudyPlan(
       const dailyTasks: DailySchedule[] = [];
 
       resourcesSchedule.forEach(item => {
-        if (item.frequency === 'daily') {
+        if (item.frequency === 'daily' || item.frequency === 'custom_days') {
           if (item.isCompleted) {
             dailyTasks.push({
               resourceId: item.resourceId,
@@ -946,7 +980,7 @@ export function useStudyPlan(
       const dailyTasks: DailySchedule[] = [];
 
       resourcesSchedule.forEach(item => {
-        if (item.frequency === 'daily') {
+        if (item.frequency === 'daily' || item.frequency === 'custom_days') {
           if (item.isCompleted) {
             dailyTasks.push({
               resourceId: item.resourceId,

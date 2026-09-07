@@ -31,7 +31,7 @@ export const getCategoryIcon = (type: ResourceType): LucideIcon => {
 
 export type AllocationMode = 'item_target' | 'fixed_time'; // por quantidade vs tempo reservado por dia
 
-export type FrequencyType = 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'sporadic';
+export type FrequencyType = 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'sporadic' | 'custom_days';
 
 export interface ResourceCategoryMeta {
   type: ResourceType;
@@ -130,8 +130,9 @@ export interface Resource {
   allocationMode: AllocationMode; // 'item_target' ou 'fixed_time'
   fixedDailyMinutes: number; // Minutos reservados por dia (ex: 60 min Anki)
   
-  frequency: FrequencyType; // 'daily', 'weekly', 'biweekly', 'monthly', 'sporadic'
+  frequency: FrequencyType; // 'daily', 'weekly', 'biweekly', 'monthly', 'sporadic', 'custom_days'
   preferredDayOfWeek?: number; // 0..6 para semanais (ex: 6 = Sábado para simulados)
+  customDaysOfWeek?: number[]; // [1,3,5] para seg, qua, sex (usado com frequency='custom_days')
   fixedGlobalVolume?: number | null; // Volume fixo para todos os dias
   fixedVolumeByDayOfWeek?: Record<number, number | null>; // {0: 20, 1: null, ...} 0=Dom
   

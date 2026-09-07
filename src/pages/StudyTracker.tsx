@@ -937,7 +937,36 @@ export default function StudyTracker() {
                                   <option value="biweekly">Quinzenal</option>
                                   <option value="monthly">Mensal</option>
                                   <option value="sporadic">Esporádico</option>
+                                  <option value="custom_days">Dias Específicos da Semana</option>
                                 </select>
+                                
+                                {resource.frequency === 'custom_days' && (
+                                  <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 flex gap-1">
+                                    {DAYS_OF_WEEK.map(day => {
+                                      const isSelected = (resource.customDaysOfWeek || []).includes(day.id);
+                                      return (
+                                        <button
+                                          key={day.id}
+                                          type="button"
+                                          onClick={() => {
+                                            const current = resource.customDaysOfWeek || [];
+                                            const next = isSelected 
+                                              ? current.filter(d => d !== day.id)
+                                              : [...current, day.id];
+                                            updateResource(resource.id, { customDaysOfWeek: next });
+                                          }}
+                                          className={`flex-1 text-[9px] font-bold py-1 rounded transition-colors ${
+                                            isSelected
+                                              ? 'bg-blue-500 text-white'
+                                              : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                                          }`}
+                                        >
+                                          {day.short}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                )}
                               </div>
 
                               {/* 3. Modo de Medição */}
