@@ -120,6 +120,16 @@ export default function StudyTracker() {
     return saved ? JSON.parse(saved) : [0]; // Domingo como folga padrão
   });
 
+  const [specificDaysOff, setSpecificDaysOff] = useState<string[]>(() => {
+    const saved = localStorage.getItem('usmle_specificDaysOff_v4');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [customDateMarks, setCustomDateMarks] = useState<Record<string, { color: string, label?: string }>>(() => {
+    const saved = localStorage.getItem('usmle_customDateMarks_v4');
+    return saved ? JSON.parse(saved) : {};
+  });
+
   const [expandedSettingsId, setExpandedSettingsId] = useState<string | null>(null);
   const [activeLogDateStr, setActiveLogDateStr] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
 
@@ -165,11 +175,13 @@ export default function StudyTracker() {
     localStorage.setItem('usmle_examDate_v4', examDateStr);
     localStorage.setItem('usmle_bufferDays_v4', String(bufferDays));
     localStorage.setItem('usmle_daysOff_v4', JSON.stringify(daysOff));
+    localStorage.setItem('usmle_specificDaysOff_v4', JSON.stringify(specificDaysOff));
+    localStorage.setItem('usmle_customDateMarks_v4', JSON.stringify(customDateMarks));
     localStorage.setItem('usmle_resources_v4', JSON.stringify(resources));
     localStorage.setItem('usmle_study_logs_v4', JSON.stringify(studyLogs));
-  }, [mode, examDateStr, bufferDays, daysOff, resources, studyLogs]);
+  }, [mode, examDateStr, bufferDays, daysOff, specificDaysOff, customDateMarks, resources, studyLogs]);
 
-  const plan = useStudyPlan(resources, examDateStr, daysOff, mode, bufferDays);
+  const plan = useStudyPlan(resources, examDateStr, daysOff, mode, bufferDays, specificDaysOff);
 
   const toggleDayOff = (dayId: number) => {
     setDaysOff(prev => 
@@ -1359,6 +1371,10 @@ export default function StudyTracker() {
                   resources={resources}
                   studyLogs={studyLogs}
                   daysOff={daysOff}
+                  specificDaysOff={specificDaysOff}
+                  setSpecificDaysOff={setSpecificDaysOff}
+                  customDateMarks={customDateMarks}
+                  setCustomDateMarks={setCustomDateMarks}
                   onAddLog={handleAddLog}
                 />
               </>

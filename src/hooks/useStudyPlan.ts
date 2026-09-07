@@ -42,7 +42,8 @@ export function useStudyPlan(
   examDateStr: string,
   daysOff: number[], // 0 = Domingo, 1 = Segunda, ..., 6 = Sábado
   mode: StudyMode = 'by_date',
-  bufferDays: number = 14
+  bufferDays: number = 14,
+  specificDaysOff: string[] = [] // Array of 'yyyy-MM-dd' dates
 ): StudyPlan {
   return useMemo(() => {
     const today = startOfDay(new Date());
@@ -69,7 +70,10 @@ export function useStudyPlan(
       return { ...invalidPlan, message: "Adicione ao menos um material de estudo para gerar o cronograma." };
     }
 
-    const isDayOff = (date: Date) => daysOff.includes(date.getDay());
+    const isDayOff = (date: Date) => {
+      const dateStr = format(date, 'yyyy-MM-dd');
+      return daysOff.includes(date.getDay()) || specificDaysOff.includes(dateStr);
+    };
 
     // Conta quantos dias de estudo (não-folga) existem no intervalo [startDate, endDate]
     const countStudyDays = (startDate: Date, endDate: Date): number => {

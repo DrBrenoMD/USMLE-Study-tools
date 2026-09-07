@@ -69,10 +69,14 @@ interface StudyCalendarProps {
   resources: Resource[];
   studyLogs: StudyLogEntry[];
   daysOff: number[];
+  specificDaysOff: string[];
+  setSpecificDaysOff: React.Dispatch<React.SetStateAction<string[]>>;
+  customDateMarks: Record<string, { color: string, label?: string }>;
+  setCustomDateMarks: React.Dispatch<React.SetStateAction<Record<string, { color: string, label?: string }>>>;
   onAddLog: (log: Omit<StudyLogEntry, 'id' | 'createdAt'>) => void;
 }
 
-export function StudyCalendar({ plan, resources, studyLogs, daysOff, onAddLog }: StudyCalendarProps) {
+export function StudyCalendar({ plan, resources, studyLogs, daysOff, specificDaysOff, setSpecificDaysOff, customDateMarks, setCustomDateMarks, onAddLog }: StudyCalendarProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
 
@@ -91,19 +95,34 @@ export function StudyCalendar({ plan, resources, studyLogs, daysOff, onAddLog }:
     for (let i = 0; i < 7; i++) {
       formattedDate = format(day, dateFormat);
       const cloneDay = day;
+      const dateStr = format(cloneDay, 'yyyy-MM-dd');
       const isSelected = isSameDay(day, selectedDate);
       const isCurrentMonth = isSameMonth(day, monthStart);
       const isToday = isSameDay(day, new Date());
       
+      const isExam = plan.examDate ? isSameDay(cloneDay, plan.examDate) : false;
+      const isBufferStart = plan.estimatedEndDate ? isSameDay(cloneDay, plan.estimatedEndDate) : false;
+      const isSimulado = plan.resourcesSchedule.some(t => 
+        t.frequency !== 'daily' && (t.resourceType === 'nbme' || t.resourceName.toLowerCase().includes('simulado')) && t.scheduledDates?.some(sd => isSameDay(sd, cloneDay))
+      );
+      const customMark = customDateMarks[dateStr];
+      const isDayOff = specificDaysOff.includes(dateStr) || daysOff.includes(cloneDay.getDay());
+
       days.push(
         <div
           key={day.toString()}
           onClick={() => setSelectedDate(cloneDay)}
-          className={`p-2 border border-gray-100 dark:border-gray-800 flex items-center justify-center cursor-pointer transition-colors ${
-            !isCurrentMonth ? 'text-gray-300' : isSelected ? 'bg-blue-600 dark:bg-blue-500 text-white font-bold rounded-lg shadow-sm' : isToday ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-bold' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:bg-gray-800/50'
+          className={`p-2 min-h-[50px] border border-gray-100 dark:border-gray-800 flex flex-col items-center justify-start cursor-pointer transition-colors relative ${
+            !isCurrentMonth ? 'text-gray-300 dark:text-gray-600' : isSelected ? 'bg-blue-600 dark:bg-blue-500 text-white font-bold rounded-lg shadow-sm' : isToday ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-bold' : isDayOff ? 'bg-gray-100 dark:bg-gray-800/30 text-gray-400 dark:text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-800/50' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50'
           }`}
         >
           <span>{formattedDate}</span>
+          <div className="flex flex-wrap justify-center gap-0.5 mt-1">
+            {isExam && <div className="w-1.5 h-1.5 rounded-full bg-red-500" title="Dia da Prova" />}
+            {isBufferStart && <div className="w-1.5 h-1.5 rounded-full bg-amber-500" title="Início da Margem de Segurança" />}
+            {isSimulado && <div className="w-1.5 h-1.5 rounded-full bg-purple-500" title="Simulado/NBME" />}
+            {customMark && <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: customMark.color }} title={customMark.label || 'Marcador Personalizado'} />}
+          </div>
         </div>
       );
       day = addDays(day, 1);
@@ -180,6 +199,22 @@ export function StudyCalendar({ plan, resources, studyLogs, daysOff, onAddLog }:
         </div>
       </div>
       
+      {/* Legend */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-4 text-xs text-gray-500 dark:text-gray-400 font-medium">
+        <div className="flex items-center gap-1.5">
+          <div className="w-2 h-2 rounded-full bg-red-500" /> Prova
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-2 h-2 rounded-full bg-amber-500" /> Início Segurança
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-2 h-2 rounded-full bg-purple-500" /> Simulado/Exame
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-2 h-2 rounded-full bg-gray-400" /> Folga
+        </div>
+      </div>
+
       <div className="mb-6">
         <div className="grid grid-cols-7 gap-1 mb-2">
           {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(d => (
@@ -298,6 +333,77 @@ export function StudyCalendar({ plan, resources, studyLogs, daysOff, onAddLog }:
             Nenhuma atividade programada para este dia.
           </div>
         )}
+
+        {/* Date Customization */}
+        <div className="mt-6 pt-4 border-t border-gray-100 dark:border-gray-800">
+          <h4 className="text-xs font-bold text-gray-500 dark:text-gray-400 mb-3 uppercase tracking-wider">
+            Personalizar este dia
+          </h4>
+          
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={() => {
+                setSpecificDaysOff(prev => 
+                  prev.includes(selectedDateStr)
+                    ? prev.filter(d => d !== selectedDateStr)
+                    : [...prev, selectedDateStr]
+                );
+              }}
+              className={`flex items-center gap-2 p-2 rounded-lg border text-sm font-medium transition-colors ${
+                specificDaysOff.includes(selectedDateStr)
+                  ? 'bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300'
+                  : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+              }`}
+            >
+              <div className={`w-4 h-4 rounded flex items-center justify-center border ${specificDaysOff.includes(selectedDateStr) ? 'bg-gray-600 border-gray-600' : 'border-gray-400'}`}>
+                {specificDaysOff.includes(selectedDateStr) && <CheckCircle2 className="w-3 h-3 text-white" />}
+              </div>
+              Marcar como Folga Específica (Pausar estudos)
+            </button>
+
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">Marcador de Cor:</span>
+              {['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899'].map(color => (
+                <button
+                  key={color}
+                  onClick={() => {
+                    setCustomDateMarks(prev => {
+                      const newMarks = { ...prev };
+                      if (newMarks[selectedDateStr]?.color === color) {
+                        delete newMarks[selectedDateStr]; // Remove if clicked same color
+                      } else {
+                        newMarks[selectedDateStr] = { color, label: 'Marcador Personalizado' };
+                      }
+                      return newMarks;
+                    });
+                  }}
+                  className={`w-6 h-6 rounded-full flex items-center justify-center transition-transform hover:scale-110 ${
+                    customDateMarks[selectedDateStr]?.color === color ? 'ring-2 ring-offset-2 ring-gray-400 dark:ring-gray-500 scale-110' : ''
+                  }`}
+                  style={{ backgroundColor: color }}
+                  title="Adicionar/Remover marcador"
+                >
+                  {customDateMarks[selectedDateStr]?.color === color && <CheckCircle2 className="w-4 h-4 text-white opacity-80" />}
+                </button>
+              ))}
+              {customDateMarks[selectedDateStr] && (
+                <button 
+                  onClick={() => {
+                    setCustomDateMarks(prev => {
+                      const newMarks = { ...prev };
+                      delete newMarks[selectedDateStr];
+                      return newMarks;
+                    });
+                  }}
+                  className="ml-auto text-xs text-red-500 hover:text-red-600 font-medium"
+                >
+                  Remover
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
   );
