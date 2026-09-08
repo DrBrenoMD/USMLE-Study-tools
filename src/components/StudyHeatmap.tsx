@@ -111,6 +111,15 @@ export function StudyHeatmap({ logs, resources, onAddLog, onDeleteLog, onSelectD
     const endDate = endOfWeek(today, { weekStartsOn: 1 }); // Domingo como fim de semana
     const startDate = startOfWeek(subDays(endDate, (weeksToShow * 7) - 1), { weekStartsOn: 1 });
 
+    let maxItems = 0;
+    logsByDate.forEach((dayLogs) => {
+      const filteredDayLogs = filterResourceId === 'all' 
+        ? dayLogs 
+        : dayLogs.filter(l => l.resourceId === filterResourceId);
+      const items = filteredDayLogs.reduce((acc, l) => acc + (l.amount || 0), 0);
+      if (items > maxItems) maxItems = items;
+    });
+
     const weeks: { days: { date: Date; dateStr: string; minutes: number; items: number; logs: StudyLogEntry[]; intensity: 0 | 1 | 2 | 3 | 4 }[] }[] = [];
     let currentDay = startDate;
 
@@ -133,11 +142,14 @@ export function StudyHeatmap({ logs, resources, onAddLog, onDeleteLog, onSelectD
         const items = filteredDayLogs.reduce((acc, l) => acc + (l.amount || 0), 0);
 
         let intensity: 0 | 1 | 2 | 3 | 4 = 0;
-        if (minutes > 0) {
-          if (minutes < 60) intensity = 1;
-          else if (minutes < 150) intensity = 2;
-          else if (minutes < 240) intensity = 3;
-          else intensity = 4;
+        if (items > 0 && maxItems > 0) {
+          const ratio = items / maxItems;
+          if (ratio <= 0.25) intensity = 4;
+          else if (ratio <= 0.5) intensity = 3;
+          else if (ratio <= 0.75) intensity = 2;
+          else intensity = 1;
+        } else if (minutes > 0) {
+          intensity = 4;
         }
 
         weekDays.push({
@@ -304,6 +316,18 @@ export function StudyHeatmap({ logs, resources, onAddLog, onDeleteLog, onSelectD
                 const isSelected = day.dateStr === selectedDateStr;
                 const isToday = isSameDay(day.date, new Date());
 
+                const qbankLogs = day.logs.filter(log => log.resourceType === 'qbank' || log.unit === 'questões');
+                const totalQuestions = qbankLogs.reduce((acc, log) => acc + (log.amount || 0), 0);
+                const totalAmountScored = qbankLogs.filter(l => l.scorePercent !== undefined).reduce((acc, log) => acc + (log.amount || 0), 0);
+                const totalScoreWeighted = qbankLogs.filter(l => l.scorePercent !== undefined).reduce((acc, log) => acc + ((log.scorePercent || 0) * (log.amount || 0)), 0);
+                const avgScore = totalAmountScored > 0 ? Math.round(totalScoreWeighted / totalAmountScored) : 0;
+
+                let tooltipText = `${format(day.date, "EEEE, dd 'de' MMMM", { locale: ptBR })}`;
+                if (day.minutes > 0) tooltipText += `\n${day.minutes} min estudados`;
+                if (totalQuestions > 0) tooltipText += `\n${totalQuestions} questões`;
+                if (totalAmountScored > 0) tooltipText += ` (${avgScore}% acertos)`;
+                if (day.logs.length > 0 && totalQuestions === 0 && day.minutes === 0) tooltipText += `\n${day.logs.length} registro(s)`;
+
                 return (
                   <button
                     key={day.dateStr}
@@ -312,7 +336,7 @@ export function StudyHeatmap({ logs, resources, onAddLog, onDeleteLog, onSelectD
                       setSelectedDateStr(day.dateStr);
                       if (onSelectDateForLog) onSelectDateForLog(day.dateStr);
                     }}
-                    title={`${format(day.date, "EEEE, dd 'de' MMMM", { locale: ptBR })}: ${day.minutes} min estudados (${day.logs.length} registro(s))`}
+                    title={tooltipText}
                     className={cn(
                       "w-3.5 h-3.5 rounded-xs border transition-all relative group cursor-pointer",
                       getIntensityColor(day.intensity),
@@ -332,10 +356,10 @@ export function StudyHeatmap({ logs, resources, onAddLog, onDeleteLog, onSelectD
           <div className="flex items-center gap-1.5">
             <span>Menos</span>
             <div className="w-3 h-3 rounded-xs bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700"></div>
-            <div className="w-3 h-3 rounded-xs bg-emerald-200 border border-emerald-300"></div>
-            <div className="w-3 h-3 rounded-xs bg-emerald-400 border border-emerald-500"></div>
-            <div className="w-3 h-3 rounded-xs bg-emerald-600 border border-emerald-700"></div>
             <div className="w-3 h-3 rounded-xs bg-emerald-800 border border-emerald-900"></div>
+            <div className="w-3 h-3 rounded-xs bg-emerald-600 border border-emerald-700"></div>
+            <div className="w-3 h-3 rounded-xs bg-emerald-400 border border-emerald-500"></div>
+            <div className="w-3 h-3 rounded-xs bg-emerald-200 border border-emerald-300"></div>
             <span>Mais</span>
           </div>
         </div>

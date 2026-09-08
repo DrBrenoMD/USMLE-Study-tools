@@ -98,7 +98,7 @@ export function QuestionPacer({ className }: { className?: string }) {
 
   useEffect(() => {
     if (showSummary) {
-      setEditableAmount(totalQuestionsDone);
+      setEditableAmount(totalQuestionsDone + 1);
       const saved = localStorage.getItem('usmle_resources_v4');
       if (saved) {
         const res = JSON.parse(saved);

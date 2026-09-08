@@ -34,6 +34,19 @@ export function TopBarTimer() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const lastTickRef = useRef<number>(Date.now());
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setShowSettings(false);
+        setShowPacer(false);
+        setShowAddButtons(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const todayStr = format(startOfDay(new Date()), 'yyyy-MM-dd');
   const todayNetSeconds = dailyNetTime[todayStr] || 0;
@@ -228,7 +241,7 @@ export function TopBarTimer() {
   };
 
   return (
-    <div className="flex items-center gap-2 relative">
+    <div ref={containerRef} className="flex items-center gap-2 relative">
       {/* Settings Popover */}
       {showSettings && (
         <div className="absolute top-full right-0 mt-2 bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-4 w-64 z-50">

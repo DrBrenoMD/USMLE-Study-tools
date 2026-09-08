@@ -48,6 +48,7 @@ import { StudyHeatmap } from "../components/StudyHeatmap";
 import { DailyLogSection } from "../components/DailyLogSection";
 import { StudyTimeline } from "../components/StudyTimeline";
 import { StudyCalendar } from "../components/StudyCalendar";
+import { ScoreChart } from "../components/ScoreChart";
 
 const DAYS_OF_WEEK = [
   { id: 0, name: 'Dom', short: 'D' },
@@ -1457,6 +1458,8 @@ export default function StudyTracker() {
               onDeleteLog={handleDeleteLog}
               onSelectDateForLog={setActiveLogDateStr}
             />
+
+            <ScoreChart logs={studyLogs} />
 
           </div>
         )}
