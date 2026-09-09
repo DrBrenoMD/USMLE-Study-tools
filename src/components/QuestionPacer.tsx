@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Play, Square, FastForward, Clock, Activity, TrendingUp, TrendingDown, Volume2, VolumeX, Settings2, Pause, Save, X } from 'lucide-react';
+import { Play, Square, FastForward, Clock, Activity, TrendingUp, TrendingDown, Volume2, VolumeX, Settings2, Pause, Save, X, BookOpen, Coffee } from 'lucide-react';
 import { useTimerStore } from '../store/useTimerStore';
 
 export function QuestionPacer({ className }: { className?: string }) {
@@ -20,7 +20,20 @@ export function QuestionPacer({ className }: { className?: string }) {
     addNetTime,
     setTimerState,
     phase,
-    timerState
+    timerState,
+    timeLeft,
+    isAdaptiveMode,
+    adaptiveCurrentCycle,
+    adaptiveCyclesTotal,
+    adaptiveStudyTimeTotal,
+    adaptiveRestTimeTotal,
+    adaptiveRestTimeElapsed,
+    takeUnscheduledRest,
+    transitionAdaptivePhase,
+    setPhase,
+    studyDuration,
+    restDuration,
+    setTimeLeft
   } = useTimerStore();
 
   const setTotalQuestions = (v: number) => setPacerState({ pacerTotalQuestions: v });
@@ -80,6 +93,10 @@ export function QuestionPacer({ className }: { className?: string }) {
     }
     setIsActive(true);
     setTimerState('running');
+    
+    if (pacerMode === 'sessoes') {
+       useTimerStore.getState().startAdaptiveSession(adaptiveStudyMin, adaptiveRestMin, adaptiveCycles);
+    }
   };
 
   const handlePause = () => {
@@ -95,6 +112,12 @@ export function QuestionPacer({ className }: { className?: string }) {
   const [correctPercent, setCorrectPercent] = useState<string>('');
   const [editableAmount, setEditableAmount] = useState<number>(totalQuestionsDone);
   const [availableResources, setAvailableResources] = useState<any[]>([]);
+
+  // Adaptive Session Config State
+  const [pacerMode, setPacerMode] = useState<'tradicional' | 'adaptativo' | 'sessoes'>('tradicional');
+  const [adaptiveStudyMin, setAdaptiveStudyMin] = useState(50);
+  const [adaptiveRestMin, setAdaptiveRestMin] = useState(10);
+  const [adaptiveCycles, setAdaptiveCycles] = useState(4);
 
   useEffect(() => {
     if (showSummary) {
@@ -288,24 +311,66 @@ export function QuestionPacer({ className }: { className?: string }) {
             <div className="flex flex-col gap-3">
               <label className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
                 <Settings2 className="w-4 h-4" />
-                Modo do Pacer
+                Modo de Sessão
               </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <button
-                  onClick={() => setIsAdaptive(false)}
-                  className={`p-3 rounded-xl border text-left transition-all ${!isAdaptive ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 ring-1 ring-blue-500' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:border-gray-600'}`}
+                  onClick={() => { setPacerMode('tradicional'); setIsAdaptive(false); }}
+                  className={`p-3 rounded-xl border text-left transition-all ${pacerMode === 'tradicional' ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 ring-1 ring-blue-500' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:border-gray-600'}`}
                 >
-                  <div className={`text-sm font-bold ${!isAdaptive ? 'text-blue-900' : 'text-gray-900 dark:text-gray-100'}`}>Tradicional</div>
-                  <div className={`text-[10px] mt-1 ${!isAdaptive ? 'text-blue-700 dark:text-blue-300' : 'text-gray-500 dark:text-gray-400'}`}>Alarme soa sempre no tempo alvo ({targetTimeSeconds}s).</div>
+                  <div className={`text-sm font-bold ${pacerMode === 'tradicional' ? 'text-blue-900' : 'text-gray-900 dark:text-gray-100'}`}>Pacer Tradicional</div>
+                  <div className={`text-[10px] mt-1 ${pacerMode === 'tradicional' ? 'text-blue-700 dark:text-blue-300' : 'text-gray-500 dark:text-gray-400'}`}>Alarme soa sempre no tempo alvo ({targetTimeSeconds}s).</div>
                 </button>
                 <button
-                  onClick={() => setIsAdaptive(true)}
-                  className={`p-3 rounded-xl border text-left transition-all ${isAdaptive ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 ring-1 ring-blue-500' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:border-gray-600'}`}
+                  onClick={() => { setPacerMode('adaptativo'); setIsAdaptive(true); }}
+                  className={`p-3 rounded-xl border text-left transition-all ${pacerMode === 'adaptativo' ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 ring-1 ring-blue-500' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:border-gray-600'}`}
                 >
-                  <div className={`text-sm font-bold ${isAdaptive ? 'text-blue-900' : 'text-gray-900 dark:text-gray-100'}`}>Adaptativo</div>
-                  <div className={`text-[10px] mt-1 ${isAdaptive ? 'text-blue-700 dark:text-blue-300' : 'text-gray-500 dark:text-gray-400'}`}>Encurta o tempo do alarme automaticamente se você atrasar.</div>
+                  <div className={`text-sm font-bold ${pacerMode === 'adaptativo' ? 'text-blue-900' : 'text-gray-900 dark:text-gray-100'}`}>Pacer Adaptativo</div>
+                  <div className={`text-[10px] mt-1 ${pacerMode === 'adaptativo' ? 'text-blue-700 dark:text-blue-300' : 'text-gray-500 dark:text-gray-400'}`}>Encurta o tempo do alarme automaticamente se você atrasar.</div>
+                </button>
+                <button
+                  onClick={() => { setPacerMode('sessoes'); }}
+                  className={`p-3 rounded-xl border text-left transition-all ${pacerMode === 'sessoes' ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 ring-1 ring-blue-500' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:border-gray-600'}`}
+                >
+                  <div className={`text-sm font-bold ${pacerMode === 'sessoes' ? 'text-blue-900' : 'text-gray-900 dark:text-gray-100'}`}>Sessões Adaptativas</div>
+                  <div className={`text-[10px] mt-1 ${pacerMode === 'sessoes' ? 'text-blue-700 dark:text-blue-300' : 'text-gray-500 dark:text-gray-400'}`}>Ciclos Pomodoro dinâmicos que ajustam tempos automaticamente.</div>
                 </button>
               </div>
+              
+              {pacerMode === 'sessoes' && (
+                <div className="mt-3 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-100 dark:border-gray-800 animate-in fade-in slide-in-from-top-2">
+                  <h4 className="text-sm font-bold text-gray-900 dark:text-gray-100 mb-3">Configuração de Ciclos (Pomodoro)</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">Tempo de Estudo (min)</label>
+                      <input 
+                        type="number" 
+                        value={adaptiveStudyMin}
+                        onChange={(e) => setAdaptiveStudyMin(Math.max(1, parseInt(e.target.value) || 1))}
+                        className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-bold text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">Tempo de Descanso (min)</label>
+                      <input 
+                        type="number" 
+                        value={adaptiveRestMin}
+                        onChange={(e) => setAdaptiveRestMin(Math.max(1, parseInt(e.target.value) || 1))}
+                        className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-bold text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">Quantidade de Ciclos</label>
+                      <input 
+                        type="number" 
+                        value={adaptiveCycles}
+                        onChange={(e) => setAdaptiveCycles(Math.max(1, parseInt(e.target.value) || 1))}
+                        className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-bold text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <button 
@@ -333,29 +398,104 @@ export function QuestionPacer({ className }: { className?: string }) {
               <div className="w-px h-8 bg-gray-200 dark:bg-gray-700 hidden sm:block"></div>
               <div className="flex flex-col text-right hidden sm:flex">
                 <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase">Tempo Restante Estimado</span>
-                <span className={`text-sm font-bold ${totalTargetTime - globalElapsedTime < 0 ? 'text-red-600' : 'text-gray-900 dark:text-gray-100'}`}>
-                  {formatTime(totalTargetTime - globalElapsedTime)}
+                <span className={`text-sm font-bold ${averagePace * (totalQuestions - totalQuestionsDone) > (totalTargetTime - globalElapsedTime) ? 'text-rose-600' : 'text-emerald-600'}`}>
+                  {formatTime(averagePace * (totalQuestions - totalQuestionsDone))} <span className="text-gray-400 font-medium text-xs">(Fim: {new Date(Date.now() + (averagePace * (totalQuestions - totalQuestionsDone)) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})</span>
                 </span>
               </div>
             </div>
 
+            {/* Timer Global / Adaptativo */}
+            <div className={`rounded-xl p-4 border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${phase === 'study' ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200' : 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200'}`}>
+              <div className="flex items-center gap-4">
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center ${phase === 'study' ? 'bg-blue-100 dark:bg-blue-800 text-blue-600 dark:text-blue-300' : 'bg-emerald-100 dark:bg-emerald-800 text-emerald-600 dark:text-emerald-300'}`}>
+                  {phase === 'study' ? <BookOpen className="w-6 h-6" /> : <Coffee className="w-6 h-6" />}
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
+                    {isAdaptiveMode ? (
+                      <>
+                        <Activity className="w-3.5 h-3.5" /> Ciclo {adaptiveCurrentCycle} de {adaptiveCyclesTotal}
+                      </>
+                    ) : (
+                      phase === 'study' ? 'Sessão de Estudo' : 'Sessão de Descanso'
+                    )}
+                  </div>
+                  <div className={`text-3xl font-black tabular-nums tracking-tighter ${phase === 'study' ? 'text-blue-700 dark:text-blue-300' : 'text-emerald-700 dark:text-emerald-300'}`}>
+                    {formatTime(timeLeft)}
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex flex-col items-end gap-2 text-right">
+                {isAdaptiveMode && (
+                  <div className="flex flex-col items-end mb-1">
+                    <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+                      Modo Adaptativo ({(adaptiveStudyTimeTotal / 60 / adaptiveCyclesTotal).toFixed(0)}m / {(adaptiveRestTimeTotal / 60 / adaptiveCyclesTotal).toFixed(0)}m)
+                    </span>
+                    <span className="text-xs font-bold text-gray-700 dark:text-gray-300">
+                      Descanso Restante: {formatTime(Math.max(0, adaptiveRestTimeTotal - adaptiveRestTimeElapsed))}
+                    </span>
+                  </div>
+                )}
+                
+                <div className="flex items-center gap-2">
+                  {isAdaptiveMode && phase === 'study' && (
+                    <button 
+                      onClick={() => takeUnscheduledRest()}
+                      className="px-3 py-2 text-xs font-bold bg-amber-100 text-amber-700 hover:bg-amber-200 rounded-lg transition-colors flex items-center gap-1.5"
+                      title="Pausa não programada (desconta do tempo de descanso total)"
+                    >
+                      <Coffee className="w-3.5 h-3.5" /> Pausa Extra
+                    </button>
+                  )}
+                  
+                  {timerState === 'waiting_transition' ? (
+                    <button 
+                      onClick={() => {
+                        if (isAdaptiveMode) transitionAdaptivePhase();
+                        else {
+                          setPhase(phase === 'study' ? 'rest' : 'study');
+                          setTimeLeft(phase === 'study' ? restDuration : studyDuration);
+                          setTimerState('running');
+                        }
+                      }}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold flex items-center gap-2 transition-colors shadow-sm animate-pulse"
+                    >
+                      <FastForward className="w-4 h-4" /> Avançar Fase
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setTimerState(timerState === 'running' ? 'paused' : 'running')}
+                      className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-colors ${timerState === 'running' ? 'bg-white dark:bg-gray-800 text-amber-600 border border-amber-200 hover:bg-amber-50' : 'bg-gray-900 dark:bg-gray-50 text-white dark:text-gray-900 hover:bg-black dark:hover:bg-white'}`}
+                    >
+                      {timerState === 'running' ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                      {timerState === 'running' ? 'Pausar Timer' : 'Iniciar Timer'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Tempo Atual */}
+              {/* Tempo Atual Pacer (Caixa Separada) */}
               <div className={`md:col-span-1 bg-white dark:bg-gray-900 rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm flex flex-col items-center justify-center text-center relative overflow-hidden ${phase === 'rest' ? 'opacity-80 bg-blue-50 dark:bg-blue-900/10' : ''}`}>
+                <div className="absolute top-0 inset-x-0 bg-blue-100 text-blue-800 text-[10px] font-bold uppercase py-1 border-b border-blue-200 flex items-center justify-center gap-1">
+                  <Activity className="w-3 h-3" /> Pacer 
+                </div>
                 {phase === 'rest' ? (
-                  <div className="absolute top-0 inset-x-0 bg-blue-500 text-white text-[9px] font-bold uppercase py-0.5">
+                  <div className="absolute top-6 inset-x-0 bg-blue-500 text-white text-[9px] font-bold uppercase py-0.5">
                     Modo de Descanso Ativo
                   </div>
                 ) : timerState === 'paused' || timerState === 'idle' ? (
-                  <div className="absolute top-0 inset-x-0 bg-gray-500 text-white text-[9px] font-bold uppercase py-0.5">
+                  <div className="absolute top-6 inset-x-0 bg-gray-500 text-white text-[9px] font-bold uppercase py-0.5">
                     Pausado
                   </div>
                 ) : isAdaptive && effectiveTarget < targetTimeSeconds && (
-                  <div className="absolute top-0 inset-x-0 bg-amber-500 text-white text-[9px] font-bold uppercase py-0.5">
+                  <div className="absolute top-6 inset-x-0 bg-amber-500 text-white text-[9px] font-bold uppercase py-0.5">
                     Alarme Antecipado Ativo
                   </div>
                 )}
-                <div className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2 mt-2">
+                <div className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2 mt-6">
                   Questão Atual
                 </div>
                 <div className={`text-5xl font-black tracking-tight ${currentQuestionTime >= effectiveTarget && phase === 'study' && (timerState === 'running' || timerState === 'waiting_transition') ? 'text-red-500' : 'text-gray-900 dark:text-gray-100'}`}>

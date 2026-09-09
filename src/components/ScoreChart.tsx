@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { format, parseISO, isAfter, subDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { StudyLogEntry } from '../types';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { ComposedChart, Area, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { Filter } from 'lucide-react';
 
 interface ScoreChartProps {
@@ -41,7 +41,18 @@ export function ScoreChart({ logs }: ScoreChartProps) {
         };
       });
 
-    return data;
+    // Calculate a 3-day moving average for the trendline
+    const dataWithTrend = data.map((d, i, arr) => {
+      const start = Math.max(0, i - 2);
+      const subset = arr.slice(start, i + 1);
+      const trendScore = subset.reduce((sum, item) => sum + item.score, 0) / subset.length;
+      return {
+        ...d,
+        trend: Math.round(trendScore)
+      };
+    });
+
+    return dataWithTrend;
   }, [logs, daysToShow]);
 
   if (chartData.length === 0) {
@@ -49,7 +60,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
       <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 shadow-sm mt-6 flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <h2 className="text-xs font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1">
-            Evolução de Acertos
+            Desempenho Tridimensional
           </h2>
           <div className="flex items-center gap-2">
             <Filter className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
@@ -80,10 +91,10 @@ export function ScoreChart({ logs }: ScoreChartProps) {
       <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
         <div>
           <h2 className="text-xs font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-            Evolução de Acertos
+            Desempenho Tridimensional
           </h2>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-            Porcentagem de acertos ao longo do tempo
+            Volume de questões, Acertos (%) e Linha de Tendência
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -104,18 +115,12 @@ export function ScoreChart({ logs }: ScoreChartProps) {
         </div>
       </div>
 
-      <div className="h-64 w-full">
+      <div className="h-72 w-full">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart
+          <ComposedChart
             data={chartData}
             margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
           >
-            <defs>
-              <linearGradient id="colorScore" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-              </linearGradient>
-            </defs>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" className="dark:stroke-gray-800" />
             <XAxis 
               dataKey="dateFormatted" 
@@ -124,28 +129,73 @@ export function ScoreChart({ logs }: ScoreChartProps) {
               tick={{ fontSize: 10, fill: '#9ca3af' }} 
               dy={10}
             />
+            
+            {/* Eixo Esquerdo: Porcentagens (0 a 100%) */}
             <YAxis 
+              yAxisId="left"
               domain={[0, 100]} 
               axisLine={false} 
               tickLine={false} 
               tick={{ fontSize: 10, fill: '#9ca3af' }}
               tickFormatter={(val) => `${val}%`}
             />
+
+            {/* Eixo Direito: Volume de Questões */}
+            <YAxis 
+              yAxisId="right"
+              orientation="right"
+              axisLine={false} 
+              tickLine={false} 
+              tick={{ fontSize: 10, fill: '#9ca3af' }}
+              tickFormatter={(val) => `${val}q`}
+            />
+
             <Tooltip 
               contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontSize: '12px' }}
-              formatter={(value: number) => [`${value}% acertos`, 'Desempenho']}
               labelFormatter={(label) => `Data: ${label}`}
+              formatter={(value: number, name: string) => {
+                if (name === 'Acertos (%)') return [`${value}%`, name];
+                if (name === 'Tendência (%)') return [`${value}%`, name];
+                if (name === 'Volume (Questões)') return [`${value} questões`, name];
+                return [value, name];
+              }}
             />
+            
+            <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+
+            {/* Volume (Área Fundo) */}
             <Area 
+              yAxisId="right"
               type="monotone" 
-              dataKey="score" 
-              stroke="#3b82f6" 
-              strokeWidth={3}
-              fillOpacity={1} 
-              fill="url(#colorScore)" 
-              activeDot={{ r: 6, fill: '#2563eb', stroke: '#fff', strokeWidth: 2 }}
+              dataKey="questions" 
+              name="Volume (Questões)"
+              fill="#93c5fd" 
+              stroke="#60a5fa" 
+              fillOpacity={0.3} 
             />
-          </AreaChart>
+
+            {/* Acertos (Barras) */}
+            <Bar 
+              yAxisId="left"
+              dataKey="score" 
+              name="Acertos (%)"
+              barSize={24} 
+              fill="#3b82f6" 
+              radius={[4, 4, 0, 0]}
+            />
+
+            {/* Tendência (Linha) */}
+            <Line 
+              yAxisId="left"
+              type="monotone" 
+              dataKey="trend" 
+              name="Tendência (%)"
+              stroke="#f59e0b" 
+              strokeWidth={3}
+              dot={false}
+              activeDot={{ r: 6 }}
+            />
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
     </div>

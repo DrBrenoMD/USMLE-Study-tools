@@ -25,6 +25,16 @@ interface TimerStore {
   pacerSoundEnabled: boolean;
   pacerShowSummary: boolean;
 
+  // Adaptive Session State
+  isAdaptiveMode: boolean;
+  adaptiveCyclesTotal: number;
+  adaptiveCurrentCycle: number;
+  adaptiveStudyTimeTotal: number;
+  adaptiveRestTimeTotal: number;
+  adaptiveStudyTimeElapsed: number;
+  adaptiveRestTimeElapsed: number;
+  unscheduledRestStoredTimeLeft: number;
+
   // Actions
   setTimerState: (state: TimerState) => void;
   setPhase: (phase: TimerPhase) => void;
@@ -34,6 +44,13 @@ interface TimerStore {
   
   addNetTime: (seconds: number) => void;
   resetTodayNetTime: () => void;
+
+  // Adaptive Actions
+  startAdaptiveSession: (studyMin: number, restMin: number, cycles: number) => void;
+  stopAdaptiveSession: () => void;
+  tickAdaptive: (deltaSecs: number) => void;
+  transitionAdaptivePhase: () => void;
+  takeUnscheduledRest: () => void;
 
   // Pacer Actions
   setPacerState: (updates: Partial<TimerStore>) => void;
@@ -63,6 +80,15 @@ export const useTimerStore = create<TimerStore>()(
       pacerSoundEnabled: true,
       pacerShowSummary: false,
       
+      isAdaptiveMode: false,
+      adaptiveCyclesTotal: 0,
+      adaptiveCurrentCycle: 1,
+      adaptiveStudyTimeTotal: 0,
+      adaptiveRestTimeTotal: 0,
+      adaptiveStudyTimeElapsed: 0,
+      adaptiveRestTimeElapsed: 0,
+      unscheduledRestStoredTimeLeft: 0,
+
       setTimerState: (state) => set({ timerState: state }),
       setPhase: (phase) => set({ phase }),
       setTimeLeft: (time) => set((state) => ({ 
@@ -86,6 +112,99 @@ export const useTimerStore = create<TimerStore>()(
         const newDaily = { ...state.dailyNetTime };
         delete newDaily[todayStr];
         return { dailyNetTime: newDaily };
+      }),
+
+      startAdaptiveSession: (studyMin, restMin, cycles) => set({
+        isAdaptiveMode: true,
+        adaptiveCyclesTotal: cycles,
+        adaptiveCurrentCycle: 1,
+        adaptiveStudyTimeTotal: studyMin * cycles * 60,
+        adaptiveRestTimeTotal: restMin * cycles * 60,
+        adaptiveStudyTimeElapsed: 0,
+        adaptiveRestTimeElapsed: 0,
+        unscheduledRestStoredTimeLeft: 0,
+        phase: 'study',
+        timerState: 'idle',
+        timeLeft: studyMin * 60
+      }),
+
+      stopAdaptiveSession: () => set((state) => ({
+        isAdaptiveMode: false,
+        timerState: 'idle',
+        phase: 'study',
+        timeLeft: state.studyDuration,
+        unscheduledRestStoredTimeLeft: 0
+      })),
+
+      tickAdaptive: (deltaSecs) => set((state) => {
+        if (!state.isAdaptiveMode) return state;
+        const updates: Partial<TimerStore> = {};
+        if (state.phase === 'study') {
+          updates.adaptiveStudyTimeElapsed = state.adaptiveStudyTimeElapsed + deltaSecs;
+        } else {
+          updates.adaptiveRestTimeElapsed = state.adaptiveRestTimeElapsed + deltaSecs;
+        }
+        return updates;
+      }),
+
+      transitionAdaptivePhase: () => set((state) => {
+        if (!state.isAdaptiveMode) return state;
+        
+        // Return from unscheduled rest
+        if (state.unscheduledRestStoredTimeLeft > 0) {
+          return {
+            phase: 'study',
+            timeLeft: state.unscheduledRestStoredTimeLeft,
+            unscheduledRestStoredTimeLeft: 0,
+            timerState: 'running'
+          };
+        }
+
+        if (state.phase === 'study') {
+          // Study -> Rest
+          const remainingRestTime = Math.max(0, state.adaptiveRestTimeTotal - state.adaptiveRestTimeElapsed);
+          const remainingRestCycles = state.adaptiveCyclesTotal - state.adaptiveCurrentCycle + 1;
+          const nextTimeLeft = remainingRestCycles > 0 ? Math.floor(remainingRestTime / remainingRestCycles) : 0;
+          return {
+            phase: 'rest',
+            timeLeft: nextTimeLeft,
+            timerState: 'running'
+          };
+        } else {
+          // Rest -> Study
+          const nextCycle = state.adaptiveCurrentCycle + 1;
+          if (nextCycle > state.adaptiveCyclesTotal) {
+            // Done with all cycles
+            return {
+              isAdaptiveMode: false,
+              timerState: 'idle',
+              phase: 'study',
+              timeLeft: state.studyDuration,
+              unscheduledRestStoredTimeLeft: 0
+            };
+          }
+          
+          const remainingStudyTime = Math.max(0, state.adaptiveStudyTimeTotal - state.adaptiveStudyTimeElapsed);
+          const remainingStudyCycles = state.adaptiveCyclesTotal - nextCycle + 1;
+          const nextTimeLeft = remainingStudyCycles > 0 ? Math.floor(remainingStudyTime / remainingStudyCycles) : 0;
+          return {
+            phase: 'study',
+            adaptiveCurrentCycle: nextCycle,
+            timeLeft: nextTimeLeft,
+            timerState: 'running'
+          };
+        }
+      }),
+
+      takeUnscheduledRest: () => set((state) => {
+        if (!state.isAdaptiveMode || state.phase === 'rest') return state;
+        const remainingRestTime = Math.max(0, state.adaptiveRestTimeTotal - state.adaptiveRestTimeElapsed);
+        return {
+          unscheduledRestStoredTimeLeft: state.timeLeft,
+          phase: 'rest',
+          timeLeft: remainingRestTime,
+          timerState: 'running'
+        };
       }),
 
       setPacerState: (updates) => set((state) => ({ ...state, ...updates })),

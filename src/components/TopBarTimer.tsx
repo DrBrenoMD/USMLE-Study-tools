@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useTimerStore } from '../store/useTimerStore';
-import { Play, Pause, Square, Coffee, BookOpen, Settings2, RotateCcw, Activity, FastForward } from 'lucide-react';
+import { Play, Pause, Square, Coffee, BookOpen, Settings2, RotateCcw, Activity, FastForward, BedDouble } from 'lucide-react';
 import { format, startOfDay } from 'date-fns';
 import { QuestionPacer } from './QuestionPacer';
 
@@ -143,8 +143,15 @@ export function TopBarTimer() {
               if (state.phase === 'study') {
                   state.addNetTime(deltaSecs);
               }
+              
+              if (state.isAdaptiveMode) {
+                  state.tickAdaptive(deltaSecs);
+              }
             } else if (state.timerState === 'waiting_transition') {
                state.setTimeLeft((prev) => prev - deltaSecs);
+               if (state.isAdaptiveMode) {
+                  state.tickAdaptive(deltaSecs);
+               }
             }
 
             // 2. Pacer Logic
@@ -195,25 +202,40 @@ export function TopBarTimer() {
   };
 
   const handleStop = () => {
-    setTimerState('idle');
-    setPhase('study');
-    setTimeLeft(studyDuration);
+    const store = useTimerStore.getState();
+    if (store.isAdaptiveMode) {
+      store.stopAdaptiveSession();
+    } else {
+      setTimerState('idle');
+      setPhase('study');
+      setTimeLeft(studyDuration);
+    }
     if (pacerIsActive) {
       setPacerState({ pacerIsActive: false });
     }
   };
 
   const handleTransition = () => {
-    const nextPhase = phase === 'study' ? 'rest' : 'study';
-    setPhase(nextPhase);
-    setTimeLeft(nextPhase === 'study' ? studyDuration : restDuration);
-    setTimerState('running');
+    const store = useTimerStore.getState();
+    if (store.isAdaptiveMode) {
+      store.transitionAdaptivePhase();
+    } else {
+      const nextPhase = phase === 'study' ? 'rest' : 'study';
+      setPhase(nextPhase);
+      setTimeLeft(nextPhase === 'study' ? studyDuration : restDuration);
+      setTimerState('running');
+    }
   };
 
   const handleSkipRest = () => {
-    setPhase('study');
-    setTimeLeft(studyDuration);
-    setTimerState('running');
+    const store = useTimerStore.getState();
+    if (store.isAdaptiveMode) {
+      store.transitionAdaptivePhase();
+    } else {
+      setPhase('study');
+      setTimeLeft(studyDuration);
+      setTimerState('running');
+    }
   };
 
   const extendTime = (minutes: number) => {
@@ -366,17 +388,6 @@ export function TopBarTimer() {
         </div>
 
         <div className="relative flex items-center gap-1 ml-1">
-          {/* Pacer Inline Stats */}
-          {pacerIsActive && (
-            <div className="hidden xl:flex items-center gap-2 bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-200 px-2 py-1.5 rounded-md text-xs font-bold font-mono">
-              <div className="flex items-center gap-1"><Activity className="w-3.5 h-3.5" /></div>
-              <div>Q: {pacerCompletedQuestionsTime.length + 1}/{pacerTotalQuestions}</div>
-              <div className={pacerCurrentQuestionTime >= pacerTargetTimeSeconds ? 'text-red-600' : ''}>
-                {formatTimeStr(pacerCurrentQuestionTime)}
-              </div>
-            </div>
-          )}
-
           <button 
             onClick={() => { setShowPacer(!showPacer); setShowSettings(false); }}
             className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md transition-colors ${pacerIsActive ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:bg-blue-900/30'}`}
