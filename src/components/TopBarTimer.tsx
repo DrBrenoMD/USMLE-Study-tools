@@ -130,10 +130,10 @@ export function TopBarTimer() {
             const state = useTimerStore.getState();
             
             // 1. Timer Logic
-            if (state.timerState === 'running') {
+            if (state.timerState === 'running' || state.timerState === 'waiting_transition') {
               state.setTimeLeft((prev) => {
                   const next = prev - deltaSecs;
-                  if (prev > 0 && next <= 0) {
+                  if (prev > 0 && next <= 0 && state.timerState === 'running') {
                       playAlarm();
                       state.setTimerState('waiting_transition');
                   }
@@ -143,15 +143,10 @@ export function TopBarTimer() {
               if (state.phase === 'study') {
                   state.addNetTime(deltaSecs);
               }
-              
-              if (state.isAdaptiveMode) {
+
+              if (state.isAdaptiveMode && state.tickAdaptive) {
                   state.tickAdaptive(deltaSecs);
               }
-            } else if (state.timerState === 'waiting_transition') {
-               state.setTimeLeft((prev) => prev - deltaSecs);
-               if (state.isAdaptiveMode) {
-                  state.tickAdaptive(deltaSecs);
-               }
             }
 
             // 2. Pacer Logic
@@ -189,11 +184,11 @@ export function TopBarTimer() {
       if (!audioContextRef.current) {
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
       }
-      setTimerState('running');
+      setTimerState(timeLeft <= 0 ? 'waiting_transition' : 'running');
       if (pacerTotalQuestions > 0 && pacerCompletedQuestionsTime.length < pacerTotalQuestions) {
         setPacerState({ pacerIsActive: true });
       }
-    } else if (timerState === 'running') {
+    } else if (timerState === 'running' || timerState === 'waiting_transition') {
       setTimerState('paused');
       if (pacerIsActive) {
         setPacerState({ pacerIsActive: false });
@@ -216,26 +211,11 @@ export function TopBarTimer() {
   };
 
   const handleTransition = () => {
-    const store = useTimerStore.getState();
-    if (store.isAdaptiveMode) {
-      store.transitionAdaptivePhase();
-    } else {
-      const nextPhase = phase === 'study' ? 'rest' : 'study';
-      setPhase(nextPhase);
-      setTimeLeft(nextPhase === 'study' ? studyDuration : restDuration);
-      setTimerState('running');
-    }
+    useTimerStore.getState().transitionPhase();
   };
 
   const handleSkipRest = () => {
-    const store = useTimerStore.getState();
-    if (store.isAdaptiveMode) {
-      store.transitionAdaptivePhase();
-    } else {
-      setPhase('study');
-      setTimeLeft(studyDuration);
-      setTimerState('running');
-    }
+    useTimerStore.getState().transitionPhase();
   };
 
   const extendTime = (minutes: number) => {
@@ -274,6 +254,46 @@ export function TopBarTimer() {
             setShowAddButtons(false);
           }}
         />
+      )}
+
+      {/* Session Ended Actions Popover */}
+      {timeLeft <= 0 && timerState !== 'idle' && (
+        <div className="absolute top-full right-0 mt-2 bg-white dark:bg-gray-900 rounded-xl shadow-2xl border border-red-200 dark:border-red-900/50 p-4 w-[340px] z-50 animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-2 mb-3">
+             <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+             <h3 className="font-bold text-sm text-red-600 dark:text-red-400">
+               Tempo de {phase === 'study' ? 'Estudo' : 'Descanso'} Encerrado
+             </h3>
+          </div>
+          
+          <div className="flex flex-col gap-2">
+            {phase === 'study' ? (
+              <>
+                <button onClick={handleTransition} className="w-full text-left px-3 py-2 text-sm font-bold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200 rounded-lg transition-colors">
+                  Iniciar descanso
+                </button>
+                <button onClick={() => { handleTransition(); setTimeout(handleTransition, 10); }} className="w-full text-left px-3 py-2 text-sm font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-200 rounded-lg transition-colors">
+                  Seguir para próxima sessão de estudos (inicia novo ciclo)
+                </button>
+              </>
+            ) : (
+              <button onClick={handleTransition} className="w-full text-left px-3 py-2 text-sm font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-200 rounded-lg transition-colors">
+                {useTimerStore.getState().isUnscheduledRest ? 'Retornar ao estudo' : 'Iniciar novo ciclo'}
+              </button>
+            )}
+            
+            <div className="flex items-center gap-2 mt-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+              <span className="text-xs font-bold text-gray-500 mr-auto">Adicionar Tempo:</span>
+              <button onClick={() => extendTime(1)} className="px-2 py-1 text-xs font-bold bg-gray-100 dark:bg-gray-800 rounded hover:bg-gray-200">+1m</button>
+              <button onClick={() => extendTime(5)} className="px-2 py-1 text-xs font-bold bg-gray-100 dark:bg-gray-800 rounded hover:bg-gray-200">+5m</button>
+              <button onClick={() => extendTime(10)} className="px-2 py-1 text-xs font-bold bg-gray-100 dark:bg-gray-800 rounded hover:bg-gray-200">+10m</button>
+            </div>
+            
+            <button onClick={toggleTimer} className="w-full mt-1 px-3 py-2 text-sm font-bold bg-gray-900 dark:bg-gray-50 text-white dark:text-gray-900 hover:bg-black rounded-lg transition-colors text-center">
+               Pausar Timer
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Settings Popover */}
@@ -341,9 +361,9 @@ export function TopBarTimer() {
         <button 
           onClick={() => setShowAddButtons(!showAddButtons)}
           className={`flex items-center gap-2 px-3 py-1 rounded-md min-w-[130px] justify-between cursor-pointer transition-colors
-            ${timerState === 'waiting_transition' ? 'bg-red-100 text-red-700 animate-pulse hover:bg-red-200' : 
+            ${timeLeft <= 0 && timerState !== 'idle' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 animate-pulse hover:bg-red-200 dark:hover:bg-red-900/50' : 
               phase === 'study' ? (timerState === 'running' ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 hover:bg-blue-200' : 'bg-transparent text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:bg-gray-700') : 
-              (timerState === 'running' ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-transparent text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:bg-gray-700')}
+              (timerState === 'running' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-200' : 'bg-transparent text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:bg-gray-700')}
         `}>
           <div className="flex items-center gap-1.5">
             {phase === 'study' ? <BookOpen className="w-3.5 h-3.5" /> : <Coffee className="w-3.5 h-3.5" />}
@@ -355,7 +375,7 @@ export function TopBarTimer() {
 
         {/* Controls */}
         <div className={`flex items-center gap-1 ml-1 pr-1 border-r border-gray-200 dark:border-gray-700`}>
-          {timerState !== 'waiting_transition' && (
+          {timeLeft > 0 && (
             <button 
               onClick={toggleTimer}
               title={timerState === 'running' ? 'Pausar' : 'Iniciar'}
@@ -373,16 +393,6 @@ export function TopBarTimer() {
             {phase === 'study' ? <Coffee className="w-4 h-4" /> : <BookOpen className="w-4 h-4" />}
           </button>
           
-          {timerState === 'waiting_transition' && phase === 'study' && (
-             <button 
-                onClick={handleSkipRest}
-                title="Pular Descanso"
-                className="p-1.5 rounded-md bg-white dark:bg-gray-900 shadow-sm text-gray-700 dark:text-gray-300 hover:text-amber-600 transition-colors"
-             >
-                <FastForward className="w-4 h-4" />
-             </button>
-          )}
-
           <button 
             onClick={handleStop}
             disabled={timerState === 'idle'}

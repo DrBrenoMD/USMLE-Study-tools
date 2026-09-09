@@ -386,7 +386,7 @@ export function useStudyPlan(
           return calc;
         }
 
-        const customDays = r.frequency === 'custom_days' ? (r.customDaysOfWeek || []) : undefined;
+        const customDays = r.frequency === ('custom_days' as FrequencyType) ? (r.customDaysOfWeek || []) : undefined;
 
         // Caso 3: Tempo Fixo Reservado (Anki / Flashcards)
         if (r.allocationMode === 'fixed_time') {

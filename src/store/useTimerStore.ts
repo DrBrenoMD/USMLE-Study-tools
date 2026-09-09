@@ -33,6 +33,8 @@ interface TimerStore {
   adaptiveRestTimeTotal: number;
   adaptiveStudyTimeElapsed: number;
   adaptiveRestTimeElapsed: number;
+  adaptivePacerSessions: Array<{ time: number, questions: number }>;
+  isUnscheduledRest: boolean;
   unscheduledRestStoredTimeLeft: number;
 
   // Actions
@@ -48,14 +50,15 @@ interface TimerStore {
   // Adaptive Actions
   startAdaptiveSession: (studyMin: number, restMin: number, cycles: number) => void;
   stopAdaptiveSession: () => void;
-  tickAdaptive: (deltaSecs: number) => void;
-  transitionAdaptivePhase: () => void;
+  transitionPhase: () => void;
   takeUnscheduledRest: () => void;
+  tickAdaptive: (deltaSecs: number) => void;
 
   // Pacer Actions
   setPacerState: (updates: Partial<TimerStore>) => void;
   tickPacer: (deltaSecs: number) => void;
   nextPacerQuestion: () => void;
+  stashPacerSession: () => void;
   finishPacerSession: () => void;
   closePacerSummary: () => void;
   stopPacer: () => void;
@@ -87,6 +90,8 @@ export const useTimerStore = create<TimerStore>()(
       adaptiveRestTimeTotal: 0,
       adaptiveStudyTimeElapsed: 0,
       adaptiveRestTimeElapsed: 0,
+      adaptivePacerSessions: [],
+      isUnscheduledRest: false,
       unscheduledRestStoredTimeLeft: 0,
 
       setTimerState: (state) => set({ timerState: state }),
@@ -122,10 +127,16 @@ export const useTimerStore = create<TimerStore>()(
         adaptiveRestTimeTotal: restMin * cycles * 60,
         adaptiveStudyTimeElapsed: 0,
         adaptiveRestTimeElapsed: 0,
+        adaptivePacerSessions: [],
+        isUnscheduledRest: false,
         unscheduledRestStoredTimeLeft: 0,
         phase: 'study',
-        timerState: 'idle',
-        timeLeft: studyMin * 60
+        timerState: 'running',
+        timeLeft: studyMin * 60,
+        pacerCompletedQuestionsTime: [],
+        pacerCurrentQuestionTime: 0,
+        pacerIsActive: true,
+        pacerShowSummary: false
       }),
 
       stopAdaptiveSession: () => set((state) => ({
@@ -133,7 +144,10 @@ export const useTimerStore = create<TimerStore>()(
         timerState: 'idle',
         phase: 'study',
         timeLeft: state.studyDuration,
-        unscheduledRestStoredTimeLeft: 0
+        isUnscheduledRest: false,
+        unscheduledRestStoredTimeLeft: 0,
+        pacerIsActive: false,
+        adaptivePacerSessions: []
       })),
 
       tickAdaptive: (deltaSecs) => set((state) => {
@@ -147,66 +161,82 @@ export const useTimerStore = create<TimerStore>()(
         return updates;
       }),
 
-      transitionAdaptivePhase: () => set((state) => {
-        if (!state.isAdaptiveMode) return state;
-        
-        // Return from unscheduled rest
-        if (state.unscheduledRestStoredTimeLeft > 0) {
+      transitionPhase: () => set((state) => {
+        if (state.isUnscheduledRest) {
           return {
+            isUnscheduledRest: false,
             phase: 'study',
             timeLeft: state.unscheduledRestStoredTimeLeft,
-            unscheduledRestStoredTimeLeft: 0,
             timerState: 'running'
           };
         }
 
-        if (state.phase === 'study') {
-          // Study -> Rest
-          const remainingRestTime = Math.max(0, state.adaptiveRestTimeTotal - state.adaptiveRestTimeElapsed);
-          const remainingRestCycles = state.adaptiveCyclesTotal - state.adaptiveCurrentCycle + 1;
-          const nextTimeLeft = remainingRestCycles > 0 ? Math.floor(remainingRestTime / remainingRestCycles) : 0;
-          return {
-            phase: 'rest',
-            timeLeft: nextTimeLeft,
-            timerState: 'running'
-          };
-        } else {
-          // Rest -> Study
-          const nextCycle = state.adaptiveCurrentCycle + 1;
-          if (nextCycle > state.adaptiveCyclesTotal) {
-            // Done with all cycles
+        if (state.isAdaptiveMode) {
+          if (state.phase === 'study') {
+            const remainingRest = Math.max(0, state.adaptiveRestTimeTotal - state.adaptiveRestTimeElapsed);
+            const remainingCycles = state.adaptiveCyclesTotal - state.adaptiveCurrentCycle + 1;
+            const nextTimeLeft = remainingCycles > 0 ? Math.floor(remainingRest / remainingCycles) : 0;
             return {
-              isAdaptiveMode: false,
-              timerState: 'idle',
+              phase: 'rest',
+              timeLeft: nextTimeLeft,
+              timerState: 'running'
+            };
+          } else {
+            const nextCycle = state.adaptiveCurrentCycle + 1;
+            if (nextCycle > state.adaptiveCyclesTotal) {
+              return {
+                isAdaptiveMode: false,
+                timerState: 'idle',
+                phase: 'study',
+                timeLeft: state.studyDuration,
+                pacerIsActive: false,
+                pacerShowSummary: true
+              };
+            }
+            const nextTimeLeft = Math.floor(state.adaptiveStudyTimeTotal / state.adaptiveCyclesTotal);
+            return {
               phase: 'study',
-              timeLeft: state.studyDuration,
-              unscheduledRestStoredTimeLeft: 0
+              adaptiveCurrentCycle: nextCycle,
+              pacerCompletedQuestionsTime: [],
+              pacerCurrentQuestionTime: 0,
+              pacerIsActive: true,
+              pacerShowSummary: false,
+              timeLeft: nextTimeLeft,
+              timerState: 'running'
             };
           }
-          
-          const remainingStudyTime = Math.max(0, state.adaptiveStudyTimeTotal - state.adaptiveStudyTimeElapsed);
-          const remainingStudyCycles = state.adaptiveCyclesTotal - nextCycle + 1;
-          const nextTimeLeft = remainingStudyCycles > 0 ? Math.floor(remainingStudyTime / remainingStudyCycles) : 0;
+        } else {
+          const nextPhase = state.phase === 'study' ? 'rest' : 'study';
           return {
-            phase: 'study',
-            adaptiveCurrentCycle: nextCycle,
-            timeLeft: nextTimeLeft,
+            phase: nextPhase,
+            timeLeft: nextPhase === 'study' ? state.studyDuration : state.restDuration,
             timerState: 'running'
           };
         }
       }),
 
       takeUnscheduledRest: () => set((state) => {
-        if (!state.isAdaptiveMode || state.phase === 'rest') return state;
-        const remainingRestTime = Math.max(0, state.adaptiveRestTimeTotal - state.adaptiveRestTimeElapsed);
-        const remainingRestCycles = state.adaptiveCyclesTotal - state.adaptiveCurrentCycle + 1;
-        const nextTimeLeft = remainingRestCycles > 0 ? Math.floor(remainingRestTime / remainingRestCycles) : 0;
-        return {
-          unscheduledRestStoredTimeLeft: state.timeLeft,
-          phase: 'rest',
-          timeLeft: nextTimeLeft,
-          timerState: 'running'
-        };
+        if (state.phase === 'rest') return state;
+        if (state.isAdaptiveMode) {
+            const remainingRest = Math.max(0, state.adaptiveRestTimeTotal - state.adaptiveRestTimeElapsed);
+            const remainingCycles = state.adaptiveCyclesTotal - state.adaptiveCurrentCycle + 1;
+            const nextTimeLeft = remainingCycles > 0 ? Math.floor(remainingRest / remainingCycles) : 0;
+            return {
+              isUnscheduledRest: true,
+              unscheduledRestStoredTimeLeft: state.timeLeft,
+              phase: 'rest',
+              timeLeft: nextTimeLeft,
+              timerState: 'running'
+            };
+        } else {
+            return {
+              isUnscheduledRest: true,
+              unscheduledRestStoredTimeLeft: state.timeLeft,
+              phase: 'rest',
+              timeLeft: state.restDuration,
+              timerState: 'running'
+            };
+        }
       }),
 
       setPacerState: (updates) => set((state) => ({ ...state, ...updates })),
@@ -220,6 +250,16 @@ export const useTimerStore = create<TimerStore>()(
         pacerCurrentQuestionTime: 0
       })),
 
+      stashPacerSession: () => set((state) => {
+        const time = state.pacerCompletedQuestionsTime.reduce((a,b)=>a+b, 0) + state.pacerCurrentQuestionTime;
+        const qs = state.pacerCompletedQuestionsTime.length + 1;
+        return {
+          adaptivePacerSessions: [...state.adaptivePacerSessions, { time, questions: qs }],
+          pacerCompletedQuestionsTime: [],
+          pacerCurrentQuestionTime: 0
+        };
+      }),
+
       finishPacerSession: () => set({
         pacerIsActive: false,
         pacerShowSummary: true
@@ -228,14 +268,16 @@ export const useTimerStore = create<TimerStore>()(
       closePacerSummary: () => set({
         pacerShowSummary: false,
         pacerCurrentQuestionTime: 0,
-        pacerCompletedQuestionsTime: []
+        pacerCompletedQuestionsTime: [],
+        adaptivePacerSessions: []
       }),
 
       stopPacer: () => set({
         pacerIsActive: false,
         pacerShowSummary: false,
         pacerCurrentQuestionTime: 0,
-        pacerCompletedQuestionsTime: []
+        pacerCompletedQuestionsTime: [],
+        adaptivePacerSessions: []
       })
     }),
     {
