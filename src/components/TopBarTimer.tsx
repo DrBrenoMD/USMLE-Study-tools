@@ -264,6 +264,18 @@ export function TopBarTimer() {
 
   return (
     <div ref={containerRef} className="flex items-center gap-2 relative">
+      {/* Click-away backdrop */}
+      {(showSettings || showPacer || showAddButtons) && (
+        <div 
+          className="fixed inset-0 z-40"
+          onClick={() => {
+            setShowSettings(false);
+            setShowPacer(false);
+            setShowAddButtons(false);
+          }}
+        />
+      )}
+
       {/* Settings Popover */}
       {showSettings && (
         <div className="absolute top-full right-0 mt-2 bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-4 w-64 z-50">
@@ -398,7 +410,7 @@ export function TopBarTimer() {
 
           {/* Pacer Popover */}
           {showPacer && (
-            <div className="absolute top-full right-0 mt-3 z-50 w-[90vw] max-w-3xl">
+            <div className="absolute top-full right-0 mt-3 z-50 w-[75vw] max-w-5xl">
                <QuestionPacer className="shadow-2xl border-gray-200 dark:border-gray-700 m-0 w-full" />
             </div>
           )}

@@ -199,10 +199,12 @@ export const useTimerStore = create<TimerStore>()(
       takeUnscheduledRest: () => set((state) => {
         if (!state.isAdaptiveMode || state.phase === 'rest') return state;
         const remainingRestTime = Math.max(0, state.adaptiveRestTimeTotal - state.adaptiveRestTimeElapsed);
+        const remainingRestCycles = state.adaptiveCyclesTotal - state.adaptiveCurrentCycle + 1;
+        const nextTimeLeft = remainingRestCycles > 0 ? Math.floor(remainingRestTime / remainingRestCycles) : 0;
         return {
           unscheduledRestStoredTimeLeft: state.timeLeft,
           phase: 'rest',
-          timeLeft: remainingRestTime,
+          timeLeft: nextTimeLeft,
           timerState: 'running'
         };
       }),

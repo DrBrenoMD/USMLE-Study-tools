@@ -99,13 +99,20 @@ export function QuestionPacer({ className }: { className?: string }) {
     }
   };
 
-  const handlePause = () => {
-    setIsActive(false);
-    setTimerState('paused');
-  };
-
   const handleNext = () => {
-    nextPacerQuestion();
+    if (totalQuestionsDone + 1 >= totalQuestions) {
+      nextPacerQuestion();
+      finishPacerSession();
+      if (isAdaptiveMode) {
+         takeUnscheduledRest();
+      } else {
+         setPhase('rest');
+         setTimeLeft(restDuration);
+         setTimerState('running');
+      }
+    } else {
+      nextPacerQuestion();
+    }
   };
 
   const [selectedResource, setSelectedResource] = useState<string>('');
@@ -382,215 +389,193 @@ export function QuestionPacer({ className }: { className?: string }) {
             </button>
           </div>
         ) : (
-          <div className="flex flex-col gap-6">
+          <div className="flex flex-col">
             
-            {/* Header de Progresso Global */}
-            <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-100 dark:border-gray-800">
-              <div className="flex flex-col">
-                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase">Progresso</span>
-                <span className="text-sm font-bold text-gray-900 dark:text-gray-100">{totalQuestionsDone + 1} de {totalQuestions}</span>
-              </div>
-              <div className="w-px h-8 bg-gray-200 dark:bg-gray-700"></div>
-              <div className="flex flex-col text-center">
-                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase">Tempo de Prova</span>
-                <span className="text-sm font-bold text-gray-900 dark:text-gray-100">{formatTime(globalElapsedTime)} <span className="text-gray-400 dark:text-gray-500 font-medium">/ {formatTime(totalTargetTime)}</span></span>
-              </div>
-              <div className="w-px h-8 bg-gray-200 dark:bg-gray-700 hidden sm:block"></div>
-              <div className="flex flex-col text-right hidden sm:flex">
-                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase">Tempo Restante Estimado</span>
-                <span className={`text-sm font-bold ${averagePace * (totalQuestions - totalQuestionsDone) > (totalTargetTime - globalElapsedTime) ? 'text-rose-600' : 'text-emerald-600'}`}>
-                  {formatTime(averagePace * (totalQuestions - totalQuestionsDone))} <span className="text-gray-400 font-medium text-xs">(Fim: {new Date(Date.now() + (averagePace * (totalQuestions - totalQuestionsDone)) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})</span>
-                </span>
-              </div>
-            </div>
-
-            {/* Timer Global / Adaptativo */}
-            <div className={`rounded-xl p-4 border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${phase === 'study' ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200' : 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200'}`}>
-              <div className="flex items-center gap-4">
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center ${phase === 'study' ? 'bg-blue-100 dark:bg-blue-800 text-blue-600 dark:text-blue-300' : 'bg-emerald-100 dark:bg-emerald-800 text-emerald-600 dark:text-emerald-300'}`}>
-                  {phase === 'study' ? <BookOpen className="w-6 h-6" /> : <Coffee className="w-6 h-6" />}
-                </div>
-                <div>
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
-                    {isAdaptiveMode ? (
-                      <>
-                        <Activity className="w-3.5 h-3.5" /> Ciclo {adaptiveCurrentCycle} de {adaptiveCyclesTotal}
-                      </>
-                    ) : (
-                      phase === 'study' ? 'Sessão de Estudo' : 'Sessão de Descanso'
-                    )}
-                  </div>
-                  <div className={`text-3xl font-black tabular-nums tracking-tighter ${phase === 'study' ? 'text-blue-700 dark:text-blue-300' : 'text-emerald-700 dark:text-emerald-300'}`}>
-                    {formatTime(timeLeft)}
-                  </div>
-                </div>
-              </div>
+            {/* SEÇÃO 1: CICLOS (Timer Global) */}
+            <div className="flex flex-col gap-4 mb-8">
+              <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2 border-b border-gray-100 dark:border-gray-800 pb-2">
+                <Clock className="w-4 h-4 text-blue-600" />
+                Sessão Global
+              </h3>
               
-              <div className="flex flex-col items-end gap-2 text-right">
-                {isAdaptiveMode && (
-                  <div className="flex flex-col items-end mb-1">
-                    <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
-                      Modo Adaptativo ({(adaptiveStudyTimeTotal / 60 / adaptiveCyclesTotal).toFixed(0)}m / {(adaptiveRestTimeTotal / 60 / adaptiveCyclesTotal).toFixed(0)}m)
-                    </span>
-                    <span className="text-xs font-bold text-gray-700 dark:text-gray-300">
-                      Descanso Restante: {formatTime(Math.max(0, adaptiveRestTimeTotal - adaptiveRestTimeElapsed))}
-                    </span>
+              <div className={`rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${phase === 'study' ? 'bg-blue-50/50 dark:bg-blue-900/20' : 'bg-emerald-50/50 dark:bg-emerald-900/20'}`}>
+                <div className="flex items-center gap-4">
+                  <div className={`w-14 h-14 rounded-full flex items-center justify-center shadow-sm ${phase === 'study' ? 'bg-blue-600 text-white' : 'bg-emerald-600 text-white'}`}>
+                    {phase === 'study' ? <BookOpen className="w-7 h-7" /> : <Coffee className="w-7 h-7" />}
                   </div>
-                )}
+                  <div>
+                    <div className="text-xs font-bold uppercase tracking-wider text-gray-500 flex items-center gap-1.5 mb-1">
+                      {isAdaptiveMode ? (
+                        <>
+                          <Activity className="w-3.5 h-3.5" /> Ciclo {adaptiveCurrentCycle} de {adaptiveCyclesTotal}
+                        </>
+                      ) : (
+                        phase === 'study' ? 'Sessão de Estudo' : 'Sessão de Descanso'
+                      )}
+                    </div>
+                    <div className={`text-4xl font-black tabular-nums tracking-tighter ${phase === 'study' ? 'text-blue-700 dark:text-blue-300' : 'text-emerald-700 dark:text-emerald-300'}`}>
+                      {formatTime(timeLeft)}
+                    </div>
+                  </div>
+                </div>
                 
-                <div className="flex items-center gap-2">
-                  {isAdaptiveMode && phase === 'study' && (
-                    <button 
-                      onClick={() => takeUnscheduledRest()}
-                      className="px-3 py-2 text-xs font-bold bg-amber-100 text-amber-700 hover:bg-amber-200 rounded-lg transition-colors flex items-center gap-1.5"
-                      title="Pausa não programada (desconta do tempo de descanso total)"
-                    >
-                      <Coffee className="w-3.5 h-3.5" /> Pausa Extra
-                    </button>
+                <div className="flex flex-col items-end gap-3 text-right w-full sm:w-auto mt-2 sm:mt-0">
+                  {isAdaptiveMode && (
+                    <div className="flex flex-col items-end">
+                      <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+                        Modo Adaptativo ({(adaptiveStudyTimeTotal / 60 / adaptiveCyclesTotal).toFixed(0)}m / {(adaptiveRestTimeTotal / 60 / adaptiveCyclesTotal).toFixed(0)}m)
+                      </span>
+                      <span className="text-xs font-bold text-gray-700 dark:text-gray-300">
+                        Descanso Restante: {formatTime(Math.max(0, adaptiveRestTimeTotal - adaptiveRestTimeElapsed))}
+                      </span>
+                    </div>
                   )}
                   
-                  {timerState === 'waiting_transition' ? (
-                    <button 
-                      onClick={() => {
-                        if (isAdaptiveMode) transitionAdaptivePhase();
-                        else {
-                          setPhase(phase === 'study' ? 'rest' : 'study');
-                          setTimeLeft(phase === 'study' ? restDuration : studyDuration);
-                          setTimerState('running');
-                        }
-                      }}
-                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold flex items-center gap-2 transition-colors shadow-sm animate-pulse"
-                    >
-                      <FastForward className="w-4 h-4" /> Avançar Fase
-                    </button>
-                  ) : (
+                  <div className="flex items-center gap-2 w-full justify-end">
+                    {phase === 'study' ? (
+                      <button 
+                        onClick={() => {
+                          if (isAdaptiveMode) takeUnscheduledRest();
+                          else {
+                            setPhase('rest');
+                            setTimeLeft(restDuration);
+                            setTimerState('running');
+                          }
+                        }}
+                        className="px-3 py-2 text-xs font-bold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/50 rounded-xl transition-colors flex items-center gap-1.5"
+                        title="Fazer uma pausa não programada"
+                      >
+                        <Coffee className="w-3.5 h-3.5" /> Pausa Extra
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={() => {
+                          if (isAdaptiveMode) transitionAdaptivePhase();
+                          else {
+                            setPhase('study');
+                            setTimeLeft(studyDuration);
+                            setTimerState('running');
+                          }
+                        }}
+                        className="px-3 py-2 text-xs font-bold bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-900/50 rounded-xl transition-colors flex items-center gap-1.5"
+                        title="Voltar antecipadamente aos estudos"
+                      >
+                        <FastForward className="w-3.5 h-3.5" /> Voltar ao Estudo
+                      </button>
+                    )}
+                    
                     <button
-                      onClick={() => setTimerState(timerState === 'running' ? 'paused' : 'running')}
-                      className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-colors ${timerState === 'running' ? 'bg-white dark:bg-gray-800 text-amber-600 border border-amber-200 hover:bg-amber-50' : 'bg-gray-900 dark:bg-gray-50 text-white dark:text-gray-900 hover:bg-black dark:hover:bg-white'}`}
+                      onClick={() => {
+                         if (timerState === 'waiting_transition') {
+                            if (isAdaptiveMode) transitionAdaptivePhase();
+                            else {
+                              setPhase(phase === 'study' ? 'rest' : 'study');
+                              setTimeLeft(phase === 'study' ? restDuration : studyDuration);
+                              setTimerState('running');
+                            }
+                         } else {
+                            setTimerState(timerState === 'running' ? 'paused' : 'running');
+                         }
+                      }}
+                      className={`px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 shadow-sm transition-colors ${timerState === 'running' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 hover:bg-amber-200' : timerState === 'waiting_transition' ? 'bg-indigo-600 hover:bg-indigo-700 text-white animate-pulse' : 'bg-gray-900 dark:bg-gray-50 text-white dark:text-gray-900 hover:bg-black dark:hover:bg-white'}`}
                     >
-                      {timerState === 'running' ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                      {timerState === 'running' ? 'Pausar Timer' : 'Iniciar Timer'}
+                      {timerState === 'running' ? <Pause className="w-4 h-4" /> : timerState === 'waiting_transition' ? <FastForward className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                      {timerState === 'running' ? 'Pausar Timer' : timerState === 'waiting_transition' ? 'Avançar Fase' : 'Retomar Timer'}
                     </button>
-                  )}
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Tempo Atual Pacer (Caixa Separada) */}
-              <div className={`md:col-span-1 bg-white dark:bg-gray-900 rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm flex flex-col items-center justify-center text-center relative overflow-hidden ${phase === 'rest' ? 'opacity-80 bg-blue-50 dark:bg-blue-900/10' : ''}`}>
-                <div className="absolute top-0 inset-x-0 bg-blue-100 text-blue-800 text-[10px] font-bold uppercase py-1 border-b border-blue-200 flex items-center justify-center gap-1">
-                  <Activity className="w-3 h-3" /> Pacer 
+            {/* SEÇÃO 2: PACER (Andamento das Questões) */}
+            <div className="flex flex-col gap-4">
+              <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200 flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-2">
+                <div className="flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-emerald-600" />
+                  Andamento do Pacer
                 </div>
-                {phase === 'rest' ? (
-                  <div className="absolute top-6 inset-x-0 bg-blue-500 text-white text-[9px] font-bold uppercase py-0.5">
-                    Modo de Descanso Ativo
-                  </div>
-                ) : timerState === 'paused' || timerState === 'idle' ? (
-                  <div className="absolute top-6 inset-x-0 bg-gray-500 text-white text-[9px] font-bold uppercase py-0.5">
-                    Pausado
-                  </div>
-                ) : isAdaptive && effectiveTarget < targetTimeSeconds && (
-                  <div className="absolute top-6 inset-x-0 bg-amber-500 text-white text-[9px] font-bold uppercase py-0.5">
-                    Alarme Antecipado Ativo
-                  </div>
-                )}
-                <div className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2 mt-6">
-                  Questão Atual
+                <div className="text-xs font-bold text-gray-500">
+                  {totalQuestionsDone + 1} de {totalQuestions} Questões
                 </div>
-                <div className={`text-5xl font-black tracking-tight ${currentQuestionTime >= effectiveTarget && phase === 'study' && (timerState === 'running' || timerState === 'waiting_transition') ? 'text-red-500' : 'text-gray-900 dark:text-gray-100'}`}>
-                  {formatTime(currentQuestionTime)}
-                </div>
-                <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mt-2">
-                  Alarme em: {formatTime(effectiveTarget)}
-                </div>
-              </div>
+              </h3>
 
-              {/* Estatísticas */}
-              <div className="md:col-span-2 grid grid-cols-2 gap-4">
-                <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4 border border-gray-100 dark:border-gray-800 flex flex-col justify-center">
-                  <div className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5" />
-                    Pace Médio Atual
-                  </div>
-                  <div className="text-2xl font-bold text-gray-800 dark:text-gray-200">
-                    {totalQuestionsDone > 0 ? formatTime(averagePace) : '--:--'}
-                  </div>
-                  <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">
-                    Gasto por questão
-                  </div>
-                </div>
-
-                <div className="bg-blue-50 dark:bg-blue-900/30 rounded-xl p-4 border border-blue-100 flex flex-col justify-center">
-                  <div className="text-[10px] font-bold text-blue-700/70 uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                    <TrendingDown className="w-3.5 h-3.5" />
-                    Pace Alvo (Para Terminar)
-                  </div>
-                  <div className="text-2xl font-bold text-blue-800 dark:text-blue-200">
-                    {formatTime(requiredPace)}
-                  </div>
-                  <div className="text-[10px] text-blue-600 dark:text-blue-400 mt-1">
-                    Necessário nas próximas {remainingQuestions + 1}
-                  </div>
-                </div>
-
-                <div className={`col-span-2 rounded-xl p-4 border flex items-center justify-between ${
-                  currentGlobalDiff >= 0 ? 'bg-emerald-50 border-emerald-100' : 'bg-rose-50 border-rose-100'
-                }`}>
-                  <div>
-                    <div className={`text-[10px] font-bold uppercase tracking-wider mb-1 flex items-center gap-1.5 ${
-                      currentGlobalDiff >= 0 ? 'text-emerald-700' : 'text-rose-700'
-                    }`}>
-                      {currentGlobalDiff >= 0 ? <TrendingDown className="w-3.5 h-3.5" /> : <TrendingUp className="w-3.5 h-3.5" />}
-                      Status Global
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                {/* Tempo Atual Pacer (Caixa Grande) */}
+                <div className="flex flex-col items-center justify-center text-center py-6 px-4 relative rounded-xl border border-gray-100 dark:border-gray-800 bg-gray-50/30 dark:bg-gray-800/20">
+                  {timerState === 'paused' || timerState === 'idle' ? (
+                    <div className="absolute top-0 inset-x-0 flex justify-center">
+                       <span className="bg-gray-100 text-gray-500 text-[10px] font-bold uppercase px-3 py-1 rounded-b-lg shadow-sm">Pausado</span>
                     </div>
-                    <div className={`text-xl font-bold ${
-                      currentGlobalDiff >= 0 ? 'text-emerald-600' : 'text-rose-600'
-                    }`}>
+                  ) : isAdaptive && effectiveTarget < targetTimeSeconds && (
+                    <div className="absolute top-0 inset-x-0 flex justify-center">
+                       <span className="bg-amber-100 text-amber-700 text-[10px] font-bold uppercase px-3 py-1 rounded-b-lg shadow-sm">Alarme Antecipado Ativo</span>
+                    </div>
+                  )}
+                  <div className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2 mt-2">
+                    Tempo na Questão
+                  </div>
+                  <div className={`text-6xl font-black tracking-tight ${currentQuestionTime >= effectiveTarget && phase === 'study' && (timerState === 'running' || timerState === 'waiting_transition') ? 'text-red-500' : 'text-gray-900 dark:text-gray-100'}`}>
+                    {formatTime(currentQuestionTime)}
+                  </div>
+                  <div className="text-sm font-semibold text-gray-500 dark:text-gray-400 mt-3">
+                    Alarme soa em {formatTime(effectiveTarget)}
+                  </div>
+                </div>
+
+                {/* Estatísticas Textuais (Sem caixas) */}
+                <div className="flex flex-col gap-5 py-4">
+                  <div>
+                    <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Tempo Total Gasto</div>
+                    <div className="text-lg font-bold text-gray-900 dark:text-gray-100">{formatTime(globalElapsedTime)} <span className="text-sm text-gray-400 font-medium">/ {formatTime(totalTargetTime)}</span></div>
+                  </div>
+                  
+                  <div>
+                    <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Pace Médio Atual</div>
+                    <div className="text-lg font-bold text-gray-900 dark:text-gray-100">{totalQuestionsDone > 0 ? formatTime(averagePace) : '--:--'}</div>
+                  </div>
+
+                  <div>
+                    <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Pace Necessário (Restantes)</div>
+                    <div className="text-lg font-bold text-blue-600 dark:text-blue-400">{formatTime(requiredPace)}</div>
+                  </div>
+
+                  <div>
+                    <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Status Global</div>
+                    <div className={`text-lg font-bold ${currentGlobalDiff >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                       {currentGlobalDiff >= 0 ? 'Adiantado em ' : 'Atrasado em '}
                       {formatTime(Math.abs(currentGlobalDiff))}
                     </div>
                   </div>
+
+                  <div>
+                    <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Tempo Restante Estimado</div>
+                    <div className="text-lg font-bold text-indigo-600 dark:text-indigo-400">
+                      {formatTime(averagePace * remainingQuestions)}
+                      <span className="text-sm text-gray-400 dark:text-gray-500 font-medium ml-2">
+                        (Fim: {new Date(Date.now() + (averagePace * remainingQuestions) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Controles */}
-            <div className="flex items-center justify-between pt-4 border-t border-gray-100 dark:border-gray-800">
-              <button
-                onClick={handleStop}
-                className="px-4 py-2 text-gray-500 dark:text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors"
-              >
-                <Square className="w-4 h-4" />
-                Encerrar
-              </button>
-              
-              {!isActive ? (
+              {/* Controles Pacer*/}
+              <div className="flex items-center justify-between pt-4 mt-2 border-t border-gray-100 dark:border-gray-800">
                 <button
-                  onClick={handleStart}
-                  className="px-6 py-2.5 bg-blue-600 dark:bg-blue-500 hover:bg-blue-700 text-white rounded-xl font-bold flex items-center gap-2 shadow-sm transition-all"
+                  onClick={handleStop}
+                  className="px-4 py-2 text-gray-500 dark:text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors"
                 >
-                  <Play className="w-4 h-4" />
-                  Retomar
+                  <Square className="w-4 h-4" />
+                  Encerrar Pacer
                 </button>
-              ) : (
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={handlePause}
-                    className="px-4 py-2.5 bg-amber-100 text-amber-700 hover:bg-amber-200 rounded-xl font-bold flex items-center gap-2 transition-all"
-                  >
-                    <Pause className="w-4 h-4" />
-                    Pausar
-                  </button>
-                  <button
-                    onClick={handleNext}
-                    disabled={totalQuestionsDone + 1 >= totalQuestions}
-                    className="px-6 py-2.5 bg-gray-900 dark:bg-gray-50 hover:bg-black disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-xl font-bold flex items-center gap-2 shadow-sm transition-all"
-                  >
-                    {totalQuestionsDone + 1 >= totalQuestions ? 'Última Questão' : 'Próxima'} <FastForward className="w-4 h-4" />
-                  </button>
-                </div>
-              )}
+                
+                <button
+                  onClick={handleNext}
+                  className="px-8 py-3 bg-gray-900 dark:bg-gray-50 hover:bg-black dark:hover:bg-white text-white dark:text-gray-900 rounded-xl font-bold flex items-center gap-2 shadow-sm transition-all"
+                >
+                  {totalQuestionsDone + 1 >= totalQuestions ? 'Finalizar Lista' : 'Próxima Questão'} <FastForward className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           </div>
         )}
