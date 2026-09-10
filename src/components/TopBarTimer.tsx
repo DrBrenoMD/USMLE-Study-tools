@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useTimerStore } from '../store/useTimerStore';
-import { Play, Pause, Square, Coffee, BookOpen, Settings2, RotateCcw, Activity, FastForward, BedDouble } from 'lucide-react';
+import { Play, Pause, Square, Coffee, BookOpen, Settings2, RotateCcw, Activity, FastForward, BedDouble, CheckSquare } from 'lucide-react';
 import { format, startOfDay } from 'date-fns';
 import { QuestionPacer } from './QuestionPacer';
+import { QuickLogModal } from './QuickLogModal';
 
 export function TopBarTimer() {
   const {
@@ -25,7 +26,8 @@ export function TopBarTimer() {
     pacerTotalQuestions,
     pacerTargetTimeSeconds,
     setPacerState,
-    stopPacer
+    stopPacer,
+    setShowQuickLog
   } = useTimerStore();
 
   const [showSettings, setShowSettings] = useState(false);
@@ -411,6 +413,14 @@ export function TopBarTimer() {
 
         <div className="relative flex items-center gap-1 ml-1">
           <button 
+            onClick={() => setShowQuickLog(true)}
+            className="flex items-center gap-1.5 px-2 py-1.5 rounded-md transition-colors text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:bg-blue-900/30"
+            title="Registro Rápido"
+          >
+            <CheckSquare className="w-4 h-4" />
+          </button>
+
+          <button 
             onClick={() => { setShowPacer(!showPacer); setShowSettings(false); }}
             className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md transition-colors ${pacerIsActive ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:bg-blue-900/30'}`}
           >
@@ -426,6 +436,7 @@ export function TopBarTimer() {
           )}
         </div>
       </div>
+      <QuickLogModal />
     </div>
   );
 }

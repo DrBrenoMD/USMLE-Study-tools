@@ -130,10 +130,10 @@ export function ScoreChart({ logs }: ScoreChartProps) {
               dy={10}
             />
             
-            {/* Eixo Esquerdo: Porcentagens (0 a 100%) */}
+            {/* Eixo Esquerdo: Porcentagens */}
             <YAxis 
               yAxisId="left"
-              domain={[0, 100]} 
+              domain={[0, dataMax => Math.min(100, Math.ceil(dataMax * 1.1))]} 
               axisLine={false} 
               tickLine={false} 
               tick={{ fontSize: 10, fill: '#9ca3af' }}
@@ -144,6 +144,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
             <YAxis 
               yAxisId="right"
               orientation="right"
+              domain={[0, dataMax => Math.ceil(dataMax * 1.1)]}
               axisLine={false} 
               tickLine={false} 
               tick={{ fontSize: 10, fill: '#9ca3af' }}

@@ -37,6 +37,11 @@ interface TimerStore {
   isUnscheduledRest: boolean;
   unscheduledRestStoredTimeLeft: number;
 
+  // Quick Log State
+  showQuickLog: boolean;
+  quickLogDefaultQuestions: number;
+  setShowQuickLog: (show: boolean, defaultQuestions?: number) => void;
+
   // Actions
   setTimerState: (state: TimerState) => void;
   setPhase: (phase: TimerPhase) => void;
@@ -93,6 +98,9 @@ export const useTimerStore = create<TimerStore>()(
       adaptivePacerSessions: [],
       isUnscheduledRest: false,
       unscheduledRestStoredTimeLeft: 0,
+      
+      showQuickLog: false,
+      quickLogDefaultQuestions: 0,
 
       setTimerState: (state) => set({ timerState: state }),
       setPhase: (phase) => set({ phase }),
@@ -102,6 +110,8 @@ export const useTimerStore = create<TimerStore>()(
       setStudyDuration: (duration) => set({ studyDuration: duration }),
       setRestDuration: (duration) => set({ restDuration: duration }),
       
+      setShowQuickLog: (show, defaultQuestions = 0) => set({ showQuickLog: show, quickLogDefaultQuestions: defaultQuestions }),
+
       addNetTime: (seconds) => set((state) => {
         const todayStr = format(startOfDay(new Date()), 'yyyy-MM-dd');
         return {
