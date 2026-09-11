@@ -46,6 +46,7 @@ export function QuestionPacer({ className }: { className?: string }) {
 
   // Adaptive Session Config State
   const [pacerMode, setPacerMode] = useState<'tradicional' | 'adaptativo' | 'sessoes'>('tradicional');
+  const [qbanklyMode, setQbanklyMode] = useState<'next' | 'submit'>('next');
   const [adaptiveStudyMin, setAdaptiveStudyMin] = useState(50);
   const [adaptiveRestMin, setAdaptiveRestMin] = useState(10);
   const [adaptiveCycles, setAdaptiveCycles] = useState(4);
@@ -166,10 +167,10 @@ export function QuestionPacer({ className }: { className?: string }) {
     if (bookmarkletRef.current) {
       bookmarkletRef.current.setAttribute(
         'href',
-        `javascript:(function(){const pacerWin=window.open("${window.location.origin}/pacer","PacerWindow","width=500,height=800");window.addEventListener("click",(e)=>{const btn=e.target.closest("button");if(btn){const title=(btn.getAttribute("title")||"").toLowerCase();const text=(btn.textContent||"").toLowerCase();if(title.includes("next")||text.includes("next")||text.includes("submit")){console.log("Pacer acionado!");pacerWin.postMessage({type:"PACER_NEXT"},"*");}}},true);alert("Pacer Integrado! A janela do Pacer deve ficar aberta.");})();`
+        `javascript:(function(){window.__pacerMode="${qbanklyMode}";window.__pacerWin=window.open("${window.location.origin}/pacer","PacerWindow","width=500,height=800");if(!window.__pacerListenerAdded){window.addEventListener("click",(e)=>{const btn=e.target.closest("button");if(btn){const title=(btn.getAttribute("title")||"").toLowerCase();const text=(btn.textContent||"").toLowerCase();let shouldTrigger=false;if(window.__pacerMode==="next"&&(title.includes("next")||text.includes("next"))){shouldTrigger=true;}else if(window.__pacerMode==="submit"&&text.includes("submit")){shouldTrigger=true;}if(shouldTrigger&&window.__pacerWin){console.log("Pacer acionado!");window.__pacerWin.postMessage({type:"PACER_NEXT"},"*");}}},true);window.__pacerListenerAdded=true;}alert("Pacer Integrado ("+window.__pacerMode+")! A janela do Pacer deve ficar aberta.");})();`
       );
     }
-  }, []);
+  }, [qbanklyMode]);
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -255,9 +256,24 @@ export function QuestionPacer({ className }: { className?: string }) {
                    <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
                      Arraste o botão abaixo para a sua <b>Barra de Favoritos</b>. Na página do Qbankly, inicie a prova, clique no favorito que você salvou e uma mini-janela do Pacer se abrirá. Ao clicar no botão "Next" do site, o Pacer avançará automaticamente!
                    </p>
+                   
+                   <div className="mt-3 mb-2 flex flex-col gap-1.5">
+                     <span className="text-[11px] font-bold text-blue-900 dark:text-blue-100 uppercase tracking-wider">Qual botão avançará o pacer?</span>
+                     <div className="flex gap-4">
+                       <label className="flex items-center gap-1.5 text-sm text-blue-800 dark:text-blue-200 cursor-pointer hover:opacity-80 transition-opacity">
+                         <input type="radio" name="qbanklyMode" className="cursor-pointer" checked={qbanklyMode === 'next'} onChange={() => setQbanklyMode('next')} />
+                         Botão "Next"
+                       </label>
+                       <label className="flex items-center gap-1.5 text-sm text-blue-800 dark:text-blue-200 cursor-pointer hover:opacity-80 transition-opacity">
+                         <input type="radio" name="qbanklyMode" className="cursor-pointer" checked={qbanklyMode === 'submit'} onChange={() => setQbanklyMode('submit')} />
+                         Botão "Submit"
+                       </label>
+                     </div>
+                   </div>
+
                    <a 
                      ref={bookmarkletRef}
-                     className="mt-3 inline-block px-3 py-1.5 bg-blue-600 text-white text-xs font-bold rounded-lg shadow cursor-grab active:cursor-grabbing hover:bg-blue-700 transition-colors"
+                     className="mt-2 inline-block px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg shadow cursor-grab active:cursor-grabbing hover:bg-blue-700 transition-colors"
                      onClick={(e) => e.preventDefault()}
                      title="Arraste para a barra de favoritos"
                    >
