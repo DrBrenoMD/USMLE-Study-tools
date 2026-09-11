@@ -157,6 +157,34 @@ export function QuestionPacer({ className }: { className?: string }) {
     setTimerState('idle');
   };
 
+  const handleNextRef = useRef(handleNext);
+  handleNextRef.current = handleNext;
+
+  const bookmarkletRef = useRef<HTMLAnchorElement>(null);
+
+  useEffect(() => {
+    if (bookmarkletRef.current) {
+      bookmarkletRef.current.setAttribute(
+        'href',
+        `javascript:(function(){const pacerWin=window.open("${window.location.origin}/pacer","PacerWindow","width=500,height=800");window.addEventListener("click",(e)=>{const btn=e.target.closest("button");if(btn){const title=(btn.getAttribute("title")||"").toLowerCase();const text=(btn.textContent||"").toLowerCase();if(title.includes("next")||text.includes("next")||text.includes("submit")){console.log("Pacer acionado!");pacerWin.postMessage({type:"PACER_NEXT"},"*");}}},true);alert("Pacer Integrado! A janela do Pacer deve ficar aberta.");})();`
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'PACER_NEXT') {
+         if (phase !== 'rest' && isActive) {
+            handleNextRef.current();
+         }
+      } else if (event.data?.type === 'PACER_PAUSE_TOGGLE') {
+         setTimerState(timerState === 'running' ? 'paused' : 'running');
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [phase, isActive, timerState]);
+
   const formatTime = (seconds: number) => {
     const m = Math.floor(Math.abs(seconds) / 60);
     const s = Math.abs(seconds) % 60;
@@ -217,6 +245,26 @@ export function QuestionPacer({ className }: { className?: string }) {
                 <span className="font-semibold text-gray-700 dark:text-gray-300">Tempo Total de Prova:</span>
                 <span className="font-bold text-blue-600 dark:text-blue-400">{formatTime(totalTargetTime)}</span>
               </div>
+            </div>
+
+            <div className="flex flex-col gap-2 p-4 bg-blue-50 dark:bg-blue-900/30 rounded-xl border border-blue-100 dark:border-blue-800">
+               <div className="flex items-start gap-2">
+                 <BookOpen className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5" />
+                 <div>
+                   <h4 className="text-sm font-bold text-blue-900 dark:text-blue-100">Integração Externa (Qbankly, etc)</h4>
+                   <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                     Arraste o botão abaixo para a sua <b>Barra de Favoritos</b>. Na página do Qbankly, inicie a prova, clique no favorito que você salvou e uma mini-janela do Pacer se abrirá. Ao clicar no botão "Next" do site, o Pacer avançará automaticamente!
+                   </p>
+                   <a 
+                     ref={bookmarkletRef}
+                     className="mt-3 inline-block px-3 py-1.5 bg-blue-600 text-white text-xs font-bold rounded-lg shadow cursor-grab active:cursor-grabbing hover:bg-blue-700 transition-colors"
+                     onClick={(e) => e.preventDefault()}
+                     title="Arraste para a barra de favoritos"
+                   >
+                     Integração Qbankly
+                   </a>
+                 </div>
+               </div>
             </div>
 
             <div className="flex flex-col gap-3">
