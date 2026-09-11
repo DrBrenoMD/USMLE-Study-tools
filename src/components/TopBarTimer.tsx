@@ -264,7 +264,7 @@ export function TopBarTimer() {
           <div className="flex items-center gap-2 mb-3">
              <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
              <h3 className="font-bold text-sm text-red-600 dark:text-red-400">
-               Tempo de {phase === 'study' ? 'Estudo' : 'Descanso'} Encerrado
+               Momento de {phase === 'study' ? 'Estudo' : 'Descanso'} Encerrado
              </h3>
           </div>
           
@@ -275,7 +275,7 @@ export function TopBarTimer() {
                   Iniciar descanso
                 </button>
                 <button onClick={() => { handleTransition(); setTimeout(handleTransition, 10); }} className="w-full text-left px-3 py-2 text-sm font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-200 rounded-lg transition-colors">
-                  Seguir para próxima sessão de estudos (inicia novo ciclo)
+                  Seguir para próximo momento de estudos (inicia novo ciclo)
                 </button>
               </>
             ) : (
@@ -413,19 +413,19 @@ export function TopBarTimer() {
 
         <div className="relative flex items-center gap-1 ml-1">
           <button 
-            onClick={() => setShowQuickLog(true)}
-            className="flex items-center gap-1.5 px-2 py-1.5 rounded-md transition-colors text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:bg-blue-900/30"
-            title="Registro Rápido"
-          >
-            <CheckSquare className="w-4 h-4" />
-          </button>
-
-          <button 
             onClick={() => { setShowPacer(!showPacer); setShowSettings(false); }}
             className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md transition-colors ${pacerIsActive ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:bg-blue-900/30'}`}
           >
             <Activity className="w-4 h-4" />
             <span className="text-xs font-bold hidden sm:inline">Pacer</span>
+          </button>
+
+          <button 
+            onClick={() => setShowQuickLog(true)}
+            className="flex items-center gap-1.5 px-2 py-1.5 rounded-md transition-colors text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:bg-blue-900/30"
+            title="Registro Rápido"
+          >
+            <CheckSquare className="w-4 h-4" />
           </button>
 
           {/* Pacer Popover */}

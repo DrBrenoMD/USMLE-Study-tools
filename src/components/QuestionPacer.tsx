@@ -24,6 +24,7 @@ export function QuestionPacer({ className }: { className?: string }) {
     adaptiveCurrentCycle,
     adaptiveCyclesTotal,
     adaptiveStudyTimeTotal,
+    adaptiveStudyTimeElapsed,
     adaptiveRestTimeTotal,
     adaptiveRestTimeElapsed,
     adaptivePacerSessions,
@@ -43,6 +44,12 @@ export function QuestionPacer({ className }: { className?: string }) {
   const setIsActive = (v: boolean) => setPacerState({ pacerIsActive: v });
   const setSoundEnabled = (v: boolean) => setPacerState({ pacerSoundEnabled: v });
 
+  // Adaptive Session Config State
+  const [pacerMode, setPacerMode] = useState<'tradicional' | 'adaptativo' | 'sessoes'>('tradicional');
+  const [adaptiveStudyMin, setAdaptiveStudyMin] = useState(50);
+  const [adaptiveRestMin, setAdaptiveRestMin] = useState(10);
+  const [adaptiveCycles, setAdaptiveCycles] = useState(4);
+
   const audioContextRef = useRef<AudioContext | null>(null);
 
   const totalQuestionsDone = completedQuestionsTime.length;
@@ -53,6 +60,13 @@ export function QuestionPacer({ className }: { className?: string }) {
   const remainingTargetTime = totalTargetTime - totalCompletedTime;
   
   // Adaptive Pace Calculation
+  const averagePace = globalElapsedTime > 0 
+    ? Math.round(globalElapsedTime / (totalQuestionsDone + 1)) 
+    : 0;
+    
+  const displayPace = globalElapsedTime > 0 ? averagePace : targetTimeSeconds;
+  const estimatedRemainingTime = Math.max(0, Math.round(displayPace * totalQuestions - globalElapsedTime));
+
   const requiredPace = remainingQuestions >= 0 && remainingTargetTime > 0 
     ? Math.floor(remainingTargetTime / (remainingQuestions + 1)) 
     : 0;
@@ -61,6 +75,27 @@ export function QuestionPacer({ className }: { className?: string }) {
   const effectiveTarget = isAdaptive && requiredPace < targetTimeSeconds && requiredPace > 0
     ? requiredPace 
     : targetTimeSeconds;
+
+  // Estimate remaining time for "Sessões" mode
+  const estimatedRemainingCycles = Math.max(0, adaptiveCyclesTotal - adaptiveCurrentCycle + 1);
+  const baseRemainingStudyTime = Math.max(0, adaptiveStudyTimeTotal - adaptiveStudyTimeElapsed);
+  const baseRemainingRestTime = Math.max(0, adaptiveRestTimeTotal - adaptiveRestTimeElapsed);
+  
+  let remainingStudyTime = baseRemainingStudyTime;
+  let remainingRestTime = baseRemainingRestTime;
+
+  if (isActive && isAdaptiveMode) {
+    remainingStudyTime = averagePace * remainingQuestions;
+  }
+
+  const totalEstimatedRemainingSessao = remainingStudyTime + remainingRestTime;
+  
+  // Total ETA for config screen
+  const totalEstimatedSessaoConfig = (adaptiveStudyMin + adaptiveRestMin) * adaptiveCycles * 60;
+
+  // Clock time estimations
+  const estimatedFinishTimeConfig = new Date(Date.now() + totalEstimatedSessaoConfig * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const estimatedFinishTimeActive = new Date(Date.now() + totalEstimatedRemainingSessao * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   const playBeep = () => {
     if (!soundEnabled) return;
@@ -117,12 +152,6 @@ export function QuestionPacer({ className }: { className?: string }) {
     }
   };
 
-  // Adaptive Session Config State
-  const [pacerMode, setPacerMode] = useState<'tradicional' | 'adaptativo' | 'sessoes'>('tradicional');
-  const [adaptiveStudyMin, setAdaptiveStudyMin] = useState(50);
-  const [adaptiveRestMin, setAdaptiveRestMin] = useState(10);
-  const [adaptiveCycles, setAdaptiveCycles] = useState(4);
-
   const handleStop = () => {
     finishPacerSession();
     setTimerState('idle');
@@ -135,8 +164,6 @@ export function QuestionPacer({ className }: { className?: string }) {
     return `${sign}${m}:${s.toString().padStart(2, '0')}`;
   };
 
-  const averagePace = totalQuestionsDone > 0 ? Math.round(totalCompletedTime / totalQuestionsDone) : 0;
-  
   // Accumulated delay or advance on COMPLETED questions
   const accumulatedDiff = (totalQuestionsDone * targetTimeSeconds) - totalCompletedTime;
   const currentGlobalDiff = ( (totalQuestionsDone + 1) * targetTimeSeconds ) - globalElapsedTime;
@@ -253,6 +280,14 @@ export function QuestionPacer({ className }: { className?: string }) {
                       />
                     </div>
                   </div>
+                  
+                  <div className="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                    <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">Duração / Término Estimado:</span>
+                    <div className="text-right flex items-center gap-2">
+                      <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">{formatTime(totalEstimatedSessaoConfig)}</span>
+                      <span className="text-xs text-gray-500 font-medium">~ {estimatedFinishTimeConfig}</span>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -273,7 +308,7 @@ export function QuestionPacer({ className }: { className?: string }) {
               <div className="flex flex-col gap-4 mb-8">
                 <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2 border-b border-gray-100 dark:border-gray-800 pb-2">
                   <Clock className="w-4 h-4 text-blue-600" />
-                  Sessão Global
+                  Sessão (Ciclos de {Math.round((adaptiveStudyTimeTotal / Math.max(1, adaptiveCyclesTotal)) / 60)}m / {Math.round((adaptiveRestTimeTotal / Math.max(1, adaptiveCyclesTotal)) / 60)}m)
                 </h3>
                 
                 <div className={`rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${phase === 'study' ? 'bg-blue-50/50 dark:bg-blue-900/20' : 'bg-emerald-50/50 dark:bg-emerald-900/20'}`}>
@@ -293,10 +328,10 @@ export function QuestionPacer({ className }: { className?: string }) {
                   
                   <div className="flex flex-col items-end gap-3 text-right w-full sm:w-auto mt-2 sm:mt-0">
                     <div className="flex flex-col items-end">
-                      <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
-                        Modo Adaptativo ({Math.round((adaptiveStudyTimeTotal / Math.max(1, adaptiveCyclesTotal)) / 60)}m / {Math.round((adaptiveRestTimeTotal / Math.max(1, adaptiveCyclesTotal)) / 60)}m)
-                      </span>
                       <span className="text-xs font-bold text-gray-700 dark:text-gray-300">
+                        Tempo Restante: {formatTime(totalEstimatedRemainingSessao)} <span className="text-[10px] text-gray-500 font-medium ml-1">~ {estimatedFinishTimeActive}</span>
+                      </span>
+                      <span className="text-[10px] font-medium text-gray-400 mt-1">
                         Descanso Total Restante: {formatTime(Math.max(0, adaptiveRestTimeTotal - adaptiveRestTimeElapsed))}
                       </span>
                     </div>
@@ -315,7 +350,7 @@ export function QuestionPacer({ className }: { className?: string }) {
                                 Iniciar descanso
                               </button>
                               <button onClick={() => { transitionPhase(); setTimeout(transitionPhase, 10); }} className="px-3 py-2 text-xs font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50 rounded-xl transition-colors">
-                                Próxima sessão
+                                Próximo momento
                               </button>
                             </>
                           ) : (
@@ -411,7 +446,7 @@ export function QuestionPacer({ className }: { className?: string }) {
                       <div className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-1.5">
                         <Clock className="w-3.5 h-3.5" /> Pace Médio Atual
                       </div>
-                      <div className="text-3xl font-black text-gray-900 dark:text-gray-100 mt-1 mb-1">{totalQuestionsDone > 0 ? formatTime(averagePace) : '--:--'}</div>
+                      <div className="text-3xl font-black text-gray-900 dark:text-gray-100 mt-1 mb-1">{globalElapsedTime > 0 ? formatTime(averagePace) : '--:--'}</div>
                       <div className="text-xs font-medium text-gray-500">Gasto por questão</div>
                     </div>
 
@@ -442,7 +477,7 @@ export function QuestionPacer({ className }: { className?: string }) {
                        <div>
                          <div className="text-[10px] font-bold text-gray-500 uppercase">Tempo Restante Estimado</div>
                          <div className="text-sm font-bold text-indigo-600 dark:text-indigo-400">
-                            {formatTime(averagePace * remainingQuestions)} <span className="text-gray-500">(Fim: {new Date(Date.now() + (averagePace * remainingQuestions) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})</span>
+                            {formatTime(estimatedRemainingTime)} <span className="text-gray-500">(Fim: {new Date(Date.now() + (estimatedRemainingTime) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})</span>
                          </div>
                        </div>
                     </div>
