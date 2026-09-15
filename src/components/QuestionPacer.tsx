@@ -90,7 +90,9 @@ export function QuestionPacer({ className }: { className?: string }) {
     : targetTimeSeconds;
 
   // Estimate remaining time for "Sessões" mode
-  const estimatedRemainingCycles = Math.max(0, adaptiveCyclesTotal - adaptiveCurrentCycle + 1);
+  const futureCycles = Math.max(0, adaptiveCyclesTotal - adaptiveCurrentCycle);
+  const timeForFutureCyclesQs = futureCycles * (totalQuestions * targetTimeSeconds);
+  
   const baseRemainingStudyTime = Math.max(0, adaptiveStudyTimeTotal - adaptiveStudyTimeElapsed);
   const baseRemainingRestTime = Math.max(0, adaptiveRestTimeTotal - adaptiveRestTimeElapsed);
   
@@ -98,7 +100,10 @@ export function QuestionPacer({ className }: { className?: string }) {
   let remainingRestTime = baseRemainingRestTime;
 
   if (isActive && isAdaptiveMode) {
+    remainingStudyTime = estimatedRemainingTime + timeForFutureCyclesQs;
+  } else if (isActive && !isAdaptiveMode) {
     remainingStudyTime = estimatedRemainingTime;
+    remainingRestTime = 0;
   }
 
   const totalEstimatedRemainingSessao = remainingStudyTime + remainingRestTime;
@@ -109,6 +114,7 @@ export function QuestionPacer({ className }: { className?: string }) {
   // Clock time estimations
   const estimatedFinishTimeConfig = new Date(Date.now() + totalEstimatedSessaoConfig * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const estimatedFinishTimeActive = new Date(Date.now() + totalEstimatedRemainingSessao * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const estimatedFinishTimeCurrentBlock = new Date(Date.now() + estimatedRemainingTime * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   const playBeep = () => {
     if (!soundEnabled) return;
@@ -570,7 +576,7 @@ export function QuestionPacer({ className }: { className?: string }) {
                        <div>
                          <div className="text-[10px] font-bold text-gray-500 uppercase">Tempo Restante Estimado</div>
                          <div className="text-sm font-bold text-indigo-600 dark:text-indigo-400">
-                            {formatTime(estimatedRemainingTime)} <span className="text-gray-500">(Fim: {new Date(Date.now() + (estimatedRemainingTime) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})</span>
+                            {formatTime(estimatedRemainingTime)} <span className="text-gray-500">(Fim: {estimatedFinishTimeCurrentBlock})</span>
                          </div>
                        </div>
                     </div>
