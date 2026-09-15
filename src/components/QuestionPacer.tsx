@@ -74,15 +74,10 @@ export function QuestionPacer({ className }: { className?: string }) {
   const averagePace = totalQuestionsDone > 0 
     ? Math.round(totalCompletedTime / totalQuestionsDone) 
     : 0;
-    
-  // Weighted average for smoother predictions (70% real pace, 30% target pace)
-  const blendedPace = totalQuestionsDone > 0
-    ? Math.round(averagePace * 0.7 + targetTimeSeconds * 0.3)
-    : targetTimeSeconds;
 
-  // Remaining time for the current block of questions
-  const timeForRemainingQs = remainingQuestions * blendedPace;
-  const timeForCurrentQ = Math.max(0, blendedPace - currentQuestionTime);
+  // Remaining time for the current block of questions (based on target time)
+  const timeForRemainingQs = remainingQuestions * targetTimeSeconds;
+  const timeForCurrentQ = Math.max(0, targetTimeSeconds - currentQuestionTime);
   const estimatedRemainingTime = timeForRemainingQs + timeForCurrentQ;
 
   const requiredPace = remainingQuestions > 0 && remainingTargetTime > 0 
@@ -527,13 +522,13 @@ export function QuestionPacer({ className }: { className?: string }) {
                     </div>
                   )}
                   <div className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
-                    Questão Atual (Restante)
+                    Questão Atual
                   </div>
                   <div className={`text-6xl font-black tracking-tight ${currentQuestionTime >= effectiveTarget && phase === 'study' && (timerState === 'running' || timerState === 'waiting_transition') ? 'text-red-500' : 'text-gray-900 dark:text-gray-100'}`}>
-                    {formatTime(targetTimeSeconds - currentQuestionTime)}
+                    {formatTime(currentQuestionTime)}
                   </div>
                   <div className="text-sm font-semibold text-gray-500 dark:text-gray-400 mt-4">
-                    Gasto: {formatTime(currentQuestionTime)} / Alvo: {formatTime(targetTimeSeconds)}
+                    Alarme em {formatTime(effectiveTarget)}
                   </div>
                 </div>
 
