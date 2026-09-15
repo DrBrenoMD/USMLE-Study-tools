@@ -33,9 +33,12 @@ export function QuickLogModal() {
     const savedLogs = localStorage.getItem('usmle_study_logs_v4');
     const logs = savedLogs ? JSON.parse(savedLogs) : [];
 
+    const now = new Date();
+    const localDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
     logs.push({
       id: crypto.randomUUID(),
-      date: new Date().toISOString().split('T')[0],
+      date: localDateStr,
       resourceId: resource.id,
       resourceName: resource.name,
       resourceType: resource.type,
@@ -44,7 +47,7 @@ export function QuickLogModal() {
       minutesSpent: 0, // Since it's a quick log, we might not track minutes precisely unless passed from pacer
       scorePercent: parseFloat(correctPercent) || undefined,
       notes: 'Registro Rápido',
-      createdAt: new Date().toISOString()
+      createdAt: now.toISOString()
     });
 
     localStorage.setItem('usmle_study_logs_v4', JSON.stringify(logs));

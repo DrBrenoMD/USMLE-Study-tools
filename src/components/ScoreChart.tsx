@@ -45,7 +45,10 @@ export function ScoreChart({ logs }: ScoreChartProps) {
     const dataWithTrend = data.map((d, i, arr) => {
       const start = Math.max(0, i - 2);
       const subset = arr.slice(start, i + 1);
-      const trendScore = subset.reduce((sum, item) => sum + item.score, 0) / subset.length;
+      const totalQuestionsTrend = subset.reduce((sum, item) => sum + item.questions, 0);
+      const trendScore = totalQuestionsTrend > 0 
+          ? subset.reduce((sum, item) => sum + (item.score * item.questions), 0) / totalQuestionsTrend 
+          : 0;
       return {
         ...d,
         trend: Math.round(trendScore)
@@ -164,15 +167,17 @@ export function ScoreChart({ logs }: ScoreChartProps) {
             
             <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
 
-            {/* Volume (Área Fundo) */}
-            <Area 
+            {/* Volume (Linha) */}
+            <Line 
               yAxisId="right"
               type="monotone" 
               dataKey="questions" 
               name="Volume (Questões)"
-              fill="#93c5fd" 
               stroke="#60a5fa" 
-              fillOpacity={0.3} 
+              strokeWidth={2}
+              strokeDasharray="4 4"
+              dot={{ r: 4, fill: '#60a5fa' }}
+              activeDot={{ r: 6 }}
             />
 
             {/* Acertos (Barras) */}
@@ -180,7 +185,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
               yAxisId="left"
               dataKey="score" 
               name="Acertos (%)"
-              barSize={24} 
+              barSize={32} 
               fill="#3b82f6" 
               radius={[4, 4, 0, 0]}
             />

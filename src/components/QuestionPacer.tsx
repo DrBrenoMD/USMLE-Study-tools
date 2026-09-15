@@ -46,7 +46,7 @@ export function QuestionPacer({ className }: { className?: string }) {
 
   // Adaptive Session Config State
   const [pacerMode, setPacerMode] = useState<'tradicional' | 'adaptativo' | 'sessoes'>('tradicional');
-  const [qbanklyMode, setQbanklyMode] = useState<'next' | 'submit'>('next');
+  const [qbankMode, setQbankMode] = useState<'next' | 'submit' | 'both'>('next');
   const [adaptiveStudyMin, setAdaptiveStudyMin] = useState(50);
   const [adaptiveRestMin, setAdaptiveRestMin] = useState(10);
   const [adaptiveCycles, setAdaptiveCycles] = useState(4);
@@ -60,16 +60,23 @@ export function QuestionPacer({ className }: { className?: string }) {
   const totalTargetTime = totalQuestions * targetTimeSeconds;
   const remainingTargetTime = totalTargetTime - totalCompletedTime;
   
-  // Adaptive Pace Calculation
-  const averagePace = globalElapsedTime > 0 
-    ? Math.round(globalElapsedTime / (totalQuestionsDone + 1)) 
+  // Pace Calculation (Only completed questions)
+  const averagePace = totalQuestionsDone > 0 
+    ? Math.round(totalCompletedTime / totalQuestionsDone) 
     : 0;
     
-  const displayPace = globalElapsedTime > 0 ? averagePace : targetTimeSeconds;
-  const estimatedRemainingTime = Math.max(0, Math.round(displayPace * totalQuestions - globalElapsedTime));
+  // Weighted average for smoother predictions (70% real pace, 30% target pace)
+  const blendedPace = totalQuestionsDone > 0
+    ? Math.round(averagePace * 0.7 + targetTimeSeconds * 0.3)
+    : targetTimeSeconds;
 
-  const requiredPace = remainingQuestions >= 0 && remainingTargetTime > 0 
-    ? Math.floor(remainingTargetTime / (remainingQuestions + 1)) 
+  // Remaining time for the current block of questions
+  const timeForRemainingQs = remainingQuestions * blendedPace;
+  const timeForCurrentQ = Math.max(0, blendedPace - currentQuestionTime);
+  const estimatedRemainingTime = timeForRemainingQs + timeForCurrentQ;
+
+  const requiredPace = remainingQuestions > 0 && remainingTargetTime > 0 
+    ? Math.floor(remainingTargetTime / remainingQuestions) 
     : 0;
 
   // Effective Target for current question
@@ -86,7 +93,7 @@ export function QuestionPacer({ className }: { className?: string }) {
   let remainingRestTime = baseRemainingRestTime;
 
   if (isActive && isAdaptiveMode) {
-    remainingStudyTime = averagePace * remainingQuestions;
+    remainingStudyTime = estimatedRemainingTime;
   }
 
   const totalEstimatedRemainingSessao = remainingStudyTime + remainingRestTime;
@@ -167,10 +174,10 @@ export function QuestionPacer({ className }: { className?: string }) {
     if (bookmarkletRef.current) {
       bookmarkletRef.current.setAttribute(
         'href',
-        `javascript:(function(){window.__pacerMode="${qbanklyMode}";window.__pacerWin=window.open("https://usmle-study-tools.vercel.app/pacer","PacerWindow","width=500,height=800");if(!window.__pacerListenerAdded){window.addEventListener("click",(e)=>{const btn=e.target.closest("button");if(btn){const title=(btn.getAttribute("title")||"").toLowerCase();const text=(btn.textContent||"").toLowerCase();let shouldTrigger=false;if(window.__pacerMode==="next"&&(title.includes("next")||text.includes("next"))){shouldTrigger=true;}else if(window.__pacerMode==="submit"&&text.includes("submit")){shouldTrigger=true;}if(shouldTrigger&&window.__pacerWin){console.log("Pacer acionado!");window.__pacerWin.postMessage({type:"PACER_NEXT"},"*");}}},true);window.__pacerListenerAdded=true;}alert("Pacer Integrado ("+window.__pacerMode+")! A janela do Pacer deve ficar aberta.");})();`
+        `javascript:(function(){window.__pacerMode="${qbankMode}";window.__pacerWin=window.open("https://usmle-study-tools.vercel.app/pacer","PacerWindow","width=500,height=800");if(!window.__pacerListenerAdded){window.addEventListener("click",(e)=>{const btn=e.target.closest("button, a");if(btn){const title=(btn.getAttribute("title")||"").toLowerCase();const text=(btn.textContent||"").toLowerCase();let shouldTrigger=false;if((window.__pacerMode==="next"||window.__pacerMode==="both")&&(title.includes("next")||text.includes("next"))){shouldTrigger=true;}if((window.__pacerMode==="submit"||window.__pacerMode==="both")&&text.includes("submit")){shouldTrigger=true;}if(shouldTrigger&&window.__pacerWin){console.log("Pacer acionado!");window.__pacerWin.postMessage({type:"PACER_NEXT"},"*");}}},true);window.__pacerListenerAdded=true;}alert("Pacer Integrado ("+window.__pacerMode+")! A janela do Pacer deve ficar aberta.");})();`
       );
     }
-  }, [qbanklyMode]);
+  }, [qbankMode]);
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -252,21 +259,25 @@ export function QuestionPacer({ className }: { className?: string }) {
                <div className="flex items-start gap-2">
                  <BookOpen className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5" />
                  <div>
-                   <h4 className="text-sm font-bold text-blue-900 dark:text-blue-100">Integração Externa (Qbankly, etc)</h4>
+                    <h4 className="text-sm font-bold text-blue-900 dark:text-blue-100">Integração Externa (Q-Banks)</h4>
                    <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
-                     Arraste o botão abaixo para a sua <b>Barra de Favoritos</b>. Na página do Qbankly, inicie a prova, clique no favorito que você salvou e uma mini-janela do Pacer se abrirá. Ao clicar no botão "Next" do site, o Pacer avançará automaticamente!
+                     Arraste o botão abaixo para a sua <b>Barra de Favoritos</b>. Na página do Q-Bank (UWorld, Amboss, Qbankly, etc), inicie a prova, clique no favorito que você salvou e uma mini-janela do Pacer se abrirá. Ao clicar no botão "Next" do site, o Pacer avançará automaticamente!
                    </p>
                    
                    <div className="mt-3 mb-2 flex flex-col gap-1.5">
                      <span className="text-[11px] font-bold text-blue-900 dark:text-blue-100 uppercase tracking-wider">Qual botão avançará o pacer?</span>
                      <div className="flex gap-4">
                        <label className="flex items-center gap-1.5 text-sm text-blue-800 dark:text-blue-200 cursor-pointer hover:opacity-80 transition-opacity">
-                         <input type="radio" name="qbanklyMode" className="cursor-pointer" checked={qbanklyMode === 'next'} onChange={() => setQbanklyMode('next')} />
+                         <input type="radio" name="qbankMode" className="cursor-pointer" checked={qbankMode === 'next'} onChange={() => setQbankMode('next')} />
                          Botão "Next"
                        </label>
                        <label className="flex items-center gap-1.5 text-sm text-blue-800 dark:text-blue-200 cursor-pointer hover:opacity-80 transition-opacity">
-                         <input type="radio" name="qbanklyMode" className="cursor-pointer" checked={qbanklyMode === 'submit'} onChange={() => setQbanklyMode('submit')} />
+                         <input type="radio" name="qbankMode" className="cursor-pointer" checked={qbankMode === 'submit'} onChange={() => setQbankMode('submit')} />
                          Botão "Submit"
+                       </label>
+                       <label className="flex items-center gap-1.5 text-sm text-blue-800 dark:text-blue-200 cursor-pointer hover:opacity-80 transition-opacity">
+                         <input type="radio" name="qbankMode" className="cursor-pointer" checked={qbankMode === 'both'} onChange={() => setQbankMode('both')} />
+                         Ambos
                        </label>
                      </div>
                    </div>
@@ -277,7 +288,7 @@ export function QuestionPacer({ className }: { className?: string }) {
                      onClick={(e) => e.preventDefault()}
                      title="Arraste para a barra de favoritos"
                    >
-                     Integração Qbankly
+                     Integração Q-Bank
                    </a>
                  </div>
                </div>
@@ -510,7 +521,7 @@ export function QuestionPacer({ className }: { className?: string }) {
                       <div className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-1.5">
                         <Clock className="w-3.5 h-3.5" /> Pace Médio Atual
                       </div>
-                      <div className="text-3xl font-black text-gray-900 dark:text-gray-100 mt-1 mb-1">{globalElapsedTime > 0 ? formatTime(averagePace) : '--:--'}</div>
+                      <div className="text-3xl font-black text-gray-900 dark:text-gray-100 mt-1 mb-1">{totalQuestionsDone > 0 ? formatTime(averagePace) : '--:--'}</div>
                       <div className="text-xs font-medium text-gray-500">Gasto por questão</div>
                     </div>
 
