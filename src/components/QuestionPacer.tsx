@@ -13,6 +13,7 @@ export function QuestionPacer({ className }: { className?: string }) {
     pacerSoundEnabled: soundEnabled,
     setPacerState,
     nextPacerQuestion,
+    prevPacerQuestion,
     stopPacer,
     finishPacerSession,
     addNetTime,
@@ -50,6 +51,15 @@ export function QuestionPacer({ className }: { className?: string }) {
   const [adaptiveStudyMin, setAdaptiveStudyMin] = useState(50);
   const [adaptiveRestMin, setAdaptiveRestMin] = useState(10);
   const [adaptiveCycles, setAdaptiveCycles] = useState(4);
+
+  useEffect(() => {
+    if (totalQuestions > 0 && targetTimeSeconds > 0) {
+      const totalMinutes = Math.round((totalQuestions * targetTimeSeconds) / 60);
+      const restMinutes = Math.round(totalMinutes / 5);
+      setAdaptiveStudyMin(totalMinutes || 1);
+      setAdaptiveRestMin(restMinutes || 1);
+    }
+  }, [totalQuestions, targetTimeSeconds]);
 
   const audioContextRef = useRef<AudioContext | null>(null);
 
@@ -160,6 +170,12 @@ export function QuestionPacer({ className }: { className?: string }) {
     }
   };
 
+  const handlePrev = () => {
+    if (totalQuestionsDone > 0) {
+      prevPacerQuestion();
+    }
+  };
+
   const handleStop = () => {
     finishPacerSession();
     setTimerState('idle');
@@ -168,13 +184,16 @@ export function QuestionPacer({ className }: { className?: string }) {
   const handleNextRef = useRef(handleNext);
   handleNextRef.current = handleNext;
 
+  const handlePrevRef = useRef(handlePrev);
+  handlePrevRef.current = handlePrev;
+
   const bookmarkletRef = useRef<HTMLAnchorElement>(null);
 
   useEffect(() => {
     if (bookmarkletRef.current) {
       bookmarkletRef.current.setAttribute(
         'href',
-        `javascript:(function(){window.__pacerMode="${qbankMode}";window.__pacerWin=window.open("https://usmle-study-tools.vercel.app/pacer","PacerWindow","width=500,height=800");if(!window.__pacerListenerAdded){["click","mousedown","pointerdown"].forEach(evt=>{window.addEventListener(evt,(e)=>{const btn=e.target.closest("button, a, [role='button'], .submit-btn");if(btn){const title=(btn.getAttribute("title")||"").toLowerCase();const text=(btn.textContent||"").toLowerCase();const cls=(btn.getAttribute("class")||"").toLowerCase();let shouldTrigger=false;if((window.__pacerMode==="next"||window.__pacerMode==="both")&&(title.includes("next")||text.includes("next")||cls.includes("next"))){shouldTrigger=true;}if((window.__pacerMode==="submit"||window.__pacerMode==="both")&&(title.includes("submit")||text.includes("submit")||cls.includes("submit"))){shouldTrigger=true;}if(shouldTrigger&&window.__pacerWin){const now=Date.now();if(!window.__pacerLastTrigger||(now-window.__pacerLastTrigger>1000)){window.__pacerLastTrigger=now;console.log("Pacer acionado!");window.__pacerWin.postMessage({type:"PACER_NEXT"},"*");}}}},true);});window.__pacerListenerAdded=true;}alert("Pacer Integrado ("+window.__pacerMode+")! A janela do Pacer deve ficar aberta.");})();`
+        `javascript:(function(){window.__pacerMode="${qbankMode}";window.__pacerWin=window.open("https://usmle-study-tools.vercel.app/pacer","PacerWindow","width=500,height=800");if(!window.__pacerListenerAdded){["click","mousedown","pointerdown"].forEach(evt=>{window.addEventListener(evt,(e)=>{const btn=e.target.closest("button, a, [role='button'], .submit-btn");if(btn){const title=(btn.getAttribute("title")||"").toLowerCase();const text=(btn.textContent||"").toLowerCase();const cls=(btn.getAttribute("class")||"").toLowerCase();let shouldNext=false;let shouldPrev=false;if((window.__pacerMode==="next"||window.__pacerMode==="both")&&(title.includes("next")||text.includes("next")||cls.includes("next")||title.includes("próximo")||text.includes("próximo"))){shouldNext=true;}if((window.__pacerMode==="submit"||window.__pacerMode==="both")&&(title.includes("submit")||text.includes("submit")||cls.includes("submit"))){shouldNext=true;}if(title.includes("prev")||text.includes("prev")||cls.includes("prev")||title.includes("anterior")||text.includes("anterior")){shouldPrev=true;}if((shouldNext||shouldPrev)&&window.__pacerWin){const now=Date.now();if(!window.__pacerLastTrigger||(now-window.__pacerLastTrigger>1000)){window.__pacerLastTrigger=now;console.log("Pacer acionado!");window.__pacerWin.postMessage({type:shouldNext?"PACER_NEXT":"PACER_PREV"},"*");}}}},true);});window.__pacerListenerAdded=true;}alert("Pacer Integrado ("+window.__pacerMode+")! A janela do Pacer deve ficar aberta.");})();`
       );
     }
   }, [qbankMode]);
@@ -184,6 +203,10 @@ export function QuestionPacer({ className }: { className?: string }) {
       if (event.data?.type === 'PACER_NEXT') {
          if (phase !== 'rest' && isActive) {
             handleNextRef.current();
+         }
+      } else if (event.data?.type === 'PACER_PREV') {
+         if (phase !== 'rest' && isActive) {
+            handlePrevRef.current();
          }
       } else if (event.data?.type === 'PACER_PAUSE_TOGGLE') {
          setTimerState(timerState === 'running' ? 'paused' : 'running');
@@ -504,13 +527,13 @@ export function QuestionPacer({ className }: { className?: string }) {
                     </div>
                   )}
                   <div className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
-                    Questão Atual
+                    Questão Atual (Restante)
                   </div>
                   <div className={`text-6xl font-black tracking-tight ${currentQuestionTime >= effectiveTarget && phase === 'study' && (timerState === 'running' || timerState === 'waiting_transition') ? 'text-red-500' : 'text-gray-900 dark:text-gray-100'}`}>
-                    {formatTime(currentQuestionTime)}
+                    {formatTime(targetTimeSeconds - currentQuestionTime)}
                   </div>
                   <div className="text-sm font-semibold text-gray-500 dark:text-gray-400 mt-4">
-                    Alarme em {formatTime(effectiveTarget)}
+                    Gasto: {formatTime(currentQuestionTime)} / Alvo: {formatTime(targetTimeSeconds)}
                   </div>
                 </div>
 
@@ -570,13 +593,23 @@ export function QuestionPacer({ className }: { className?: string }) {
                   Encerrar Pacer
                 </button>
                 
-                <button
-                  onClick={handleNext}
-                  disabled={phase === 'rest'}
-                  className={`px-8 py-3 rounded-xl font-bold flex items-center gap-2 shadow-sm transition-all ${phase === 'rest' ? 'bg-gray-200 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed' : 'bg-gray-900 dark:bg-gray-50 hover:bg-black dark:hover:bg-white text-white dark:text-gray-900'}`}
-                >
-                  {totalQuestionsDone + 1 >= totalQuestions ? 'Finalizar Lista' : 'Próxima Questão'} <FastForward className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handlePrev}
+                    disabled={phase === 'rest' || totalQuestionsDone === 0}
+                    className={`px-4 py-3 rounded-xl font-bold flex items-center gap-2 shadow-sm transition-all ${phase === 'rest' || totalQuestionsDone === 0 ? 'bg-gray-200 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed' : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'}`}
+                  >
+                    Anterior
+                  </button>
+                  
+                  <button
+                    onClick={handleNext}
+                    disabled={phase === 'rest'}
+                    className={`px-8 py-3 rounded-xl font-bold flex items-center gap-2 shadow-sm transition-all ${phase === 'rest' ? 'bg-gray-200 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed' : 'bg-gray-900 dark:bg-gray-50 hover:bg-black dark:hover:bg-white text-white dark:text-gray-900'}`}
+                  >
+                    {totalQuestionsDone + 1 >= totalQuestions ? 'Finalizar Lista' : 'Próxima'} <FastForward className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             </div>
           </div>

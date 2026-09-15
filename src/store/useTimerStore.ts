@@ -63,6 +63,7 @@ interface TimerStore {
   setPacerState: (updates: Partial<TimerStore>) => void;
   tickPacer: (deltaSecs: number) => void;
   nextPacerQuestion: () => void;
+  prevPacerQuestion: () => void;
   stashPacerSession: () => void;
   finishPacerSession: () => void;
   closePacerSummary: () => void;
@@ -259,6 +260,16 @@ export const useTimerStore = create<TimerStore>()(
         pacerCompletedQuestionsTime: [...state.pacerCompletedQuestionsTime, state.pacerCurrentQuestionTime],
         pacerCurrentQuestionTime: 0
       })),
+      
+      prevPacerQuestion: () => set((state) => {
+        if (state.pacerCompletedQuestionsTime.length === 0) return {};
+        const previousTimes = [...state.pacerCompletedQuestionsTime];
+        const lastTime = previousTimes.pop() || 0;
+        return {
+          pacerCompletedQuestionsTime: previousTimes,
+          pacerCurrentQuestionTime: lastTime
+        };
+      }),
 
       stashPacerSession: () => set((state) => {
         const time = state.pacerCompletedQuestionsTime.reduce((a,b)=>a+b, 0) + state.pacerCurrentQuestionTime;
