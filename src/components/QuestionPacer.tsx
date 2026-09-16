@@ -80,8 +80,11 @@ export function QuestionPacer({ className }: { className?: string }) {
   const timeForCurrentQ = Math.max(0, targetTimeSeconds - currentQuestionTime);
   const estimatedRemainingTime = timeForRemainingQs + timeForCurrentQ;
 
-  const requiredPace = remainingQuestions > 0 && remainingTargetTime > 0 
-    ? Math.floor(remainingTargetTime / remainingQuestions) 
+  const questionsLeftIncludingCurrent = totalQuestions - totalQuestionsDone;
+  const realtimeRemainingTargetTime = totalTargetTime - globalElapsedTime;
+
+  const requiredPace = questionsLeftIncludingCurrent > 0 && realtimeRemainingTargetTime > 0 
+    ? Math.floor(realtimeRemainingTargetTime / questionsLeftIncludingCurrent) 
     : 0;
 
   // Effective Target for current question
@@ -554,7 +557,7 @@ export function QuestionPacer({ className }: { className?: string }) {
                         <TrendingDown className="w-3.5 h-3.5" /> Pace Alvo (Para Terminar)
                       </div>
                       <div className="text-3xl font-black text-blue-700 dark:text-blue-300 mt-1 mb-1">{formatTime(requiredPace)}</div>
-                      <div className="text-xs font-medium text-blue-600/70 dark:text-blue-400/70">Necessário nas próximas {remainingQuestions}</div>
+                      <div className="text-xs font-medium text-blue-600/70 dark:text-blue-400/70">Necessário para as {questionsLeftIncludingCurrent} restantes</div>
                     </div>
                   </div>
 
