@@ -197,28 +197,42 @@ export function QuestionPacer({ className }: { className?: string }) {
     if (bookmarkletRef.current) {
       bookmarkletRef.current.setAttribute(
         'href',
-        `javascript:(function(){window.__pacerMode="${qbankMode}";window.__pacerWin=window.open("https://usmle-study-tools.vercel.app/pacer","PacerWindow","width=500,height=800");if(!window.__pacerListenerAdded){["click","mousedown","pointerdown"].forEach(evt=>{window.addEventListener(evt,(e)=>{const btn=e.target.closest("button, a, [role='button'], .submit-btn");if(btn){const title=(btn.getAttribute("title")||"").toLowerCase();const text=(btn.textContent||"").toLowerCase();const cls=(btn.getAttribute("class")||"").toLowerCase();let shouldNext=false;let shouldPrev=false;if((window.__pacerMode==="next"||window.__pacerMode==="both")&&(title.includes("next")||text.includes("next")||cls.includes("next")||title.includes("próximo")||text.includes("próximo"))){shouldNext=true;}if((window.__pacerMode==="submit"||window.__pacerMode==="both")&&(title.includes("submit")||text.includes("submit")||cls.includes("submit"))){shouldNext=true;}if(title.includes("prev")||text.includes("prev")||cls.includes("prev")||title.includes("anterior")||text.includes("anterior")){shouldPrev=true;}if((shouldNext||shouldPrev)&&window.__pacerWin){const now=Date.now();if(!window.__pacerLastTrigger||(now-window.__pacerLastTrigger>1000)){window.__pacerLastTrigger=now;console.log("Pacer acionado!");window.__pacerWin.postMessage({type:shouldNext?"PACER_NEXT":"PACER_PREV"},"*");}}}},true);});window.__pacerListenerAdded=true;}alert("Pacer Integrado ("+window.__pacerMode+")! A janela do Pacer deve ficar aberta.");})();`
+        `javascript:(function(){window.__pacerWin=window.open("https://usmle-study-tools.vercel.app/pacer","PacerWindow","width=500,height=800");if(!window.__pacerListenerAdded){["click","mousedown","pointerdown"].forEach(evt=>{window.addEventListener(evt,(e)=>{const btn=e.target.closest("button, a, [role='button'], .submit-btn, input[type='submit'], input[type='button']");if(btn){const title=(btn.getAttribute("title")||"").toLowerCase();const text=(btn.textContent||"").toLowerCase();const cls=(btn.getAttribute("class")||"").toLowerCase();const val=(btn.getAttribute("value")||"").toLowerCase();let isNext=title.includes("next")||text.includes("next")||cls.includes("next")||title.includes("próximo")||text.includes("próximo")||val.includes("next")||val.includes("próximo");let isSubmit=title.includes("submit")||text.includes("submit")||cls.includes("submit")||text.includes("enviar")||val.includes("submit")||val.includes("enviar");let isPrev=title.includes("prev")||text.includes("prev")||cls.includes("prev")||title.includes("anterior")||text.includes("anterior")||val.includes("prev")||val.includes("anterior");if((isNext||isSubmit||isPrev)&&window.__pacerWin){const now=Date.now();if(!window.__pacerLastTrigger||(now-window.__pacerLastTrigger>1000)){window.__pacerLastTrigger=now;console.log("Pacer acionado!",{isNext,isSubmit,isPrev});window.__pacerWin.postMessage({type:"PACER_BTN_CLICK",isNext:isNext,isSubmit:isSubmit,isPrev:isPrev},"*");}}}},true);});window.__pacerListenerAdded=true;}alert("Pacer Integrado! Agora as opções de Next/Submit alteradas no Pacer aplicarão automaticamente na página externa.");})();`
       );
     }
-  }, [qbankMode]);
+  }, []);
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
+      let shouldNext = false;
+      let shouldPrev = false;
+
       if (event.data?.type === 'PACER_NEXT') {
-         if (phase !== 'rest' && isActive) {
-            handleNextRef.current();
-         }
+         shouldNext = true;
       } else if (event.data?.type === 'PACER_PREV') {
-         if (phase !== 'rest' && isActive) {
-            handlePrevRef.current();
-         }
+         shouldPrev = true;
+      } else if (event.data?.type === 'PACER_BTN_CLICK') {
+         const { isNext, isSubmit, isPrev } = event.data;
+         
+         if (qbankMode === 'next' && isNext) shouldNext = true;
+         if (qbankMode === 'submit' && isSubmit) shouldNext = true;
+         if (qbankMode === 'both' && (isNext || isSubmit)) shouldNext = true;
+         
+         if (isPrev) shouldPrev = true;
       } else if (event.data?.type === 'PACER_PAUSE_TOGGLE') {
          setTimerState(timerState === 'running' ? 'paused' : 'running');
+      }
+
+      if (shouldNext && phase !== 'rest' && isActive) {
+         handleNextRef.current();
+      }
+      if (shouldPrev && phase !== 'rest' && isActive) {
+         handlePrevRef.current();
       }
     };
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [phase, isActive, timerState]);
+  }, [phase, isActive, timerState, qbankMode]);
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(Math.abs(seconds) / 60);
