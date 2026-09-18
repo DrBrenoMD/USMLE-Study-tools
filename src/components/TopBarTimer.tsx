@@ -90,7 +90,7 @@ export function TopBarTimer() {
     }
   };
 
-  const playPacerBeep = (soundEnabled: boolean) => {
+  const playPacerBeep = (soundEnabled: boolean, freq: number = 880) => {
     if (!soundEnabled) return;
     try {
       if (!audioContextRef.current) {
@@ -103,7 +103,7 @@ export function TopBarTimer() {
       const gainNode = ctx.createGain();
       
       oscillator.type = 'sine';
-      oscillator.frequency.setValueAtTime(880, ctx.currentTime); 
+      oscillator.frequency.setValueAtTime(freq, ctx.currentTime); 
       
       gainNode.gain.setValueAtTime(0.5, ctx.currentTime);
       gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
@@ -154,20 +154,44 @@ export function TopBarTimer() {
             // 2. Pacer Logic
             const isStudyingAndActive = state.pacerIsActive && state.phase === 'study' && (state.timerState === 'running' || state.timerState === 'waiting_transition');
             if (isStudyingAndActive) {
-               const newPacerTime = state.pacerCurrentQuestionTime + deltaSecs;
                state.tickPacer(deltaSecs);
                
-               const totalDone = state.pacerCompletedQuestionsTime.length;
-               const remainingQ = Math.max(0, state.pacerTotalQuestions - totalDone - 1);
-               const totalTimeDone = state.pacerCompletedQuestionsTime.reduce((a, b) => a + b, 0);
-               const remainingTarget = (state.pacerTotalQuestions * state.pacerTargetTimeSeconds) - totalTimeDone;
-               
-               const requiredPace = remainingQ >= 0 && remainingTarget > 0 ? Math.floor(remainingTarget / (remainingQ + 1)) : 0;
-               const effectiveTarget = state.pacerIsAdaptive && requiredPace < state.pacerTargetTimeSeconds && requiredPace > 0
-                  ? requiredPace : state.pacerTargetTimeSeconds;
-               
-               if (effectiveTarget > 0 && newPacerTime > 0 && newPacerTime % effectiveTarget === 0) {
-                  playPacerBeep(state.pacerSoundEnabled);
+               if (state.pacerQBankMode === 'tutored') {
+                 if (state.pacerTutoredPhase === 'solve') {
+                   const newSolveTime = state.pacerCurrentQuestionTime + deltaSecs;
+                   const totalDone = state.pacerCompletedQuestionsTime.length;
+                   const remainingQ = Math.max(0, state.pacerTotalQuestions - totalDone - 1);
+                   const totalSolveDone = state.pacerCompletedQuestionsTime.reduce((a, b) => a + b, 0);
+                   const remainingSolveTarget = (state.pacerTotalQuestions * state.pacerTargetTimeSeconds) - totalSolveDone;
+                   
+                   const requiredPace = remainingQ >= 0 && remainingSolveTarget > 0 ? Math.floor(remainingSolveTarget / (remainingQ + 1)) : 0;
+                   const effectiveTarget = state.pacerIsAdaptive && requiredPace < state.pacerTargetTimeSeconds && requiredPace > 0
+                      ? requiredPace : state.pacerTargetTimeSeconds;
+                   
+                   if (effectiveTarget > 0 && newSolveTime > 0 && newSolveTime % effectiveTarget === 0) {
+                      playPacerBeep(state.pacerSoundEnabled, 880);
+                   }
+                 } else {
+                   const newReviewTime = state.pacerCurrentReviewTime + deltaSecs;
+                   const targetReview = state.pacerTargetReviewSeconds || 150;
+                   if (targetReview > 0 && newReviewTime > 0 && newReviewTime % targetReview === 0) {
+                      playPacerBeep(state.pacerSoundEnabled, 660);
+                   }
+                 }
+               } else {
+                 const newPacerTime = state.pacerCurrentQuestionTime + deltaSecs;
+                 const totalDone = state.pacerCompletedQuestionsTime.length;
+                 const remainingQ = Math.max(0, state.pacerTotalQuestions - totalDone - 1);
+                 const totalTimeDone = state.pacerCompletedQuestionsTime.reduce((a, b) => a + b, 0);
+                 const remainingTarget = (state.pacerTotalQuestions * state.pacerTargetTimeSeconds) - totalTimeDone;
+                 
+                 const requiredPace = remainingQ >= 0 && remainingTarget > 0 ? Math.floor(remainingTarget / (remainingQ + 1)) : 0;
+                 const effectiveTarget = state.pacerIsAdaptive && requiredPace < state.pacerTargetTimeSeconds && requiredPace > 0
+                    ? requiredPace : state.pacerTargetTimeSeconds;
+                 
+                 if (effectiveTarget > 0 && newPacerTime > 0 && newPacerTime % effectiveTarget === 0) {
+                    playPacerBeep(state.pacerSoundEnabled, 880);
+                 }
                }
             }
         }

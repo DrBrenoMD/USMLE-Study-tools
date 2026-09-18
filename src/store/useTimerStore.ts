@@ -19,9 +19,15 @@ interface TimerStore {
   pacerIsActive: boolean;
   pacerTotalQuestions: number;
   pacerTargetTimeSeconds: number;
+  pacerTargetReviewSeconds: number;
+  pacerQBankMode: 'timed' | 'tutored';
+  pacerTutoredPhase: 'solve' | 'review';
+  pacerTriggerButton: 'next' | 'submit' | 'both';
   pacerIsAdaptive: boolean;
   pacerCurrentQuestionTime: number;
+  pacerCurrentReviewTime: number;
   pacerCompletedQuestionsTime: number[];
+  pacerCompletedReviewTimes: number[];
   pacerSoundEnabled: boolean;
   pacerShowSummary: boolean;
 
@@ -62,6 +68,7 @@ interface TimerStore {
   // Pacer Actions
   setPacerState: (updates: Partial<TimerStore>) => void;
   tickPacer: (deltaSecs: number) => void;
+  submitPacerQuestion: () => void;
   nextPacerQuestion: () => void;
   prevPacerQuestion: () => void;
   stashPacerSession: () => void;
@@ -84,9 +91,15 @@ export const useTimerStore = create<TimerStore>()(
       pacerIsActive: false,
       pacerTotalQuestions: 40,
       pacerTargetTimeSeconds: 90,
+      pacerTargetReviewSeconds: 150,
+      pacerQBankMode: 'timed',
+      pacerTutoredPhase: 'solve',
+      pacerTriggerButton: 'next',
       pacerIsAdaptive: false,
       pacerCurrentQuestionTime: 0,
+      pacerCurrentReviewTime: 0,
       pacerCompletedQuestionsTime: [],
+      pacerCompletedReviewTimes: [],
       pacerSoundEnabled: true,
       pacerShowSummary: false,
       
@@ -253,16 +266,67 @@ export const useTimerStore = create<TimerStore>()(
 
       setPacerState: (updates) => set((state) => ({ ...state, ...updates })),
       
-      tickPacer: (deltaSecs) => set((state) => ({
-         pacerCurrentQuestionTime: state.pacerCurrentQuestionTime + deltaSecs
-      })),
+      tickPacer: (deltaSecs) => set((state) => {
+        if (state.pacerQBankMode === 'tutored') {
+          if (state.pacerTutoredPhase === 'solve') {
+            return { pacerCurrentQuestionTime: state.pacerCurrentQuestionTime + deltaSecs };
+          } else {
+            return { pacerCurrentReviewTime: state.pacerCurrentReviewTime + deltaSecs };
+          }
+        }
+        return { pacerCurrentQuestionTime: state.pacerCurrentQuestionTime + deltaSecs };
+      }),
 
-      nextPacerQuestion: () => set((state) => ({
-        pacerCompletedQuestionsTime: [...state.pacerCompletedQuestionsTime, state.pacerCurrentQuestionTime],
-        pacerCurrentQuestionTime: 0
-      })),
+      submitPacerQuestion: () => set((state) => {
+        if (state.pacerQBankMode === 'tutored' && state.pacerTutoredPhase === 'solve') {
+          return {
+            pacerTutoredPhase: 'review',
+            pacerCurrentReviewTime: 0
+          };
+        }
+        return {};
+      }),
+
+      nextPacerQuestion: () => set((state) => {
+        if (state.pacerQBankMode === 'tutored') {
+          const isReview = state.pacerTutoredPhase === 'review';
+          return {
+            pacerCompletedQuestionsTime: [...state.pacerCompletedQuestionsTime, state.pacerCurrentQuestionTime],
+            pacerCompletedReviewTimes: [...state.pacerCompletedReviewTimes, isReview ? state.pacerCurrentReviewTime : 0],
+            pacerCurrentQuestionTime: 0,
+            pacerCurrentReviewTime: 0,
+            pacerTutoredPhase: 'solve'
+          };
+        }
+        return {
+          pacerCompletedQuestionsTime: [...state.pacerCompletedQuestionsTime, state.pacerCurrentQuestionTime],
+          pacerCurrentQuestionTime: 0
+        };
+      }),
       
       prevPacerQuestion: () => set((state) => {
+        if (state.pacerQBankMode === 'tutored') {
+          // Se estava revisando a questão atual, voltar à resolução da mesma questão
+          if (state.pacerTutoredPhase === 'review') {
+            return {
+              pacerTutoredPhase: 'solve',
+              pacerCurrentReviewTime: 0
+            };
+          }
+          // Se estava na resolução, volta para a questão anterior
+          if (state.pacerCompletedQuestionsTime.length === 0) return {};
+          const prevQuestions = [...state.pacerCompletedQuestionsTime];
+          const prevReviews = [...state.pacerCompletedReviewTimes];
+          const lastSolve = prevQuestions.pop() || 0;
+          const lastReview = prevReviews.pop() || 0;
+          return {
+            pacerCompletedQuestionsTime: prevQuestions,
+            pacerCompletedReviewTimes: prevReviews,
+            pacerCurrentQuestionTime: lastSolve,
+            pacerCurrentReviewTime: lastReview,
+            pacerTutoredPhase: lastReview > 0 ? 'review' : 'solve'
+          };
+        }
         if (state.pacerCompletedQuestionsTime.length === 0) return {};
         const previousTimes = [...state.pacerCompletedQuestionsTime];
         const lastTime = previousTimes.pop() || 0;
@@ -273,12 +337,16 @@ export const useTimerStore = create<TimerStore>()(
       }),
 
       stashPacerSession: () => set((state) => {
-        const time = state.pacerCompletedQuestionsTime.reduce((a,b)=>a+b, 0) + state.pacerCurrentQuestionTime;
+        const time = state.pacerCompletedQuestionsTime.reduce((a,b)=>a+b, 0) + state.pacerCurrentQuestionTime
+          + state.pacerCompletedReviewTimes.reduce((a,b)=>a+b, 0) + state.pacerCurrentReviewTime;
         const qs = state.pacerCompletedQuestionsTime.length + 1;
         return {
           adaptivePacerSessions: [...state.adaptivePacerSessions, { time, questions: qs }],
           pacerCompletedQuestionsTime: [],
-          pacerCurrentQuestionTime: 0
+          pacerCompletedReviewTimes: [],
+          pacerCurrentQuestionTime: 0,
+          pacerCurrentReviewTime: 0,
+          pacerTutoredPhase: 'solve'
         };
       }),
 
@@ -290,7 +358,10 @@ export const useTimerStore = create<TimerStore>()(
       closePacerSummary: () => set({
         pacerShowSummary: false,
         pacerCurrentQuestionTime: 0,
+        pacerCurrentReviewTime: 0,
         pacerCompletedQuestionsTime: [],
+        pacerCompletedReviewTimes: [],
+        pacerTutoredPhase: 'solve',
         adaptivePacerSessions: []
       }),
 
@@ -298,7 +369,10 @@ export const useTimerStore = create<TimerStore>()(
         pacerIsActive: false,
         pacerShowSummary: false,
         pacerCurrentQuestionTime: 0,
+        pacerCurrentReviewTime: 0,
         pacerCompletedQuestionsTime: [],
+        pacerCompletedReviewTimes: [],
+        pacerTutoredPhase: 'solve',
         adaptivePacerSessions: [],
         isAdaptiveMode: false,
         timerState: 'idle',
@@ -308,14 +382,20 @@ export const useTimerStore = create<TimerStore>()(
         unscheduledRestStoredTimeLeft: 0
       })),
 
-      resetPacerAccumulatedTime: () => set((state) => ({
-        // Normaliza todas as questões já concluídas para o tempo alvo (targetTimeSeconds),
-        // zerando o atraso/adianto acumulado de questões anteriores,
-        // e reinicia o tempo da questão atual para 0s.
-        // Assim, o Status Global retorna ao valor exato de 1 questão (+targetTimeSeconds).
-        pacerCompletedQuestionsTime: state.pacerCompletedQuestionsTime.map(() => state.pacerTargetTimeSeconds),
-        pacerCurrentQuestionTime: 0
-      }))
+      resetPacerAccumulatedTime: () => set((state) => {
+        if (state.pacerQBankMode === 'tutored') {
+          return {
+            pacerCompletedQuestionsTime: state.pacerCompletedQuestionsTime.map(() => state.pacerTargetTimeSeconds),
+            pacerCompletedReviewTimes: state.pacerCompletedReviewTimes.map(() => state.pacerTargetReviewSeconds),
+            pacerCurrentQuestionTime: 0,
+            pacerCurrentReviewTime: 0
+          };
+        }
+        return {
+          pacerCompletedQuestionsTime: state.pacerCompletedQuestionsTime.map(() => state.pacerTargetTimeSeconds),
+          pacerCurrentQuestionTime: 0
+        };
+      })
     }),
     {
       name: 'timer-storage',
@@ -325,6 +405,9 @@ export const useTimerStore = create<TimerStore>()(
         dailyNetTime: state.dailyNetTime,
         pacerTotalQuestions: state.pacerTotalQuestions,
         pacerTargetTimeSeconds: state.pacerTargetTimeSeconds,
+        pacerTargetReviewSeconds: state.pacerTargetReviewSeconds,
+        pacerQBankMode: state.pacerQBankMode,
+        pacerTriggerButton: state.pacerTriggerButton,
         pacerIsAdaptive: state.pacerIsAdaptive,
         pacerSoundEnabled: state.pacerSoundEnabled
       }),
