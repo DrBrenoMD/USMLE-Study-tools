@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Play, Square, FastForward, Clock, Activity, TrendingUp, TrendingDown, Volume2, VolumeX, Settings2, Pause, Save, X, BookOpen, Coffee } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Play, Square, FastForward, Clock, Activity, TrendingUp, TrendingDown, Volume2, VolumeX, Settings2, Pause, Save, X, BookOpen, Coffee, Chrome } from 'lucide-react';
 import { useTimerStore } from '../store/useTimerStore';
 
 export function QuestionPacer({ className }: { className?: string }) {
@@ -323,14 +324,24 @@ export function QuestionPacer({ className }: { className?: string }) {
                      </div>
                    </div>
 
-                   <a 
-                     ref={bookmarkletRef}
-                     className="mt-2 inline-block px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg shadow cursor-grab active:cursor-grabbing hover:bg-blue-700 transition-colors"
-                     onClick={(e) => e.preventDefault()}
-                     title="Arraste para a barra de favoritos"
-                   >
-                     Integração Q-Bank
-                   </a>
+                   <div className="mt-3 flex flex-wrap items-center gap-2">
+                     <a 
+                       ref={bookmarkletRef}
+                       className="inline-block px-3.5 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg shadow cursor-grab active:cursor-grabbing hover:bg-blue-700 transition-colors"
+                       onClick={(e) => e.preventDefault()}
+                       title="Arraste para a barra de favoritos"
+                     >
+                       Arrastar Favorito
+                     </a>
+                     <Link
+                       to="/extensao"
+                       className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow transition-colors"
+                       title="Baixar extensão para sincronização automática sem favoritos"
+                     >
+                       <Chrome className="w-3.5 h-3.5" />
+                       Baixar Extensão Chrome (100% Automática)
+                     </Link>
+                   </div>
                  </div>
                </div>
             </div>

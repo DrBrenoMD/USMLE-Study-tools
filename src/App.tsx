@@ -13,6 +13,7 @@ import ScorePredictor from "./pages/ScorePredictor";
 import FlashcardsLobby from "./pages/FlashcardsLobby";
 import FlashcardsEditor from "./pages/FlashcardsEditor";
 import FlashcardsDashboard from "./pages/FlashcardsDashboard";
+import ExtensionDownload from "./pages/ExtensionDownload";
 import { TopBarTimer } from "./components/TopBarTimer";
 import { ChevronLeft, Palette, Menu } from "lucide-react";
 import { Sidebar } from "./components/Sidebar";
@@ -93,6 +94,7 @@ function AppContent() {
           <Route path="/flashcards" element={<FlashcardsLobby />} />
           <Route path="/flashcards/editor" element={<FlashcardsEditor />} />
           <Route path="/flashcards/dashboard" element={<FlashcardsDashboard />} />
+          <Route path="/extensao" element={<ExtensionDownload />} />
         </Routes>
       </div>
     </div>

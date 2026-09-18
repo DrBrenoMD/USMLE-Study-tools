@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, BarChart2, Activity, Calculator, LineChart, Layers, X, BookOpen } from 'lucide-react';
+import { Home, BarChart2, Activity, Calculator, LineChart, Layers, X, BookOpen, Chrome } from 'lucide-react';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -27,6 +27,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     { name: 'Início', path: '/', icon: Home },
     { name: 'Study Tracker', path: '/tracker', icon: BarChart2 },
     { name: 'Pacer de Questões', path: '/pacer', icon: Activity },
+    { name: 'Extensão Chrome', path: '/extensao', icon: Chrome },
     { name: 'Calculadora NBME', path: '/calculator', icon: Calculator },
     { name: 'Score Predictor', path: '/predictor', icon: LineChart },
     { name: 'Flashcards', path: '/flashcards', icon: Layers },

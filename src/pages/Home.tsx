@@ -1,6 +1,7 @@
-import { ArrowRight, BookOpen, CalendarDays, LineChart, Activity, Calculator } from "lucide-react";
+import { ArrowRight, BookOpen, CalendarDays, LineChart, Activity, Calculator, Chrome } from "lucide-react";
 import { Link } from "react-router-dom";
 import { MouseInteractiveBackground } from "../components/MouseInteractiveBackground";
+import { EXTENSION_VERSION } from "../extension_source/extensionFiles";
 
 const MENU_ITEMS = [
   {
@@ -15,6 +16,13 @@ const MENU_ITEMS = [
     description: "Treine seu pace de questões contra o relógio.",
     icon: Activity,
     href: "/pacer",
+    active: true,
+  },
+  {
+    title: "Extensão Chrome",
+    description: `Comandos de voz, leitura e sincronização com o Pacer (v${EXTENSION_VERSION}).`,
+    icon: Chrome,
+    href: "/extensao",
     active: true,
   },
   {
