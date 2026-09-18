@@ -1,7 +1,8 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Play, Square, FastForward, Clock, Activity, TrendingUp, TrendingDown, Volume2, VolumeX, Settings2, Pause, Save, X, BookOpen, Coffee, Chrome, RotateCcw, CheckCircle2, FileText, Check, ArrowRight } from 'lucide-react';
+import { Play, Square, FastForward, Clock, Activity, TrendingUp, TrendingDown, Volume2, VolumeX, Settings2, Pause, Save, X, BookOpen, Coffee, Chrome, RotateCcw, CheckCircle2, FileText, Check, ArrowRight, Zap, Bell, SlidersHorizontal } from 'lucide-react';
 import { useTimerStore } from '../store/useTimerStore';
+import { SoundSettingsModal } from './SoundSettingsModal';
 
 export function QuestionPacer({ className }: { className?: string }) {
   const { 
@@ -18,6 +19,9 @@ export function QuestionPacer({ className }: { className?: string }) {
     pacerCompletedQuestionsTime: completedQuestionsTime, 
     pacerCompletedReviewTimes: completedReviewTimes,
     pacerSoundEnabled: soundEnabled,
+    pacerSoundSettings,
+    setPacerSoundSettings,
+    togglePacerSoundSetting,
     setPacerState,
     nextPacerQuestion,
     prevPacerQuestion,
@@ -62,8 +66,10 @@ export function QuestionPacer({ className }: { className?: string }) {
   const [adaptiveStudyMin, setAdaptiveStudyMin] = useState(50);
   const [adaptiveRestMin, setAdaptiveRestMin] = useState(10);
   const [adaptiveCycles, setAdaptiveCycles] = useState(4);
+  const [showSoundModal, setShowSoundModal] = useState(false);
 
   const isTutoredMode = qbankMode === 'tutored';
+  const isAdaptiveSession = isAdaptive || isAdaptiveMode || pacerMode === 'adaptativo' || pacerMode === 'sessoes';
 
   useEffect(() => {
     if (totalQuestions > 0 && targetTimeSeconds > 0) {
@@ -86,18 +92,26 @@ export function QuestionPacer({ className }: { className?: string }) {
   const globalElapsedTimeTimed = totalCompletedTimeTimed + currentQuestionTime;
   const totalTargetTimeTimed = totalQuestions * targetTimeSeconds;
   const averagePaceTimed = totalQuestionsDone > 0 ? Math.round(totalCompletedTimeTimed / totalQuestionsDone) : 0;
-  const questionsLeftIncludingCurrentTimed = totalQuestions - totalQuestionsDone;
-  const realtimeRemainingTargetTimeTimed = totalTargetTimeTimed - globalElapsedTimeTimed;
-  const requiredPaceTimed = questionsLeftIncludingCurrentTimed > 0 && realtimeRemainingTargetTimeTimed > 0 
-    ? Math.floor(realtimeRemainingTargetTimeTimed / questionsLeftIncludingCurrentTimed) 
-    : 0;
-  const effectiveTargetTimed = isAdaptive && requiredPaceTimed < targetTimeSeconds && requiredPaceTimed > 0
+  const questionsLeftIncludingCurrentTimed = Math.max(1, totalQuestions - totalQuestionsDone);
+  
+  // Atraso acumulado nas questões já concluídas (Timed)
+  const expectedTimedForDone = totalQuestionsDone * targetTimeSeconds;
+  const accumulatedTimedDiff = expectedTimedForDone - totalCompletedTimeTimed;
+  const remainingBudgetTimed = totalTargetTimeTimed - totalCompletedTimeTimed;
+  const requiredPaceTimed = questionsLeftIncludingCurrentTimed > 0 && remainingBudgetTimed > 0 
+    ? Math.floor(remainingBudgetTimed / questionsLeftIncludingCurrentTimed) 
+    : targetTimeSeconds;
+
+  // Regra: No 1º alarme (1ª questão), toca no tempo estipulado.
+  // Nos demais (a partir da 2ª questão), adapta se houver atraso acumulado; se adiantado, mantém o estipulado.
+  const isTimedDelayed = totalQuestionsDone > 0 && accumulatedTimedDiff < 0 && requiredPaceTimed < targetTimeSeconds;
+  const effectiveTargetTimed = isAdaptiveSession && isTimedDelayed && requiredPaceTimed > 0
     ? requiredPaceTimed 
     : targetTimeSeconds;
   const currentGlobalDiffTimed = ((totalQuestionsDone + 1) * targetTimeSeconds) - globalElapsedTimeTimed;
   const estimatedRemainingTimeTimed = (remainingQuestions * targetTimeSeconds) + Math.max(0, targetTimeSeconds - currentQuestionTime);
 
-  // Tutored Mode Metrics (Resolução + Revisão com status global unificado)
+  // Tutored Mode Metrics (Resolução + Revisão com status individual e global unificado)
   const targetSolveSec = targetTimeSeconds;
   const targetReviewSec = targetReviewSeconds || 150;
   const targetPerQuestionTutored = targetSolveSec + targetReviewSec;
@@ -107,6 +121,53 @@ export function QuestionPacer({ className }: { className?: string }) {
   const totalCompletedReviewTime = (completedReviewTimes || []).reduce((a, b) => a + b, 0);
   const currentSolveTime = currentQuestionTime;
   const currentReviewTimeVal = currentReviewTime || 0;
+
+  // 1. Resolução Individual (Solve):
+  const questionsLeftSolve = Math.max(1, totalQuestions - totalQuestionsDone);
+  const totalBudgetSolve = totalQuestions * targetSolveSec;
+  
+  // Atraso/adiantamento acumulado nas resoluções já concluídas
+  const expectedSolveForDone = totalQuestionsDone * targetSolveSec;
+  const accumulatedSolveDiff = expectedSolveForDone - totalCompletedSolveTime;
+  const remainingSolveBudget = totalBudgetSolve - totalCompletedSolveTime;
+  const requiredPaceSolve = questionsLeftSolve > 0 && remainingSolveBudget > 0
+    ? Math.floor(remainingSolveBudget / questionsLeftSolve)
+    : targetSolveSec;
+
+  const elapsedSolveTotal = totalCompletedSolveTime + currentSolveTime;
+  const expectedSolveSoFar = (totalQuestionsDone + 1) * targetSolveSec;
+  const diffSolve = expectedSolveSoFar - elapsedSolveTotal;
+
+  // Regra: No primeiro alarme (1ª questão), toca no tempo estipulado.
+  // Nos demais (a partir da 2ª questão), adapta antecipadamente se houver atraso; se adiantado, permanece no estipulado.
+  const isSolveDelayed = totalQuestionsDone > 0 && accumulatedSolveDiff < 0 && requiredPaceSolve < targetSolveSec;
+  const effectiveTargetSolve = isAdaptiveSession && isSolveDelayed && requiredPaceSolve > 0
+    ? requiredPaceSolve
+    : targetSolveSec;
+
+  // 2. Revisão Individual (Review):
+  const totalReviewsDone = (completedReviewTimes || []).length;
+  const reviewsLeft = Math.max(1, totalQuestions - totalReviewsDone);
+  const totalBudgetReview = totalQuestions * targetReviewSec;
+
+  // Atraso/adiantamento acumulado nas revisões já concluídas
+  const expectedReviewForDone = totalReviewsDone * targetReviewSec;
+  const accumulatedReviewDiff = expectedReviewForDone - totalCompletedReviewTime;
+  const remainingReviewBudget = totalBudgetReview - totalCompletedReviewTime;
+  const requiredPaceReview = reviewsLeft > 0 && remainingReviewBudget > 0
+    ? Math.floor(remainingReviewBudget / reviewsLeft)
+    : targetReviewSec;
+
+  const elapsedReviewTotal = totalCompletedReviewTime + (tutoredPhase === 'review' ? currentReviewTimeVal : 0);
+  const expectedReviewSoFar = (tutoredPhase === 'review' ? totalQuestionsDone + 1 : totalQuestionsDone) * targetReviewSec;
+  const diffReview = expectedReviewSoFar - elapsedReviewTotal;
+
+  // Regra: No primeiro alarme de revisão (1ª revisão), toca no tempo estipulado.
+  // Nos demais, se houver atraso acumulado, adapta antecipadamente; se adiantado, permanece no estipulado.
+  const isReviewDelayed = totalReviewsDone > 0 && accumulatedReviewDiff < 0 && requiredPaceReview < targetReviewSec;
+  const effectiveTargetReview = isAdaptiveSession && isReviewDelayed && requiredPaceReview > 0
+    ? requiredPaceReview
+    : targetReviewSec;
 
   const globalElapsedTimeTutored = totalCompletedSolveTime + totalCompletedReviewTime + currentSolveTime + currentReviewTimeVal;
   
@@ -131,8 +192,12 @@ export function QuestionPacer({ className }: { className?: string }) {
   const currentGlobalDiff = isTutoredMode ? currentGlobalDiffTutored : currentGlobalDiffTimed;
   const estimatedRemainingTime = isTutoredMode ? estimatedRemainingTimeTutored : estimatedRemainingTimeTimed;
   const averagePace = isTutoredMode ? averageSolvePace : averagePaceTimed;
-  const requiredPace = isTutoredMode ? targetSolveSec : requiredPaceTimed;
-  const effectiveTarget = isTutoredMode ? targetSolveSec : effectiveTargetTimed;
+  const requiredPace = isTutoredMode 
+    ? (tutoredPhase === 'solve' ? requiredPaceSolve : requiredPaceReview) 
+    : requiredPaceTimed;
+  const effectiveTarget = isTutoredMode 
+    ? (tutoredPhase === 'solve' ? effectiveTargetSolve : effectiveTargetReview) 
+    : effectiveTargetTimed;
   const questionsLeftIncludingCurrent = totalQuestions - totalQuestionsDone;
 
   // Estimate remaining time for "Sessões" mode
@@ -162,13 +227,26 @@ export function QuestionPacer({ className }: { className?: string }) {
   const estimatedFinishTimeActive = new Date(Date.now() + totalEstimatedRemainingSessao * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const estimatedFinishTimeCurrentBlock = new Date(Date.now() + estimatedRemainingTime * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-  const playBeep = (freq: number = 880, duration: number = 0.2) => {
-    if (!soundEnabled) return;
+  const playBeep = (freq: number = 880, duration: number = 0.2, soundKey?: 'solveAlarm' | 'reviewAlarm' | 'cycleAlarm' | 'nextQuestion' | 'submitQuestion' | 'prevQuestion') => {
+    const settings = pacerSoundSettings || {
+      master: soundEnabled,
+      solveAlarm: true,
+      reviewAlarm: true,
+      cycleAlarm: true,
+      nextQuestion: true,
+      submitQuestion: true,
+      prevQuestion: true,
+    };
+    if (!settings.master) return;
+    if (soundKey && !settings[soundKey]) return;
+
     try {
       if (!audioContextRef.current) {
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
       }
       const ctx = audioContextRef.current;
+      if (ctx.state === 'suspended') ctx.resume();
+      
       const oscillator = ctx.createOscillator();
       const gainNode = ctx.createGain();
       
@@ -212,7 +290,7 @@ export function QuestionPacer({ className }: { className?: string }) {
   const handleSubmitReview = () => {
     if (phase === 'rest' || !isActive) return;
     submitPacerQuestion();
-    playBeep(660, 0.25);
+    playBeep(660, 0.25, 'submitQuestion');
   };
 
   const handleNext = () => {
@@ -229,17 +307,17 @@ export function QuestionPacer({ className }: { className?: string }) {
       }
     } else {
       nextPacerQuestion();
-      playBeep(880, 0.2);
+      playBeep(880, 0.2, 'nextQuestion');
     }
   };
 
   const handlePrev = () => {
     if (isTutoredMode && tutoredPhase === 'review') {
       prevPacerQuestion();
-      playBeep(520, 0.15);
+      playBeep(520, 0.15, 'prevQuestion');
     } else if (totalQuestionsDone > 0) {
       prevPacerQuestion();
-      playBeep(520, 0.15);
+      playBeep(520, 0.15, 'prevQuestion');
     }
   };
 
@@ -261,7 +339,7 @@ export function QuestionPacer({ className }: { className?: string }) {
 
   const handleResetAccumulatedTime = () => {
     resetPacerAccumulatedTime();
-    playBeep(880, 0.3);
+    playBeep(880, 0.3, 'solveAlarm');
   };
 
   const handleNextRef = useRef(handleNext);
@@ -272,17 +350,6 @@ export function QuestionPacer({ className }: { className?: string }) {
 
   const handleSubmitRef = useRef(handleSubmitReview);
   handleSubmitRef.current = handleSubmitReview;
-
-  const bookmarkletRef = useRef<HTMLAnchorElement>(null);
-
-  useEffect(() => {
-    if (bookmarkletRef.current) {
-      bookmarkletRef.current.setAttribute(
-        'href',
-        `javascript:(function(){window.__pacerWin=window.open("https://usmle-study-tools.vercel.app/pacer","PacerWindow","width=520,height=850");if(!window.__pacerListenerAdded){["click","mousedown","pointerdown"].forEach(evt=>{window.addEventListener(evt,(e)=>{const btn=e.target.closest("button, a, [role='button'], .submit-btn, input[type='submit'], input[type='button']");if(btn){const title=(btn.getAttribute("title")||"").toLowerCase();const text=(btn.textContent||"").toLowerCase();const cls=(btn.getAttribute("class")||"").toLowerCase();const val=(btn.getAttribute("value")||"").toLowerCase();let isNext=title.includes("next")||text.includes("next")||cls.includes("next")||title.includes("próximo")||text.includes("próximo")||val.includes("next")||val.includes("próximo");let isSubmit=title.includes("submit")||text.includes("submit")||cls.includes("submit")||text.includes("enviar")||val.includes("submit")||val.includes("enviar");let isPrev=title.includes("prev")||text.includes("prev")||cls.includes("prev")||title.includes("anterior")||text.includes("anterior")||val.includes("prev")||val.includes("anterior");if((isNext||isSubmit||isPrev)&&window.__pacerWin){const now=Date.now();if(!window.__pacerLastTrigger||(now-window.__pacerLastTrigger>800)){window.__pacerLastTrigger=now;console.log("Pacer acionado!",{isNext,isSubmit,isPrev});window.__pacerWin.postMessage({type:"PACER_BTN_CLICK",isNext:isNext,isSubmit:isSubmit,isPrev:isPrev},"*");}}}},true);});window.__pacerListenerAdded=true;}alert("Pacer Integrado! Os cliques em Submit, Next e Anterior no Q-Bank sincronizarão perfeitamente com o Pacer.");})();`
-      );
-    }
-  }, []);
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -388,11 +455,18 @@ export function QuestionPacer({ className }: { className?: string }) {
             </button>
           )}
           <button 
-            onClick={() => setSoundEnabled(!soundEnabled)}
-            className="text-white/80 hover:text-white transition-colors p-1.5 rounded-lg"
-            title={soundEnabled ? "Desativar Som" : "Ativar Som"}
+            onClick={() => togglePacerSoundSetting('master')}
+            className="text-white/80 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/10 cursor-pointer"
+            title={pacerSoundSettings.master ? "Silenciar Todos os Sons" : "Ativar Sons"}
           >
-            {soundEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+            {pacerSoundSettings.master ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+          </button>
+          <button
+            onClick={() => setShowSoundModal(true)}
+            className="text-white/80 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/10 cursor-pointer"
+            title="Configurar sons e alertas individuais"
+          >
+            <SlidersHorizontal className="w-5 h-5" />
           </button>
         </div>
       </div>
@@ -570,22 +644,14 @@ export function QuestionPacer({ className }: { className?: string }) {
                  <div className="flex-1">
                     <h4 className="text-sm font-bold text-gray-900 dark:text-gray-100">Integração com o Q-Bank (UWorld, Amboss, Qbankly)</h4>
                    <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">
-                     Arraste o favorito para a barra de favoritos do navegador ou instale a extensão para que os cliques nos botões do site sincronizem automaticamente com o Pacer!
+                     Instale a extensão do navegador para que os cliques nos botões do site sincronizem automaticamente com o Pacer!
                    </p>
                    
                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                     <a 
-                       ref={bookmarkletRef}
-                       className="inline-block px-3.5 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg shadow cursor-grab active:cursor-grabbing hover:bg-blue-700 transition-colors"
-                       onClick={(e) => e.preventDefault()}
-                       title="Arraste para a barra de favoritos"
-                     >
-                       Arrastar Favorito
-                     </a>
                      <Link
                        to="/extensao"
                        className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow transition-colors"
-                       title="Baixar extensão para sincronização automática sem favoritos"
+                       title="Baixar extensão para sincronização automática"
                      >
                        <Chrome className="w-3.5 h-3.5" />
                        Baixar Extensão Chrome (100% Automática)
@@ -618,15 +684,19 @@ export function QuestionPacer({ className }: { className?: string }) {
                   className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${pacerMode === 'adaptativo' ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 ring-1 ring-blue-500' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:border-gray-600'}`}
                 >
                   <div className={`text-sm font-bold ${pacerMode === 'adaptativo' ? 'text-blue-900 dark:text-blue-200' : 'text-gray-900 dark:text-gray-100'}`}>Pacer Adaptativo</div>
-                  <div className={`text-[10px] mt-1 ${pacerMode === 'adaptativo' ? 'text-blue-700 dark:text-blue-300' : 'text-gray-500 dark:text-gray-400'}`}>Encurta o tempo do alarme automaticamente se você atrasar.</div>
+                  <div className={`text-[10px] mt-1 ${pacerMode === 'adaptativo' ? 'text-blue-700 dark:text-blue-300' : 'text-gray-500 dark:text-gray-400'}`}>
+                    {isTutoredMode ? 'Recalcula o pace alvo de resolução e de revisão individualmente. Se atrasar, emite alarme antecipado.' : 'Encurta o tempo do alarme automaticamente se você atrasar.'}
+                  </div>
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setPacerMode('sessoes'); }}
+                  onClick={() => { setPacerMode('sessoes'); setIsAdaptive(true); }}
                   className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${pacerMode === 'sessoes' ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 ring-1 ring-blue-500' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:border-gray-600'}`}
                 >
                   <div className={`text-sm font-bold ${pacerMode === 'sessoes' ? 'text-blue-900 dark:text-blue-200' : 'text-gray-900 dark:text-gray-100'}`}>Sessões Adaptativas</div>
-                  <div className={`text-[10px] mt-1 ${pacerMode === 'sessoes' ? 'text-blue-700 dark:text-blue-300' : 'text-gray-500 dark:text-gray-400'}`}>Ciclos Pomodoro dinâmicos que ajustam tempos automaticamente.</div>
+                  <div className={`text-[10px] mt-1 ${pacerMode === 'sessoes' ? 'text-blue-700 dark:text-blue-300' : 'text-gray-500 dark:text-gray-400'}`}>
+                    {isTutoredMode ? 'Pomodoro com recálculo adaptativo individual de resolução e revisão em cada questão.' : 'Ciclos Pomodoro dinâmicos que ajustam tempos automaticamente.'}
+                  </div>
                 </button>
               </div>
               
@@ -862,16 +932,22 @@ export function QuestionPacer({ className }: { className?: string }) {
                   {/* CARD 1: TEMPO DE RESOLUÇÃO */}
                   <div className={`flex flex-col p-6 rounded-2xl border transition-all ${
                     tutoredPhase === 'solve'
-                      ? 'bg-blue-50/40 dark:bg-blue-950/20 border-blue-400 dark:border-blue-600 ring-2 ring-blue-500/20 shadow-sm'
+                      ? isAdaptiveSession && effectiveTargetSolve < targetSolveSec
+                        ? 'bg-amber-50/40 dark:bg-amber-950/20 border-amber-400 dark:border-amber-600 ring-2 ring-amber-500/20 shadow-sm'
+                        : 'bg-blue-50/40 dark:bg-blue-950/20 border-blue-400 dark:border-blue-600 ring-2 ring-blue-500/20 shadow-sm'
                       : 'bg-gray-50/50 dark:bg-gray-800/30 border-gray-200 dark:border-gray-700 opacity-90'
                   }`}>
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
                       <span className="text-xs font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300 flex items-center gap-1.5">
                         <Activity className="w-3.5 h-3.5" /> Tempo de Resolução
                       </span>
                       {tutoredPhase === 'review' ? (
                         <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
                           <Check className="w-3 h-3" /> Concluída
+                        </span>
+                      ) : isAdaptiveSession && effectiveTargetSolve < targetSolveSec ? (
+                        <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 flex items-center gap-1 shadow-xs animate-pulse">
+                          <Zap className="w-3 h-3" /> Alarme Antecipado ({formatTime(effectiveTargetSolve)})
                         </span>
                       ) : (
                         <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
@@ -882,37 +958,67 @@ export function QuestionPacer({ className }: { className?: string }) {
 
                     <div className="flex flex-col items-center justify-center my-4">
                       <div className={`text-6xl font-black tracking-tight ${
-                        tutoredPhase === 'solve' && currentSolveTime >= targetSolveSec && timerState === 'running'
+                        tutoredPhase === 'solve' && currentSolveTime >= effectiveTargetSolve && timerState === 'running'
                           ? 'text-red-500 animate-pulse'
                           : 'text-gray-900 dark:text-gray-100'
                       }`}>
                         {formatTime(currentSolveTime)}
                       </div>
-                      <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mt-2">
-                        Alvo de Resolução: <b>{formatTime(targetSolveSec)}</b>
+                      <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mt-2 text-center">
+                        {isAdaptiveSession && effectiveTargetSolve < targetSolveSec ? (
+                          <span>
+                            Alarme antecipado em: <b className="text-amber-600 dark:text-amber-400">{formatTime(effectiveTargetSolve)}</b> <span className="text-[11px] opacity-75">(Base: {formatTime(targetSolveSec)})</span>
+                          </span>
+                        ) : (
+                          <span>
+                            Alvo de Resolução: <b>{formatTime(targetSolveSec)}</b>
+                          </span>
+                        )}
                       </div>
                     </div>
 
-                    <div className="mt-auto pt-3 border-t border-gray-200 dark:border-gray-700/60 flex items-center justify-between text-xs text-gray-500">
-                      <span>Pace Médio de Resolução:</span>
-                      <b className="text-gray-900 dark:text-gray-100">{totalQuestionsDone > 0 ? formatTime(averageSolvePace) : '--:--'}</b>
+                    <div className="mt-auto pt-3 border-t border-gray-200 dark:border-gray-700/60 flex flex-col gap-1.5 text-xs text-gray-500">
+                      <div className="flex items-center justify-between">
+                        <span>Pace Médio de Resolução:</span>
+                        <b className="text-gray-900 dark:text-gray-100">{totalQuestionsDone > 0 ? formatTime(averageSolvePace) : '--:--'}</b>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>Status de Resolução:</span>
+                        <b className={diffSolve < 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}>
+                          {diffSolve < 0 ? `Atrasado em ${formatTime(Math.abs(diffSolve))}` : `Adiantado em ${formatTime(diffSolve)}`}
+                        </b>
+                      </div>
+                      {isAdaptiveSession && (
+                        <div className="flex items-center justify-between pt-1 border-t border-dashed border-gray-200 dark:border-gray-700">
+                          <span>Pace Alvo p/ Terminar:</span>
+                          <b className="text-blue-600 dark:text-blue-400">{formatTime(requiredPaceSolve)}</b>
+                        </div>
+                      )}
                     </div>
                   </div>
 
                   {/* CARD 2: TEMPO DE REVISÃO */}
                   <div className={`flex flex-col p-6 rounded-2xl border transition-all ${
                     tutoredPhase === 'review'
-                      ? 'bg-purple-50/40 dark:bg-purple-950/20 border-purple-400 dark:border-purple-600 ring-2 ring-purple-500/20 shadow-sm'
+                      ? isAdaptiveSession && effectiveTargetReview < targetReviewSec
+                        ? 'bg-amber-50/40 dark:bg-amber-950/20 border-amber-400 dark:border-amber-600 ring-2 ring-amber-500/20 shadow-sm'
+                        : 'bg-purple-50/40 dark:bg-purple-950/20 border-purple-400 dark:border-purple-600 ring-2 ring-purple-500/20 shadow-sm'
                       : 'bg-gray-50/50 dark:bg-gray-800/30 border-gray-200 dark:border-gray-700 opacity-90'
                   }`}>
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
                       <span className="text-xs font-bold uppercase tracking-wider text-purple-700 dark:text-purple-300 flex items-center gap-1.5">
                         <BookOpen className="w-3.5 h-3.5" /> Tempo de Revisão
                       </span>
                       {tutoredPhase === 'review' ? (
-                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 animate-pulse">
-                          Revisando Gabarito
-                        </span>
+                        isAdaptiveSession && effectiveTargetReview < targetReviewSec ? (
+                          <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 flex items-center gap-1 shadow-xs animate-pulse">
+                            <Zap className="w-3 h-3" /> Alarme Antecipado ({formatTime(effectiveTargetReview)})
+                          </span>
+                        ) : (
+                          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 animate-pulse">
+                            Revisando Gabarito
+                          </span>
+                        )
                       ) : (
                         <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500">
                           Aguardando Submit...
@@ -922,7 +1028,7 @@ export function QuestionPacer({ className }: { className?: string }) {
 
                     <div className="flex flex-col items-center justify-center my-4">
                       <div className={`text-6xl font-black tracking-tight ${
-                        tutoredPhase === 'review' && currentReviewTimeVal >= targetReviewSec && timerState === 'running'
+                        tutoredPhase === 'review' && currentReviewTimeVal >= effectiveTargetReview && timerState === 'running'
                           ? 'text-red-500 animate-pulse'
                           : tutoredPhase === 'solve'
                             ? 'text-gray-400 dark:text-gray-600'
@@ -930,14 +1036,36 @@ export function QuestionPacer({ className }: { className?: string }) {
                       }`}>
                         {tutoredPhase === 'solve' ? '--:--' : formatTime(currentReviewTimeVal)}
                       </div>
-                      <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mt-2">
-                        Alvo de Revisão: <b>{formatTime(targetReviewSec)}</b>
+                      <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mt-2 text-center">
+                        {isAdaptiveSession && effectiveTargetReview < targetReviewSec ? (
+                          <span>
+                            Alarme antecipado em: <b className="text-amber-600 dark:text-amber-400">{formatTime(effectiveTargetReview)}</b> <span className="text-[11px] opacity-75">(Base: {formatTime(targetReviewSec)})</span>
+                          </span>
+                        ) : (
+                          <span>
+                            Alvo de Revisão: <b>{formatTime(targetReviewSec)}</b>
+                          </span>
+                        )}
                       </div>
                     </div>
 
-                    <div className="mt-auto pt-3 border-t border-gray-200 dark:border-gray-700/60 flex items-center justify-between text-xs text-gray-500">
-                      <span>Pace Médio de Revisão:</span>
-                      <b className="text-gray-900 dark:text-gray-100">{reviewsWithTimeCount > 0 ? formatTime(averageReviewPace) : '--:--'}</b>
+                    <div className="mt-auto pt-3 border-t border-gray-200 dark:border-gray-700/60 flex flex-col gap-1.5 text-xs text-gray-500">
+                      <div className="flex items-center justify-between">
+                        <span>Pace Médio de Revisão:</span>
+                        <b className="text-gray-900 dark:text-gray-100">{reviewsWithTimeCount > 0 ? formatTime(averageReviewPace) : '--:--'}</b>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>Status de Revisão:</span>
+                        <b className={diffReview < 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}>
+                          {diffReview < 0 ? `Atrasado em ${formatTime(Math.abs(diffReview))}` : `Adiantado em ${formatTime(diffReview)}`}
+                        </b>
+                      </div>
+                      {isAdaptiveSession && (
+                        <div className="flex items-center justify-between pt-1 border-t border-dashed border-gray-200 dark:border-gray-700">
+                          <span>Pace Alvo p/ Terminar:</span>
+                          <b className="text-purple-600 dark:text-purple-400">{formatTime(requiredPaceReview)}</b>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1130,6 +1258,11 @@ export function QuestionPacer({ className }: { className?: string }) {
           </div>
         )}
       </div>
+
+      <SoundSettingsModal 
+        isOpen={showSoundModal} 
+        onClose={() => setShowSoundModal(false)} 
+      />
     </div>
   );
 }

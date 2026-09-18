@@ -136,7 +136,10 @@ export function TopBarTimer() {
               state.setTimeLeft((prev) => {
                   const next = prev - deltaSecs;
                   if (prev > 0 && next <= 0 && state.timerState === 'running') {
-                      playAlarm();
+                      const soundSettings = state.pacerSoundSettings || { master: true, cycleAlarm: true };
+                      if (soundSettings.master && soundSettings.cycleAlarm) {
+                        playAlarm();
+                      }
                       state.setTimerState('waiting_transition');
                   }
                   return next;
@@ -155,42 +158,99 @@ export function TopBarTimer() {
             const isStudyingAndActive = state.pacerIsActive && state.phase === 'study' && (state.timerState === 'running' || state.timerState === 'waiting_transition');
             if (isStudyingAndActive) {
                state.tickPacer(deltaSecs);
+               const isAdaptive = state.pacerIsAdaptive || state.isAdaptiveMode;
+               const soundSettings = state.pacerSoundSettings || {
+                 master: state.pacerSoundEnabled,
+                 solveAlarm: true,
+                 reviewAlarm: true,
+                 nextQuestion: true,
+                 submitQuestion: true,
+                 prevQuestion: true,
+                 cycleAlarm: true,
+               };
                
                if (state.pacerQBankMode === 'tutored') {
                  if (state.pacerTutoredPhase === 'solve') {
                    const newSolveTime = state.pacerCurrentQuestionTime + deltaSecs;
+                   const targetSolveSec = state.pacerTargetTimeSeconds;
                    const totalDone = state.pacerCompletedQuestionsTime.length;
-                   const remainingQ = Math.max(0, state.pacerTotalQuestions - totalDone - 1);
+                   const questionsLeft = Math.max(1, state.pacerTotalQuestions - totalDone);
                    const totalSolveDone = state.pacerCompletedQuestionsTime.reduce((a, b) => a + b, 0);
-                   const remainingSolveTarget = (state.pacerTotalQuestions * state.pacerTargetTimeSeconds) - totalSolveDone;
                    
-                   const requiredPace = remainingQ >= 0 && remainingSolveTarget > 0 ? Math.floor(remainingSolveTarget / (remainingQ + 1)) : 0;
-                   const effectiveTarget = state.pacerIsAdaptive && requiredPace < state.pacerTargetTimeSeconds && requiredPace > 0
-                      ? requiredPace : state.pacerTargetTimeSeconds;
+                   const expectedSolveDone = totalDone * targetSolveSec;
+                   const accumulatedSolveDiff = expectedSolveDone - totalSolveDone;
+                   const remainingSolveBudget = (state.pacerTotalQuestions * targetSolveSec) - totalSolveDone;
                    
-                   if (effectiveTarget > 0 && newSolveTime > 0 && newSolveTime % effectiveTarget === 0) {
-                      playPacerBeep(state.pacerSoundEnabled, 880);
+                   const requiredPaceSolve = questionsLeft > 0 && remainingSolveBudget > 0 
+                     ? Math.floor(remainingSolveBudget / questionsLeft) 
+                     : targetSolveSec;
+                   
+                   // Regra: No primeiro alarme (1ª questão), toca no tempo estipulado.
+                   // Nos demais, se houver atraso acumulado, soa antecipadamente. Se adiantado, permanece no estipulado.
+                   const isSolveDelayed = totalDone > 0 && accumulatedSolveDiff < 0 && requiredPaceSolve < targetSolveSec;
+                   const effectiveTargetSolve = isAdaptive && isSolveDelayed && requiredPaceSolve > 0
+                      ? requiredPaceSolve 
+                      : targetSolveSec;
+                   
+                   if (effectiveTargetSolve > 0 && newSolveTime > 0 && newSolveTime % effectiveTargetSolve === 0) {
+                      if (soundSettings.master && soundSettings.solveAlarm) {
+                        playPacerBeep(true, 880);
+                      }
                    }
                  } else {
                    const newReviewTime = state.pacerCurrentReviewTime + deltaSecs;
-                   const targetReview = state.pacerTargetReviewSeconds || 150;
-                   if (targetReview > 0 && newReviewTime > 0 && newReviewTime % targetReview === 0) {
-                      playPacerBeep(state.pacerSoundEnabled, 660);
+                   const targetReviewSec = state.pacerTargetReviewSeconds || 150;
+                   const totalReviewsDone = (state.pacerCompletedReviewTimes || []).length;
+                   const reviewsLeft = Math.max(1, state.pacerTotalQuestions - totalReviewsDone);
+                   const totalReviewDone = (state.pacerCompletedReviewTimes || []).reduce((a, b) => a + b, 0);
+                   
+                   const expectedReviewDone = totalReviewsDone * targetReviewSec;
+                   const accumulatedReviewDiff = expectedReviewDone - totalReviewDone;
+                   const remainingReviewBudget = (state.pacerTotalQuestions * targetReviewSec) - totalReviewDone;
+                   
+                   const requiredPaceReview = reviewsLeft > 0 && remainingReviewBudget > 0
+                     ? Math.floor(remainingReviewBudget / reviewsLeft)
+                     : targetReviewSec;
+                   
+                   // Regra: No primeiro alarme de revisão (1ª revisão), toca no tempo estipulado.
+                   // Nos demais, se houver atraso acumulado, soa antecipadamente. Se adiantado, permanece no estipulado.
+                   const isReviewDelayed = totalReviewsDone > 0 && accumulatedReviewDiff < 0 && requiredPaceReview < targetReviewSec;
+                   const effectiveTargetReview = isAdaptive && isReviewDelayed && requiredPaceReview > 0
+                     ? requiredPaceReview
+                     : targetReviewSec;
+                   
+                   if (effectiveTargetReview > 0 && newReviewTime > 0 && newReviewTime % effectiveTargetReview === 0) {
+                      if (soundSettings.master && soundSettings.reviewAlarm) {
+                        playPacerBeep(true, 660);
+                      }
                    }
                  }
                } else {
                  const newPacerTime = state.pacerCurrentQuestionTime + deltaSecs;
+                 const targetTimeSec = state.pacerTargetTimeSeconds;
                  const totalDone = state.pacerCompletedQuestionsTime.length;
-                 const remainingQ = Math.max(0, state.pacerTotalQuestions - totalDone - 1);
+                 const questionsLeft = Math.max(1, state.pacerTotalQuestions - totalDone);
                  const totalTimeDone = state.pacerCompletedQuestionsTime.reduce((a, b) => a + b, 0);
-                 const remainingTarget = (state.pacerTotalQuestions * state.pacerTargetTimeSeconds) - totalTimeDone;
                  
-                 const requiredPace = remainingQ >= 0 && remainingTarget > 0 ? Math.floor(remainingTarget / (remainingQ + 1)) : 0;
-                 const effectiveTarget = state.pacerIsAdaptive && requiredPace < state.pacerTargetTimeSeconds && requiredPace > 0
-                    ? requiredPace : state.pacerTargetTimeSeconds;
+                 const expectedTimeDone = totalDone * targetTimeSec;
+                 const accumulatedDiff = expectedTimeDone - totalTimeDone;
+                 const remainingBudget = (state.pacerTotalQuestions * targetTimeSec) - totalTimeDone;
+                 
+                 const requiredPace = questionsLeft > 0 && remainingBudget > 0 
+                   ? Math.floor(remainingBudget / questionsLeft) 
+                   : targetTimeSec;
+
+                 // Regra: No primeiro alarme (1ª questão), toca no tempo estipulado.
+                 // Nos demais, se houver atraso acumulado, soa antecipadamente. Se adiantado, permanece no estipulado.
+                 const isTimedDelayed = totalDone > 0 && accumulatedDiff < 0 && requiredPace < targetTimeSec;
+                 const effectiveTarget = isAdaptive && isTimedDelayed && requiredPace > 0
+                    ? requiredPace 
+                    : targetTimeSec;
                  
                  if (effectiveTarget > 0 && newPacerTime > 0 && newPacerTime % effectiveTarget === 0) {
-                    playPacerBeep(state.pacerSoundEnabled, 880);
+                    if (soundSettings.master && soundSettings.solveAlarm) {
+                      playPacerBeep(true, 880);
+                    }
                  }
                }
             }

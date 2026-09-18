@@ -5,6 +5,16 @@ import { startOfDay, format } from 'date-fns';
 type TimerState = 'idle' | 'running' | 'paused' | 'waiting_transition';
 type TimerPhase = 'study' | 'rest';
 
+export interface PacerSoundSettings {
+  master: boolean;
+  solveAlarm: boolean;
+  reviewAlarm: boolean;
+  nextQuestion: boolean;
+  submitQuestion: boolean;
+  prevQuestion: boolean;
+  cycleAlarm: boolean;
+}
+
 interface TimerStore {
   timerState: TimerState;
   phase: TimerPhase;
@@ -29,6 +39,7 @@ interface TimerStore {
   pacerCompletedQuestionsTime: number[];
   pacerCompletedReviewTimes: number[];
   pacerSoundEnabled: boolean;
+  pacerSoundSettings: PacerSoundSettings;
   pacerShowSummary: boolean;
 
   // Adaptive Session State
@@ -66,6 +77,8 @@ interface TimerStore {
   tickAdaptive: (deltaSecs: number) => void;
 
   // Pacer Actions
+  setPacerSoundSettings: (settings: Partial<PacerSoundSettings>) => void;
+  togglePacerSoundSetting: (key: keyof PacerSoundSettings) => void;
   setPacerState: (updates: Partial<TimerStore>) => void;
   tickPacer: (deltaSecs: number) => void;
   submitPacerQuestion: () => void;
@@ -101,6 +114,15 @@ export const useTimerStore = create<TimerStore>()(
       pacerCompletedQuestionsTime: [],
       pacerCompletedReviewTimes: [],
       pacerSoundEnabled: true,
+      pacerSoundSettings: {
+        master: true,
+        solveAlarm: true,
+        reviewAlarm: true,
+        nextQuestion: true,
+        submitQuestion: true,
+        prevQuestion: true,
+        cycleAlarm: true,
+      },
       pacerShowSummary: false,
       
       isAdaptiveMode: false,
@@ -264,7 +286,36 @@ export const useTimerStore = create<TimerStore>()(
         }
       }),
 
-      setPacerState: (updates) => set((state) => ({ ...state, ...updates })),
+      setPacerSoundSettings: (settings) => set((state) => {
+        const nextSettings = { ...state.pacerSoundSettings, ...settings };
+        return {
+          pacerSoundSettings: nextSettings,
+          pacerSoundEnabled: nextSettings.master,
+        };
+      }),
+
+      togglePacerSoundSetting: (key) => set((state) => {
+        const current = state.pacerSoundSettings[key];
+        const nextSettings = { ...state.pacerSoundSettings, [key]: !current };
+        if (key === 'master') {
+          return {
+            pacerSoundSettings: nextSettings,
+            pacerSoundEnabled: !current,
+          };
+        }
+        return { pacerSoundSettings: nextSettings };
+      }),
+
+      setPacerState: (updates) => set((state) => {
+        const next = { ...state, ...updates };
+        if (updates.pacerSoundEnabled !== undefined && updates.pacerSoundSettings === undefined) {
+          next.pacerSoundSettings = {
+            ...state.pacerSoundSettings,
+            master: updates.pacerSoundEnabled,
+          };
+        }
+        return next;
+      }),
       
       tickPacer: (deltaSecs) => set((state) => {
         if (state.pacerQBankMode === 'tutored') {
@@ -409,7 +460,8 @@ export const useTimerStore = create<TimerStore>()(
         pacerQBankMode: state.pacerQBankMode,
         pacerTriggerButton: state.pacerTriggerButton,
         pacerIsAdaptive: state.pacerIsAdaptive,
-        pacerSoundEnabled: state.pacerSoundEnabled
+        pacerSoundEnabled: state.pacerSoundEnabled,
+        pacerSoundSettings: state.pacerSoundSettings
       }),
     }
   )
