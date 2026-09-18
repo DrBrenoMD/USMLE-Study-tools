@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Assistente de Questões por Voz + Pacer",
+  "version": "1.5",
+  "description": "Lê enunciados, seleciona alternativas por voz e executa o Question Pacer completo (Clássico, Adaptativo e Sessões) no Popup e no Site.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"]
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Assistente Q-Bank & Pacer"
+  }
+}

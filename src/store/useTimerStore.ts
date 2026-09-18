@@ -68,6 +68,7 @@ interface TimerStore {
   finishPacerSession: () => void;
   closePacerSummary: () => void;
   stopPacer: () => void;
+  resetPacerAccumulatedTime: () => void;
 }
 
 export const useTimerStore = create<TimerStore>()(
@@ -293,13 +294,28 @@ export const useTimerStore = create<TimerStore>()(
         adaptivePacerSessions: []
       }),
 
-      stopPacer: () => set({
+      stopPacer: () => set((state) => ({
         pacerIsActive: false,
         pacerShowSummary: false,
         pacerCurrentQuestionTime: 0,
         pacerCompletedQuestionsTime: [],
-        adaptivePacerSessions: []
-      })
+        adaptivePacerSessions: [],
+        isAdaptiveMode: false,
+        timerState: 'idle',
+        phase: 'study',
+        timeLeft: state.studyDuration,
+        isUnscheduledRest: false,
+        unscheduledRestStoredTimeLeft: 0
+      })),
+
+      resetPacerAccumulatedTime: () => set((state) => ({
+        // Normaliza todas as questões já concluídas para o tempo alvo (targetTimeSeconds),
+        // zerando o atraso/adianto acumulado de questões anteriores,
+        // e reinicia o tempo da questão atual para 0s.
+        // Assim, o Status Global retorna ao valor exato de 1 questão (+targetTimeSeconds).
+        pacerCompletedQuestionsTime: state.pacerCompletedQuestionsTime.map(() => state.pacerTargetTimeSeconds),
+        pacerCurrentQuestionTime: 0
+      }))
     }),
     {
       name: 'timer-storage',

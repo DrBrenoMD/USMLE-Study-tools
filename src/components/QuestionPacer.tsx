@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Play, Square, FastForward, Clock, Activity, TrendingUp, TrendingDown, Volume2, VolumeX, Settings2, Pause, Save, X, BookOpen, Coffee, Chrome } from 'lucide-react';
+import { Play, Square, FastForward, Clock, Activity, TrendingUp, TrendingDown, Volume2, VolumeX, Settings2, Pause, Save, X, BookOpen, Coffee, Chrome, RotateCcw } from 'lucide-react';
 import { useTimerStore } from '../store/useTimerStore';
 
 export function QuestionPacer({ className }: { className?: string }) {
@@ -17,6 +17,7 @@ export function QuestionPacer({ className }: { className?: string }) {
     prevPacerQuestion,
     stopPacer,
     finishPacerSession,
+    resetPacerAccumulatedTime,
     addNetTime,
     setTimerState,
     phase,
@@ -150,6 +151,12 @@ export function QuestionPacer({ className }: { className?: string }) {
     if (audioContextRef.current?.state === 'suspended') {
       audioContextRef.current.resume();
     }
+    // Garante que uma nova sessão inicie limpa na questão 1
+    setPacerState({
+      pacerCurrentQuestionTime: 0,
+      pacerCompletedQuestionsTime: [],
+      pacerIsActive: true
+    });
     setIsActive(true);
     setTimerState('running');
     
@@ -182,8 +189,24 @@ export function QuestionPacer({ className }: { className?: string }) {
   };
 
   const handleStop = () => {
-    finishPacerSession();
-    setTimerState('idle');
+    // Encerra definitivamente a sessão do pacer e reseta o estado
+    stopPacer();
+  };
+
+  const togglePause = () => {
+    if (audioContextRef.current?.state === 'suspended') {
+      audioContextRef.current.resume();
+    }
+    if (timerState === 'running' || timerState === 'waiting_transition') {
+      setTimerState('paused');
+    } else {
+      setTimerState(timeLeft <= 0 ? 'waiting_transition' : 'running');
+    }
+  };
+
+  const handleResetAccumulatedTime = () => {
+    resetPacerAccumulatedTime();
+    playBeep();
   };
 
   const handleNextRef = useRef(handleNext);
@@ -253,13 +276,38 @@ export function QuestionPacer({ className }: { className?: string }) {
           <Activity className="w-5 h-5" />
           Pacer de Questões
         </h2>
-        <button 
-          onClick={() => setSoundEnabled(!soundEnabled)}
-          className="text-white/80 hover:text-white transition-colors"
-          title={soundEnabled ? "Desativar Som" : "Ativar Som"}
-        >
-          {soundEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
-        </button>
+        <div className="flex items-center gap-2">
+          {isActive && (
+            <button
+              onClick={togglePause}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ${
+                timerState === 'running'
+                  ? 'bg-white/20 text-white hover:bg-white/30'
+                  : 'bg-amber-400 text-gray-900 hover:bg-amber-300 font-extrabold ring-2 ring-white/50'
+              }`}
+              title={timerState === 'running' ? 'Pausar Pacer e Cronômetro (não conta tempo)' : 'Retomar Pacer e Cronômetro'}
+            >
+              {timerState === 'running' ? (
+                <>
+                  <Pause className="w-3.5 h-3.5 fill-current" />
+                  <span>Pausar</span>
+                </>
+              ) : (
+                <>
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  <span>Retomar</span>
+                </>
+              )}
+            </button>
+          )}
+          <button 
+            onClick={() => setSoundEnabled(!soundEnabled)}
+            className="text-white/80 hover:text-white transition-colors p-1.5 rounded-lg"
+            title={soundEnabled ? "Desativar Som" : "Ativar Som"}
+          >
+            {soundEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+          </button>
+        </div>
       </div>
 
       <div className="p-6 flex flex-col gap-6">
@@ -548,7 +596,9 @@ export function QuestionPacer({ className }: { className?: string }) {
                 <div className="flex flex-col items-center justify-center text-center py-8 px-4 relative rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30">
                   {timerState === 'paused' || timerState === 'idle' ? (
                     <div className="absolute top-0 inset-x-0 flex justify-center">
-                       <span className="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-[10px] font-bold uppercase px-3 py-1 rounded-b-lg shadow-sm">Pausado</span>
+                       <span className="bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 text-[10px] font-bold uppercase px-3 py-1 rounded-b-lg shadow-sm flex items-center gap-1">
+                         <Pause className="w-3 h-3 fill-current" /> Pausado
+                       </span>
                     </div>
                   ) : isAdaptive && effectiveTarget < targetTimeSeconds && (
                     <div className="absolute top-0 inset-x-0 flex justify-center">
@@ -586,8 +636,8 @@ export function QuestionPacer({ className }: { className?: string }) {
                     </div>
                   </div>
 
-                  <div className={`p-5 rounded-xl border flex items-center justify-between ${currentGlobalDiff >= 0 ? 'border-emerald-200 dark:border-emerald-900/50 bg-emerald-50 dark:bg-emerald-900/20' : 'border-rose-200 dark:border-rose-900/50 bg-rose-50 dark:bg-rose-900/20'}`}>
-                    <div className="flex flex-col">
+                  <div className={`p-5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${currentGlobalDiff >= 0 ? 'border-emerald-200 dark:border-emerald-900/50 bg-emerald-50 dark:bg-emerald-900/20' : 'border-rose-200 dark:border-rose-900/50 bg-rose-50 dark:bg-rose-900/20'}`}>
+                    <div className="flex flex-col items-start">
                       <div className={`text-xs font-bold uppercase tracking-wider mb-1 flex items-center gap-1.5 ${currentGlobalDiff >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'}`}>
                         <TrendingUp className="w-3.5 h-3.5" /> Status Global
                       </div>
@@ -595,8 +645,17 @@ export function QuestionPacer({ className }: { className?: string }) {
                         {currentGlobalDiff >= 0 ? 'Adiantado em ' : 'Atrasado em '}
                         {formatTime(Math.abs(currentGlobalDiff))}
                       </div>
+                      
+                      <button
+                        onClick={handleResetAccumulatedTime}
+                        className="mt-2.5 text-xs font-bold text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 flex items-center gap-1.5 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 transition-all shadow-xs cursor-pointer active:scale-95"
+                        title="Zerar o atraso/adianto acumulado e retornar o status global para o valor de 1 questão"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                        Zerar Tempo Acumulado
+                      </button>
                     </div>
-                    <div className="flex flex-col gap-2 text-right hidden sm:block">
+                    <div className="flex flex-col gap-2 text-left sm:text-right">
                        <div>
                          <div className="text-[10px] font-bold text-gray-500 uppercase">Tempo de Prova</div>
                          <div className="text-sm font-bold text-gray-900 dark:text-gray-100">{formatTime(globalElapsedTime)} / {formatTime(totalTargetTime)}</div>
@@ -616,9 +675,10 @@ export function QuestionPacer({ className }: { className?: string }) {
               <div className="flex items-center justify-between pt-4 mt-2 border-t border-gray-100 dark:border-gray-800">
                 <button
                   onClick={handleStop}
-                  className="px-4 py-2 text-gray-500 dark:text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors"
+                  className="px-4 py-2.5 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors border border-red-200 dark:border-red-900/40"
+                  title="Encerrar definitivamente a sessão e retornar ao início"
                 >
-                  <Square className="w-4 h-4" />
+                  <Square className="w-4 h-4 text-red-600 fill-current" />
                   Encerrar Pacer
                 </button>
                 
@@ -631,6 +691,28 @@ export function QuestionPacer({ className }: { className?: string }) {
                     Anterior
                   </button>
                   
+                  <button
+                    onClick={togglePause}
+                    className={`px-5 py-3 rounded-xl font-bold flex items-center gap-2 shadow-sm transition-all cursor-pointer ${
+                      timerState === 'running'
+                        ? 'bg-amber-100 dark:bg-amber-900/30 hover:bg-amber-200 dark:hover:bg-amber-900/50 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800'
+                        : 'bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold border border-emerald-700 ring-2 ring-emerald-500/30 animate-pulse'
+                    }`}
+                    title={timerState === 'running' ? 'Pausar Pacer (não conta tempo)' : 'Retomar Pacer e Cronômetro'}
+                  >
+                    {timerState === 'running' ? (
+                      <>
+                        <Pause className="w-4 h-4 fill-current" />
+                        <span>Pausar</span>
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-4 h-4 fill-current" />
+                        <span>Retomar</span>
+                      </>
+                    )}
+                  </button>
+
                   <button
                     onClick={handleNext}
                     disabled={phase === 'rest'}

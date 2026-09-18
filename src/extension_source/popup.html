@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Assistente Q-Bank & Pacer</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
+      width: 440px;
+      margin: 0;
+      padding: 0;
+      background: #f8fafc;
+      color: #0f172a;
+      font-size: 12px;
+      line-height: 1.4;
+      overflow-x: hidden;
+      user-select: none;
+    }
+
+    /* Top Brand Header */
+    .app-header {
+      background: linear-gradient(135deg, #1e40af 0%, #2563eb 100%);
+      color: white;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.06);
+    }
+    .brand-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .brand-icon {
+      width: 30px;
+      height: 30px;
+      background: rgba(255,255,255,0.2);
+      border: 1px solid rgba(255,255,255,0.3);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+    }
+    .brand-text h1 {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: -0.01em;
+      line-height: 1.2;
+    }
+    .brand-text span {
+      font-size: 10px;
+      opacity: 0.85;
+      font-weight: 500;
+    }
+    .brand-right {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .badge-version {
+      background: rgba(255,255,255,0.18);
+      border: 1px solid rgba(255,255,255,0.25);
+      border-radius: 999px;
+      padding: 2px 7px;
+      font-size: 10px;
+      font-weight: 700;
+    }
+    .btn-header-sound {
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.25);
+      border-radius: 6px;
+      color: white;
+      cursor: pointer;
+      font-size: 13px;
+      padding: 3px 6px;
+      transition: all 0.15s;
+    }
+    .btn-header-sound:hover {
+      background: rgba(255,255,255,0.3);
+    }
+
+    /* Tab Navigation */
+    .nav-tabs {
+      display: flex;
+      gap: 4px;
+      padding: 6px 10px;
+      background: #ffffff;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .nav-tab-btn {
+      flex: 1;
+      padding: 7px 4px;
+      border: none;
+      background: transparent;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #64748b;
+      cursor: pointer;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+    }
+    .nav-tab-btn:hover {
+      background: #f1f5f9;
+      color: #1e293b;
+    }
+    .nav-tab-btn.active {
+      background: #eff6ff;
+      color: #2563eb;
+      box-shadow: 0 1px 2px rgba(37,99,235,0.06);
+    }
+
+    /* Content Area */
+    .tab-content {
+      display: none;
+      padding: 12px;
+      flex-direction: column;
+      gap: 12px;
+      max-height: 520px;
+      overflow-y: auto;
+    }
+    .tab-content.active {
+      display: flex;
+    }
+
+    /* Cards */
+    .card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    }
+    .card-header {
+      font-size: 11px;
+      font-weight: 800;
+      color: #1e293b;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid #f1f5f9;
+    }
+
+    /* Form Controls */
+    .form-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .form-group {
+      flex: 1;
+      display: flex;
+      flex-col: column;
+      flex-direction: column;
+      gap: 3px;
+    }
+    label {
+      font-size: 10px;
+      font-weight: 700;
+      color: #475569;
+    }
+    input[type="number"], input[type="text"], select {
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 11px;
+      color: #0f172a;
+      background: #ffffff;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input[type="number"]:focus, input[type="text"]:focus, select:focus {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 2px rgba(37,99,235,0.1);
+    }
+
+    /* Mode Selection Cards (Exact Site Pattern) */
+    .mode-cards-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 6px;
+      margin-top: 4px;
+      margin-bottom: 8px;
+    }
+    .mode-card-btn {
+      padding: 8px 6px;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      background: #ffffff;
+      text-align: left;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .mode-card-btn:hover {
+      border-color: #94a3b8;
+      background: #f8fafc;
+    }
+    .mode-card-btn.active {
+      background: #eff6ff;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 1px #3b82f6;
+    }
+    .mode-card-title {
+      font-size: 10px;
+      font-weight: 800;
+      color: #0f172a;
+      line-height: 1.2;
+    }
+    .mode-card-btn.active .mode-card-title {
+      color: #1e40af;
+    }
+    .mode-card-desc {
+      font-size: 9px;
+      color: #64748b;
+      margin-top: 3px;
+      line-height: 1.2;
+    }
+    .mode-card-btn.active .mode-card-desc {
+      color: #2563eb;
+    }
+
+    /* Pomodoro Sub-config */
+    .pomodoro-config-box {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 8px 10px;
+      margin-bottom: 8px;
+    }
+
+    /* Buttons */
+    .btn-primary {
+      width: 100%;
+      padding: 10px;
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      box-shadow: 0 1px 3px rgba(37,99,235,0.25);
+      transition: all 0.15s;
+    }
+    .btn-primary:hover {
+      background: #1d4ed8;
+    }
+    .btn-secondary {
+      padding: 7px 10px;
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      color: #334155;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      transition: all 0.15s;
+    }
+    .btn-secondary:hover {
+      background: #e2e8f0;
+      color: #0f172a;
+    }
+
+    /* ACTIVE PACER DISPLAY (Exact Match to QuestionPacer.tsx) */
+    .pacer-active-container {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    /* Pomodoro Active Cycle Card */
+    .cycle-active-card {
+      border-radius: 12px;
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      border: 1px solid;
+    }
+    .cycle-study {
+      background: #eff6ff;
+      border-color: #bfdbfe;
+    }
+    .cycle-rest {
+      background: #ecfdf5;
+      border-color: #a7f3d0;
+    }
+    .cycle-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .cycle-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      color: white;
+    }
+    .cycle-study .cycle-icon { background: #2563eb; }
+    .cycle-rest .cycle-icon { background: #059669; }
+    .cycle-meta {
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #64748b;
+    }
+    .cycle-timer-digit {
+      font-size: 24px;
+      font-weight: 900;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+    .cycle-study .cycle-timer-digit { color: #1e40af; }
+    .cycle-rest .cycle-timer-digit { color: #065f46; }
+
+    /* Active Question Hero Card */
+    .q-hero-card {
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      border-radius: 12px;
+      padding: 14px;
+      text-align: center;
+      position: relative;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .q-badge-adaptive {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #fef3c7;
+      color: #b45309;
+      font-size: 9px;
+      font-weight: 800;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .q-badge-paused {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #f1f5f9;
+      color: #475569;
+      font-size: 9px;
+      font-weight: 800;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .q-counter-label {
+      font-size: 10px;
+      font-weight: 800;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .q-timer-digit {
+      font-size: 48px;
+      font-weight: 900;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.03em;
+      line-height: 1;
+      margin: 4px 0;
+      color: #0f172a;
+    }
+    .q-timer-overtime {
+      color: #dc2626 !important;
+      animation: pulse 1s infinite;
+    }
+    .q-alarm-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #64748b;
+    }
+
+    /* Stats Grid */
+    .pacer-stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+    .stat-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 8px 10px;
+    }
+    .stat-card-label {
+      font-size: 9px;
+      font-weight: 800;
+      text-transform: uppercase;
+      color: #64748b;
+      letter-spacing: 0.04em;
+    }
+    .stat-card-val {
+      font-size: 18px;
+      font-weight: 900;
+      font-variant-numeric: tabular-nums;
+      margin-top: 2px;
+      color: #0f172a;
+    }
+    .stat-card-sub {
+      font-size: 9px;
+      color: #94a3b8;
+    }
+
+    /* Global Pace Diff Banner */
+    .global-pace-banner {
+      border-radius: 10px;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border: 1px solid;
+    }
+    .pace-ahead {
+      background: #ecfdf5;
+      border-color: #a7f3d0;
+      color: #065f46;
+    }
+    .pace-behind {
+      background: #fff1f2;
+      border-color: #fecdd3;
+      color: #9f1239;
+    }
+    .pace-banner-title {
+      font-size: 9px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+    .pace-banner-val {
+      font-size: 14px;
+      font-weight: 900;
+    }
+
+    /* Pacer Action Row */
+    .pacer-action-row {
+      display: grid;
+      grid-template-columns: 1fr 1.5fr 1fr 1fr;
+      gap: 5px;
+    }
+
+    /* Open in Site Button */
+    .site-connect-box {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 8px 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    /* Voice Action Buttons Grid */
+    .voice-action-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 5px;
+      margin-bottom: 8px;
+    }
+    .btn-action-test {
+      padding: 6px 8px;
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 10px;
+      font-weight: 700;
+      color: #334155;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.15s;
+    }
+    .btn-action-test:hover {
+      background: #eff6ff;
+      border-color: #3b82f6;
+      color: #1d4ed8;
+    }
+
+    /* Voice Command Customization Rows */
+    .voice-cmd-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 0;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .voice-cmd-row:last-child {
+      border-bottom: none;
+    }
+    .voice-cmd-label {
+      width: 130px;
+      font-size: 10px;
+      font-weight: 700;
+      color: #334155;
+      flex-shrink: 0;
+    }
+    .voice-cmd-input {
+      flex: 1;
+      font-size: 10px !important;
+      padding: 4px 6px !important;
+    }
+    .btn-mini-play {
+      padding: 4px 6px;
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 10px;
+      flex-shrink: 0;
+    }
+    .btn-mini-play:hover {
+      background: #e2e8f0;
+    }
+
+    /* Shortcuts Table */
+    .shortcut-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 0;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .shortcut-row:last-child {
+      border-bottom: none;
+    }
+    .shortcut-label {
+      font-size: 10px;
+      color: #475569;
+      font-weight: 600;
+    }
+    .shortcut-input {
+      width: 110px !important;
+      font-size: 10px !important;
+      padding: 3px 6px !important;
+      text-align: center;
+      font-family: monospace;
+      font-weight: 700;
+    }
+
+    /* Bottom Bar */
+    .bottom-bar {
+      padding: 8px 12px 12px 12px;
+      background: #ffffff;
+      border-top: 1px solid #e2e8f0;
+      display: none;
+    }
+    .toast-msg {
+      display: none;
+      position: fixed;
+      bottom: 50px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #0f172a;
+      color: white;
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 700;
+      z-index: 9999;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Brand Header -->
+  <div class="app-header">
+    <div class="brand-left">
+      <div class="brand-icon">⏱️</div>
+      <div class="brand-text">
+        <h1>Question Pacer</h1>
+        <span>Assistente de Questões & Ritmo</span>
+      </div>
+    </div>
+    <div class="brand-right">
+      <button class="btn-header-sound" id="btn-sound-toggle" title="Alternar som do Pacer">🔊 Som</button>
+      <span class="badge-version">v1.5</span>
+    </div>
+  </div>
+
+  <!-- Tabs Navigation -->
+  <div class="nav-tabs">
+    <button class="nav-tab-btn active" id="tab-btn-pacer">⏱️ Pacer</button>
+    <button class="nav-tab-btn" id="tab-btn-voice">🎙️ Voz & Ações</button>
+    <button class="nav-tab-btn" id="tab-btn-keys">⌨️ Atalhos</button>
+  </div>
+
+  <!-- TAB 1: QUESTION PACER -->
+  <div class="tab-content active" id="tab-content-pacer">
+    
+    <!-- PACER CONFIG VIEW (When NOT Active) -->
+    <div id="pacer-view-config" style="display: flex; flex-direction: column; gap: 10px;">
+      
+      <div class="card">
+        <div class="card-header">
+          <span>Configuração da Sessão</span>
+          <span style="font-size: 9px; color: #64748b;">Mesmo motor do site</span>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Total de Questões</label>
+            <input type="number" id="p-cfg-total-q" value="40" min="1" max="200">
+          </div>
+          <div class="form-group">
+            <label>Tempo Alvo (segundos/q)</label>
+            <input type="number" id="p-cfg-target-s" value="90" min="10" max="600">
+          </div>
+        </div>
+
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px 10px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <span style="font-size: 10px; font-weight: 700; color: #475569;">Tempo Total de Prova:</span>
+          <span style="font-size: 11px; font-weight: 800; color: #2563eb;" id="p-cfg-total-preview">60:00</span>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 8px;">
+          <label>Qual botão avançará o pacer no Q-Bank?</label>
+          <select id="p-cfg-trigger-mode">
+            <option value="both">Next ou Submit (Ambos)</option>
+            <option value="next">Apenas Botão Next</option>
+            <option value="submit">Apenas Botão Submit</option>
+          </select>
+        </div>
+
+        <label style="margin-bottom: 4px; display: block;">Modo de Sessão</label>
+        <div class="mode-cards-grid">
+          <div class="mode-card-btn active" id="btn-mode-tradicional">
+            <div class="mode-card-title">Clássico</div>
+            <div class="mode-card-desc">Tempo fixo por questão.</div>
+          </div>
+          <div class="mode-card-btn" id="btn-mode-adaptativo">
+            <div class="mode-card-title">Adaptativo</div>
+            <div class="mode-card-desc">Ajusta meta se atrasar.</div>
+          </div>
+          <div class="mode-card-btn" id="btn-mode-sessoes">
+            <div class="mode-card-title">Sessões</div>
+            <div class="mode-card-desc">Pomodoro em ciclos.</div>
+          </div>
+        </div>
+
+        <!-- Pomodoro Sub-config (Visível apenas quando modo 'sessoes') -->
+        <div class="pomodoro-config-box" id="box-pomodoro-config" style="display: none;">
+          <div style="font-size: 10px; font-weight: 800; color: #1e293b; margin-bottom: 6px;">Ciclos Pomodoro (Estudo / Descanso)</div>
+          <div class="form-row" style="margin-bottom: 6px;">
+            <div class="form-group">
+              <label>Estudo (min)</label>
+              <input type="number" id="p-cfg-study-min" value="50" min="1">
+            </div>
+            <div class="form-group">
+              <label>Descanso (min)</label>
+              <input type="number" id="p-cfg-rest-min" value="10" min="1">
+            </div>
+            <div class="form-group">
+              <label>Ciclos</label>
+              <input type="number" id="p-cfg-cycles" value="4" min="1">
+            </div>
+          </div>
+          <div style="font-size: 9px; color: #64748b; display: flex; justify-content: space-between;">
+            <span>Duração Estimada:</span>
+            <span id="p-cfg-pomodoro-total" style="font-weight: 700; color: #4338ca;">4h 00m</span>
+          </div>
+        </div>
+
+        <button class="btn-primary" id="btn-iniciar-sessao">
+          <span>▶ Iniciar Sessão</span>
+        </button>
+      </div>
+
+      <!-- Rodar pelo Site (Mantido) -->
+      <div class="site-connect-box">
+        <div>
+          <div style="font-size: 11px; font-weight: 800; color: #1e293b;">🌐 Rodar Pacer pelo Site</div>
+          <div style="font-size: 9px; color: #64748b;">Abre em tela cheia para múltiplos monitores.</div>
+        </div>
+        <button class="btn-secondary" id="btn-abrir-site-pacer">Abrir no Site</button>
+      </div>
+
+    </div>
+
+    <!-- PACER ACTIVE VIEW (When Active) -->
+    <div id="pacer-view-active" class="pacer-active-container" style="display: none;">
+      
+      <!-- Pomodoro Cycle Banner (If in 'sessoes' mode) -->
+      <div id="active-pomodoro-banner" class="cycle-active-card cycle-study" style="display: none;">
+        <div class="cycle-left">
+          <div class="cycle-icon" id="cycle-icon-display">📖</div>
+          <div>
+            <div class="cycle-meta" id="cycle-phase-label">Estudo • Ciclo 1 de 4</div>
+            <div class="cycle-timer-digit" id="cycle-timer-display">50:00</div>
+          </div>
+        </div>
+        <div style="text-align: right;">
+          <div style="font-size: 9px; color: #64748b; font-weight: 700;">Restante Total:</div>
+          <div style="font-size: 11px; font-weight: 800; color: #1e293b;" id="cycle-total-rem">3h 50m</div>
+          <button class="btn-secondary" id="btn-cycle-pause-extra" style="margin-top: 4px; padding: 3px 6px; font-size: 9px;">☕ Pausa</button>
+        </div>
+      </div>
+
+      <!-- Question Hero Card -->
+      <div class="q-hero-card">
+        <div id="q-status-badge-container">
+          <span class="q-badge-adaptive" id="q-adaptive-badge" style="display: none;">Alarme Antecipado Ativo</span>
+          <span class="q-badge-paused" id="q-paused-badge" style="display: none;">Pausado</span>
+        </div>
+        <div class="q-counter-label" id="q-counter-text">Questão 1 de 40</div>
+        <div class="q-timer-digit" id="q-timer-display">00:00</div>
+        <div class="q-alarm-label" id="q-alarm-label">Alarme em 01:30</div>
+      </div>
+
+      <!-- Stats Grid -->
+      <div class="pacer-stats-grid">
+        <div class="stat-card">
+          <div class="stat-card-label">Pace Médio</div>
+          <div class="stat-card-val" id="stat-avg-pace">--:--</div>
+          <div class="stat-card-sub">Gasto por questão</div>
+        </div>
+        <div class="stat-card" style="background: #eff6ff; border-color: #bfdbfe;">
+          <div class="stat-card-label" style="color: #2563eb;">Pace Alvo</div>
+          <div class="stat-card-val" style="color: #1d4ed8;" id="stat-req-pace">01:30</div>
+          <div class="stat-card-sub" style="color: #60a5fa;" id="stat-req-sub">Para as 40 restantes</div>
+        </div>
+      </div>
+
+      <!-- Global Pace Status Banner -->
+      <div class="global-pace-banner pace-ahead" id="global-pace-banner">
+        <div style="display: flex; flex-direction: column; align-items: flex-start;">
+          <div class="pace-banner-title" id="pace-banner-title">Status Global</div>
+          <div class="pace-banner-val" id="pace-banner-val">Adiantado em 00:00</div>
+          <button type="button" id="btn-zerar-acumulado" style="margin-top: 5px; font-size: 10px; font-weight: 700; background: rgba(255,255,255,0.9); color: #1e293b; border: 1px solid rgba(0,0,0,0.15); border-radius: 6px; padding: 3px 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" title="Zerar o atraso/adianto acumulado e retornar o status global para o valor de 1 questão">
+            🔄 Zerar Tempo Acumulado
+          </button>
+        </div>
+        <div style="text-align: right; font-size: 10px; font-weight: 700;">
+          <span id="pacer-total-elapsed-text">Decorrido: 00:00</span>
+        </div>
+      </div>
+
+      <!-- Action Buttons Row -->
+      <div class="pacer-action-row">
+        <button class="btn-secondary" id="btn-pacer-prev" title="Questão Anterior">◀ Ant</button>
+        <button class="btn-secondary" id="btn-pacer-next" style="background: #2563eb; color: white; border-color: #1d4ed8; font-weight: 800;" title="Próxima Questão">Próxima ▶</button>
+        <button class="btn-secondary" id="btn-pacer-pause" title="Pausar ou Retomar">⏸️ Pausar</button>
+        <button class="btn-secondary" id="btn-pacer-stop" style="color: #dc2626; border-color: #fecaca; font-weight: 700;" title="Encerrar definitivamente o Pacer e voltar ao início">⏹️ Encerrar</button>
+      </div>
+
+      <!-- Link para abrir no site sincronizado -->
+      <div style="text-align: center; margin-top: 2px;">
+        <a href="#" id="link-abrir-site-sync" style="font-size: 10px; color: #2563eb; font-weight: 700; text-decoration: none;">
+          🌐 Expandir Pacer no Site (Tela Cheia)
+        </a>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- TAB 2: VOICE COMMANDS, READING & ACTIONS -->
+  <div class="tab-content" id="tab-content-voice">
+    
+    <!-- Microfone Card -->
+    <div class="card">
+      <div class="card-header">
+        <span>Reconhecimento de Voz (Q-Bank)</span>
+        <span id="mic-status-pill" style="font-size: 9px; font-weight: 800; color: #dc2626;">Desligado</span>
+      </div>
+      <div style="font-size: 10px; color: #64748b; margin-bottom: 8px;">
+        Fale comandos enquanto estuda no UWorld/Amboss para navegar e responder sem encostar no mouse. Atalho: <b>Ctrl+Shift+L</b>.
+      </div>
+      <div class="form-row">
+        <button class="btn-secondary" id="btn-mic-on" style="background: #ecfdf5; border-color: #a7f3d0; color: #065f46; font-weight: 800; flex: 1;">
+          🎙️ Ligar Microfone
+        </button>
+        <button class="btn-secondary" id="btn-mic-off" style="background: #fff1f2; border-color: #fecdd3; color: #9f1239; font-weight: 800; flex: 1;">
+          ⏹️ Desligar
+        </button>
+      </div>
+    </div>
+
+    <!-- Leitura e Áudio Card -->
+    <div class="card">
+      <div class="card-header">
+        <span>Configuração da Voz de Leitura</span>
+      </div>
+
+      <div class="form-group" style="margin-bottom: 6px;">
+        <label>Voz do Sistema</label>
+        <select id="voice-select"></select>
+      </div>
+
+      <div style="margin-bottom: 8px;">
+        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+          <input type="checkbox" id="show-all-voices">
+          <span>Mostrar todas as vozes instaladas no sistema</span>
+        </label>
+      </div>
+
+      <div class="form-group" style="margin-bottom: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <label>Velocidade da Voz</label>
+          <span id="speed-val" style="font-size: 11px; font-weight: 800; color: #2563eb;">1.1x</span>
+        </div>
+        <input type="range" id="voice-speed" min="0.5" max="2.0" step="0.1" value="1.1" style="width: 100%;">
+      </div>
+
+      <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; color: #1e40af; font-weight: 700;">
+        <input type="checkbox" id="auto-read">
+        <span>Ler automaticamente ao avançar ou voltar questão</span>
+      </label>
+    </div>
+
+    <!-- Botões de Ação Rápida (Testar no UWorld) -->
+    <div class="card">
+      <div class="card-header">
+        <span>Botões de Ação Imediata (Testar na Aba do Q-Bank)</span>
+      </div>
+      <div class="voice-action-grid">
+        <button class="btn-action-test" data-cmd="ler">▶️ Ler Questão</button>
+        <button class="btn-action-test" data-cmd="rep_enunciado">▶️ Enunciado</button>
+        <button class="btn-action-test" data-cmd="rep_alt">▶️ Alternativas</button>
+        <button class="btn-action-test" data-cmd="explicacao">▶️ Explicação</button>
+        <button class="btn-action-test" data-cmd="objetivo">▶️ Objetivo</button>
+        <button class="btn-action-test" data-cmd="proxima">▶️ Próxima</button>
+        <button class="btn-action-test" data-cmd="anterior">▶️ Anterior</button>
+        <button class="btn-action-test" data-cmd="submit">▶️ Submit</button>
+        <button class="btn-action-test" data-cmd="parar" style="grid-column: span 2; justify-content: center; color: #dc2626;">⏹️ Parar Leitura</button>
+      </div>
+    </div>
+
+    <!-- Personalizar Comandos de Voz -->
+    <div class="card">
+      <div class="card-header">
+        <span>Personalizar Comandos de Voz (PT / EN)</span>
+      </div>
+      <div style="font-size: 10px; color: #64748b; margin-bottom: 6px;">
+        Separe sinônimos por vírgula. O botão ▶️ testa a ação diretamente na aba ativa.
+      </div>
+
+      <div class="voice-cmd-row">
+        <span class="voice-cmd-label">Ler Questão</span>
+        <input type="text" class="voice-cmd-input" id="cmd-ler" value="ler questão, read question">
+        <button class="btn-mini-play" data-cmd="ler" title="Testar ação">▶️</button>
+      </div>
+      <div class="voice-cmd-row">
+        <span class="voice-cmd-label">Repetir Enunciado</span>
+        <input type="text" class="voice-cmd-input" id="cmd-rep-enunciado" value="repetir enunciado, read prompt">
+        <button class="btn-mini-play" data-cmd="rep_enunciado" title="Testar ação">▶️</button>
+      </div>
+      <div class="voice-cmd-row">
+        <span class="voice-cmd-label">Repetir Alternativas</span>
+        <input type="text" class="voice-cmd-input" id="cmd-rep-alt" value="repetir alternativas, read options">
+        <button class="btn-mini-play" data-cmd="rep_alt" title="Testar ação">▶️</button>
+      </div>
+      <div class="voice-cmd-row">
+        <span class="voice-cmd-label">Ler Explicação</span>
+        <input type="text" class="voice-cmd-input" id="cmd-exp" value="explicação, explanation">
+        <button class="btn-mini-play" data-cmd="explicacao" title="Testar ação">▶️</button>
+      </div>
+      <div class="voice-cmd-row">
+        <span class="voice-cmd-label">Ler Objetivo</span>
+        <input type="text" class="voice-cmd-input" id="cmd-obj" value="objetivo, objective">
+        <button class="btn-mini-play" data-cmd="objetivo" title="Testar ação">▶️</button>
+      </div>
+      <div class="voice-cmd-row">
+        <span class="voice-cmd-label">Avançar (Next)</span>
+        <input type="text" class="voice-cmd-input" id="cmd-prox" value="próxima, next">
+        <button class="btn-mini-play" data-cmd="proxima" title="Testar ação">▶️</button>
+      </div>
+      <div class="voice-cmd-row">
+        <span class="voice-cmd-label">Voltar (Prev)</span>
+        <input type="text" class="voice-cmd-input" id="cmd-ant" value="anterior, previous">
+        <button class="btn-mini-play" data-cmd="anterior" title="Testar ação">▶️</button>
+      </div>
+      <div class="voice-cmd-row">
+        <span class="voice-cmd-label">Enviar (Submit)</span>
+        <input type="text" class="voice-cmd-input" id="cmd-submit" value="enviar, submit">
+        <button class="btn-mini-play" data-cmd="submit" title="Testar ação">▶️</button>
+      </div>
+      <div class="voice-cmd-row">
+        <span class="voice-cmd-label">Parar Leitura</span>
+        <input type="text" class="voice-cmd-input" id="cmd-parar" value="parar, stop">
+        <button class="btn-mini-play" data-cmd="parar" title="Testar ação">⏹️</button>
+      </div>
+      <div class="voice-cmd-row">
+        <span class="voice-cmd-label">Marcar Alternativa</span>
+        <input type="text" class="voice-cmd-input" id="cmd-sel" value="selecionar, marcar, select">
+        <span style="font-size: 9px; color: #94a3b8; padding: 4px;">+ Letra (A-E)</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- TAB 3: KEYBOARD SHORTCUTS -->
+  <div class="tab-content" id="tab-content-keys">
+    <div class="card">
+      <div class="card-header">
+        <span>Personalizar Atalhos de Teclado no Q-Bank</span>
+        <button id="btn-reset-shortcuts" style="background: none; border: none; font-size: 9px; color: #2563eb; cursor: pointer; font-weight: 700;">Restaurar Padrão</button>
+      </div>
+
+      <div class="shortcut-row">
+        <span class="shortcut-label">Avançar Questão (Next)</span>
+        <input type="text" class="shortcut-input" id="kb-prox" value="alt+n">
+      </div>
+      <div class="shortcut-row">
+        <span class="shortcut-label">Voltar Questão (Prev)</span>
+        <input type="text" class="shortcut-input" id="kb-ant" value="alt+b">
+      </div>
+      <div class="shortcut-row">
+        <span class="shortcut-label">Enviar Resposta (Submit)</span>
+        <input type="text" class="shortcut-input" id="kb-submit" value="alt+enter">
+      </div>
+      <div class="shortcut-row">
+        <span class="shortcut-label">Ler Questão Completa</span>
+        <input type="text" class="shortcut-input" id="kb-ler" value="alt+l">
+      </div>
+      <div class="shortcut-row">
+        <span class="shortcut-label">Repetir Enunciado</span>
+        <input type="text" class="shortcut-input" id="kb-rep-enunciado" value="alt+e">
+      </div>
+      <div class="shortcut-row">
+        <span class="shortcut-label">Repetir Alternativas</span>
+        <input type="text" class="shortcut-input" id="kb-rep-alt" value="alt+a">
+      </div>
+      <div class="shortcut-row">
+        <span class="shortcut-label">Ler Explicação</span>
+        <input type="text" class="shortcut-input" id="kb-exp" value="alt+x">
+      </div>
+      <div class="shortcut-row">
+        <span class="shortcut-label">Ler Objetivo Educacional</span>
+        <input type="text" class="shortcut-input" id="kb-obj" value="alt+o">
+      </div>
+      <div class="shortcut-row">
+        <span class="shortcut-label">Play / Pause Leitor</span>
+        <input type="text" class="shortcut-input" id="kb-play" value="alt+p">
+      </div>
+      <div class="shortcut-row">
+        <span class="shortcut-label">Parar Leitura</span>
+        <input type="text" class="shortcut-input" id="kb-stop" value="alt+s">
+      </div>
+      <div class="shortcut-row">
+        <span class="shortcut-label">Frase Anterior</span>
+        <input type="text" class="shortcut-input" id="kb-prev-phrase" value="alt+arrowleft">
+      </div>
+      <div class="shortcut-row">
+        <span class="shortcut-label">Próxima Frase</span>
+        <input type="text" class="shortcut-input" id="kb-next-phrase" value="alt+arrowright">
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom Bar for Save -->
+  <div class="bottom-bar" id="bottom-bar-prefs">
+    <button class="btn-primary" id="btn-salvar" style="padding: 8px;">💾 Salvar Preferências</button>
+  </div>
+
+  <div class="toast-msg" id="toast-msg">Preferências salvas com sucesso!</div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

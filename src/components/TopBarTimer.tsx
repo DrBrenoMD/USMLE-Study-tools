@@ -187,14 +187,11 @@ export function TopBarTimer() {
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
       }
       setTimerState(timeLeft <= 0 ? 'waiting_transition' : 'running');
-      if (pacerTotalQuestions > 0 && pacerCompletedQuestionsTime.length < pacerTotalQuestions) {
+      if (pacerTotalQuestions > 0 && pacerCompletedQuestionsTime.length < pacerTotalQuestions && !pacerIsActive) {
         setPacerState({ pacerIsActive: true });
       }
     } else if (timerState === 'running' || timerState === 'waiting_transition') {
       setTimerState('paused');
-      if (pacerIsActive) {
-        setPacerState({ pacerIsActive: false });
-      }
     }
   };
 
