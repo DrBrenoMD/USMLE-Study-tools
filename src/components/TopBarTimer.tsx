@@ -4,6 +4,7 @@ import { Play, Pause, Square, Coffee, BookOpen, Settings2, RotateCcw, Activity, 
 import { format, startOfDay } from 'date-fns';
 import { QuestionPacer } from './QuestionPacer';
 import { QuickLogModal } from './QuickLogModal';
+import { audioManager } from '../services/audioManager';
 
 export function TopBarTimer() {
   const {
@@ -54,72 +55,33 @@ export function TopBarTimer() {
   const todayNetSeconds = dailyNetTime[todayStr] || 0;
 
   const playAlarm = () => {
-    try {
-      if (!audioContextRef.current) {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-      }
-      const ctx = audioContextRef.current;
-      if (ctx.state === 'suspended') ctx.resume();
-
-      const playBeep = (startTime: number) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        
-        osc.type = 'square';
-        osc.frequency.setValueAtTime(880, startTime);
-        osc.frequency.setValueAtTime(1108.73, startTime + 0.1);
-        
-        gain.gain.setValueAtTime(0, startTime);
-        gain.gain.linearRampToValueAtTime(0.3, startTime + 0.02);
-        gain.gain.linearRampToValueAtTime(0, startTime + 0.2);
-        
-        osc.start(startTime);
-        osc.stop(startTime + 0.2);
-      };
-
-      const now = ctx.currentTime;
-      playBeep(now);
-      playBeep(now + 0.3);
-      playBeep(now + 0.8);
-      playBeep(now + 1.1);
-    } catch (err) {
-      console.error(err);
+    const soundSettings = useTimerStore.getState().pacerSoundSettings || { master: true, cycleAlarm: true, volume: 0.5 };
+    if (soundSettings.master && soundSettings.cycleAlarm) {
+      audioManager.playCycleAlarm(soundSettings.volume ?? 0.5);
     }
   };
 
   const playPacerBeep = (soundEnabled: boolean, freq: number = 880) => {
     if (!soundEnabled) return;
-    try {
-      if (!audioContextRef.current) {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-      }
-      const ctx = audioContextRef.current;
-      if (ctx.state === 'suspended') ctx.resume();
-
-      const oscillator = ctx.createOscillator();
-      const gainNode = ctx.createGain();
-      
-      oscillator.type = 'sine';
-      oscillator.frequency.setValueAtTime(freq, ctx.currentTime); 
-      
-      gainNode.gain.setValueAtTime(0.5, ctx.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
-      
-      oscillator.connect(gainNode);
-      gainNode.connect(ctx.destination);
-      
-      oscillator.start();
-      oscillator.stop(ctx.currentTime + 0.5);
-    } catch (e) {
-      console.error("Audio playback failed", e);
+    const soundSettings = useTimerStore.getState().pacerSoundSettings || { master: true, volume: 0.5 };
+    const vol = soundSettings.volume ?? 0.5;
+    if (freq === 880) {
+      audioManager.playSolveAlarm(vol);
+    } else {
+      audioManager.playReviewAlarm(vol);
     }
   };
 
   useEffect(() => {
     const isAnyActive = timerState === 'running' || timerState === 'waiting_transition' || pacerIsActive;
+    const currentSettings = useTimerStore.getState().pacerSoundSettings;
+    const keepAliveEnabled = currentSettings?.master !== false && currentSettings?.keepAliveAudio !== false;
+
+    if (isAnyActive && keepAliveEnabled) {
+      audioManager.startKeepAlive();
+    } else {
+      audioManager.stopKeepAlive();
+    }
     
     if (isAnyActive) {
       lastTickRef.current = Date.now();

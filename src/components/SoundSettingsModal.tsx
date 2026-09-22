@@ -1,6 +1,7 @@
-import React, { useRef } from 'react';
-import { Volume2, VolumeX, Bell, Check, BookOpen, FastForward, RotateCcw, X, Play, Music, Sparkles } from 'lucide-react';
+import React from 'react';
+import { Volume2, VolumeX, Bell, Check, BookOpen, FastForward, RotateCcw, X, Play, Music, Sparkles, Sliders, ShieldCheck } from 'lucide-react';
 import { useTimerStore, PacerSoundSettings } from '../store/useTimerStore';
+import { audioManager } from '../services/audioManager';
 
 interface SoundSettingsModalProps {
   isOpen: boolean;
@@ -14,71 +15,27 @@ export const SoundSettingsModal: React.FC<SoundSettingsModalProps> = ({ isOpen, 
     togglePacerSoundSetting
   } = useTimerStore();
 
-  const audioContextRef = useRef<AudioContext | null>(null);
-
   if (!isOpen) return null;
 
-  const playTone = (freq: number, duration: number = 0.25, type: OscillatorType = 'sine') => {
-    try {
-      if (!audioContextRef.current) {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-      }
-      const ctx = audioContextRef.current;
-      if (ctx.state === 'suspended') ctx.resume();
+  const currentVolume = pacerSoundSettings.volume ?? 0.85;
+  const isKeepAlive = pacerSoundSettings.keepAliveAudio !== false;
 
-      const oscillator = ctx.createOscillator();
-      const gainNode = ctx.createGain();
-
-      oscillator.type = type;
-      oscillator.frequency.setValueAtTime(freq, ctx.currentTime);
-
-      gainNode.gain.setValueAtTime(0.35, ctx.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.005, ctx.currentTime + duration);
-
-      oscillator.connect(gainNode);
-      gainNode.connect(ctx.destination);
-
-      oscillator.start();
-      oscillator.stop(ctx.currentTime + duration);
-    } catch (e) {
-      console.error('Test audio error:', e);
-    }
+  const handleVolumeChange = (newVol: number) => {
+    setPacerSoundSettings({ volume: newVol });
   };
 
-  const playChordAlarm = () => {
-    try {
-      if (!audioContextRef.current) {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-      }
-      const ctx = audioContextRef.current;
-      if (ctx.state === 'suspended') ctx.resume();
-
-      const playBeep = (startTime: number, freq: number) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(freq, startTime);
-        gain.gain.setValueAtTime(0, startTime);
-        gain.gain.linearRampToValueAtTime(0.25, startTime + 0.03);
-        gain.gain.linearRampToValueAtTime(0, startTime + 0.22);
-        osc.start(startTime);
-        osc.stop(startTime + 0.22);
-      };
-
-      const now = ctx.currentTime;
-      playBeep(now, 523.25);        // C5
-      playBeep(now + 0.1, 659.25);  // E5
-      playBeep(now + 0.2, 783.99);  // G5
-      playBeep(now + 0.3, 1046.50); // C6
-    } catch (e) {
-      console.error('Test chord error:', e);
+  const handleToggleKeepAlive = () => {
+    const nextVal = !isKeepAlive;
+    setPacerSoundSettings({ keepAliveAudio: nextVal });
+    if (nextVal) {
+      audioManager.startKeepAlive();
+    } else {
+      audioManager.stopKeepAlive();
     }
   };
 
   const soundItems: Array<{
-    key: keyof Omit<PacerSoundSettings, 'master'>;
+    key: keyof Omit<PacerSoundSettings, 'master' | 'keepAliveAudio' | 'volume'>;
     title: string;
     description: string;
     badge: string;
@@ -93,7 +50,7 @@ export const SoundSettingsModal: React.FC<SoundSettingsModalProps> = ({ isOpen, 
       badge: '880 Hz',
       icon: <Bell className="w-4 h-4" />,
       color: 'text-blue-600 bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800',
-      onTest: () => playTone(880, 0.35, 'sine')
+      onTest: () => audioManager.playSolveAlarm(currentVolume)
     },
     {
       key: 'reviewAlarm',
@@ -102,7 +59,7 @@ export const SoundSettingsModal: React.FC<SoundSettingsModalProps> = ({ isOpen, 
       badge: '660 Hz',
       icon: <BookOpen className="w-4 h-4" />,
       color: 'text-purple-600 bg-purple-50 dark:bg-purple-950/40 border-purple-200 dark:border-purple-800',
-      onTest: () => playTone(660, 0.35, 'sine')
+      onTest: () => audioManager.playReviewAlarm(currentVolume)
     },
     {
       key: 'cycleAlarm',
@@ -111,7 +68,7 @@ export const SoundSettingsModal: React.FC<SoundSettingsModalProps> = ({ isOpen, 
       badge: 'Melodia',
       icon: <Music className="w-4 h-4" />,
       color: 'text-amber-600 bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800',
-      onTest: playChordAlarm
+      onTest: () => audioManager.playCycleAlarm(currentVolume)
     },
     {
       key: 'nextQuestion',
@@ -120,7 +77,7 @@ export const SoundSettingsModal: React.FC<SoundSettingsModalProps> = ({ isOpen, 
       badge: 'Ação',
       icon: <FastForward className="w-4 h-4" />,
       color: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800',
-      onTest: () => playTone(880, 0.18, 'sine')
+      onTest: () => audioManager.playActionBeep('next', currentVolume)
     },
     {
       key: 'submitQuestion',
@@ -129,7 +86,7 @@ export const SoundSettingsModal: React.FC<SoundSettingsModalProps> = ({ isOpen, 
       badge: 'Ação',
       icon: <Check className="w-4 h-4" />,
       color: 'text-indigo-600 bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800',
-      onTest: () => playTone(660, 0.22, 'sine')
+      onTest: () => audioManager.playActionBeep('submit', currentVolume)
     },
     {
       key: 'prevQuestion',
@@ -138,7 +95,7 @@ export const SoundSettingsModal: React.FC<SoundSettingsModalProps> = ({ isOpen, 
       badge: 'Ação',
       icon: <RotateCcw className="w-4 h-4" />,
       color: 'text-rose-600 bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800',
-      onTest: () => playTone(520, 0.16, 'sine')
+      onTest: () => audioManager.playActionBeep('prev', currentVolume)
     }
   ];
 
@@ -159,7 +116,7 @@ export const SoundSettingsModal: React.FC<SoundSettingsModalProps> = ({ isOpen, 
                 Configurações de Sons e Alertas
               </h3>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                Ative ou desative cada sinal sonoro individualmente
+                Personalize o volume, alertas do pacer e prevenção de standby
               </p>
             </div>
           </div>
@@ -171,35 +128,91 @@ export const SoundSettingsModal: React.FC<SoundSettingsModalProps> = ({ isOpen, 
           </button>
         </div>
 
-        {/* Master Toggle Banner */}
-        <div className="p-4 mx-6 mt-4 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className={`p-2 rounded-lg ${pacerSoundSettings.master ? 'bg-blue-600 text-white' : 'bg-gray-300 dark:bg-gray-700 text-gray-500'}`}>
-              {pacerSoundSettings.master ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+        {/* Master Controls Section */}
+        <div className="p-4 mx-6 mt-4 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`p-2 rounded-lg ${pacerSoundSettings.master ? 'bg-blue-600 text-white' : 'bg-gray-300 dark:bg-gray-700 text-gray-500'}`}>
+                {pacerSoundSettings.master ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+              </div>
+              <div>
+                <span className="text-sm font-bold text-gray-900 dark:text-gray-100 block">
+                  Som Geral (Master)
+                </span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  {pacerSoundSettings.master ? 'Todos os sons respeitam as opções abaixo' : 'Todos os sons estão silenciados'}
+                </span>
+              </div>
             </div>
-            <div>
-              <span className="text-sm font-bold text-gray-900 dark:text-gray-100 block">
-                Som Geral (Master)
-              </span>
-              <span className="text-xs text-gray-500 dark:text-gray-400">
-                {pacerSoundSettings.master ? 'Todos os sons habilitados respeitam as opções individuais abaixo' : 'Todos os sons estão silenciados'}
+
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={pacerSoundSettings.master}
+                onChange={() => togglePacerSoundSetting('master')}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+            </label>
+          </div>
+
+          {/* Volume Slider */}
+          <div className={`pt-2 border-t border-gray-200/60 dark:border-gray-700/60 flex items-center justify-between gap-4 ${!pacerSoundSettings.master ? 'opacity-40 pointer-events-none' : ''}`}>
+            <span className="text-xs font-semibold text-gray-600 dark:text-gray-300 flex items-center gap-1.5 min-w-[120px]">
+              <Sliders className="w-3.5 h-3.5 text-blue-500" />
+              Volume dos Alertas:
+            </span>
+            <div className="flex items-center gap-3 flex-1 max-w-xs">
+              <input
+                type="range"
+                min="0.2"
+                max="1"
+                step="0.05"
+                value={currentVolume}
+                onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+                className="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
+              />
+              <span className="text-xs font-mono font-bold text-gray-700 dark:text-gray-300 w-10 text-right">
+                {Math.round(currentVolume * 100)}%
               </span>
             </div>
           </div>
+        </div>
 
-          <label className="relative inline-flex items-center cursor-pointer">
+        {/* Keep-Alive / Anti-Sleep Audio Feature */}
+        <div className="mx-6 mt-3 p-3.5 rounded-xl border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50/50 dark:bg-emerald-950/20 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 shrink-0">
+              <ShieldCheck className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-emerald-950 dark:text-emerald-200">
+                  Anti-Standby de Áudio (Keep-Alive Ativo)
+                </span>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-200/80 dark:bg-emerald-800 text-emerald-900 dark:text-emerald-100">
+                  Recomendado
+                </span>
+              </div>
+              <p className="text-[11px] text-emerald-800/80 dark:text-emerald-300/80 mt-0.5 leading-snug">
+                Mantém fones Bluetooth e placa de som aquecidos em segundo plano com sinal inaudível, garantindo que o início dos alarmes nunca seja cortado.
+              </p>
+            </div>
+          </div>
+
+          <label className="relative inline-flex items-center cursor-pointer shrink-0">
             <input
               type="checkbox"
-              checked={pacerSoundSettings.master}
-              onChange={() => togglePacerSoundSetting('master')}
+              checked={isKeepAlive}
+              onChange={handleToggleKeepAlive}
               className="sr-only peer"
             />
-            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+            <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
           </label>
         </div>
 
         {/* Individual Sound Toggles List */}
-        <div className="overflow-y-auto px-6 py-4 space-y-3 flex-1">
+        <div className="overflow-y-auto px-6 py-4 space-y-2.5 flex-1">
           <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1">
             Controle Individual por Tipo de Som
           </div>
@@ -211,7 +224,7 @@ export const SoundSettingsModal: React.FC<SoundSettingsModalProps> = ({ isOpen, 
             return (
               <div
                 key={item.key}
-                className={`p-3.5 rounded-xl border transition-all flex items-center justify-between gap-3 ${
+                className={`p-3 rounded-xl border transition-all flex items-center justify-between gap-3 ${
                   isDimmed 
                     ? 'opacity-50 border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/30' 
                     : isEnabled
@@ -219,34 +232,33 @@ export const SoundSettingsModal: React.FC<SoundSettingsModalProps> = ({ isOpen, 
                       : 'border-dashed border-gray-200 dark:border-gray-700 bg-gray-50/30 dark:bg-gray-900/20'
                 }`}
               >
-                <div className="flex items-start gap-3 flex-1 min-w-0">
-                  <div className={`p-2 rounded-lg border mt-0.5 shrink-0 ${item.color}`}>
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-lg border ${item.color}`}>
                     {item.icon}
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`text-sm font-bold truncate ${isEnabled && !isDimmed ? 'text-gray-900 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400'}`}>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs font-bold ${isEnabled && !isDimmed ? 'text-gray-900 dark:text-gray-100' : 'text-gray-400 dark:text-gray-500'}`}>
                         {item.title}
                       </span>
-                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
                         {item.badge}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-snug">
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
                       {item.description}
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2.5 shrink-0 ml-2">
+                <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={item.onTest}
-                    className="px-2.5 py-1 text-xs font-bold text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 bg-gray-100 dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
-                    title={`Testar som: ${item.title}`}
+                    title="Testar este som"
+                    className="p-1.5 text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors cursor-pointer"
                   >
-                    <Play className="w-3 h-3 fill-current" />
-                    <span className="hidden sm:inline">Testar</span>
+                    <Play className="w-3.5 h-3.5 fill-current" />
                   </button>
 
                   <label className="relative inline-flex items-center cursor-pointer">
@@ -312,3 +324,4 @@ export const SoundSettingsModal: React.FC<SoundSettingsModalProps> = ({ isOpen, 
     </div>
   );
 };
+

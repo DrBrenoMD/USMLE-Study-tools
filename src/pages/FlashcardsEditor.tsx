@@ -5,6 +5,8 @@ import {
   FlashcardQuestion,
   SimuladoData,
 } from "../services/flashcardStore";
+import { exportSimuladoToCardblocksDeck, saveQuestionToCardblocks } from "../services/cardblocksBridge";
+import { useStore } from "../cardblocks/store/useStore";
 import ReactQuill from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
 import {
@@ -15,20 +17,48 @@ import {
   ChevronLeft,
   ChevronRight,
   Image as ImageIcon,
+  Layers,
+  BookmarkPlus,
+  ExternalLink,
+  Activity,
 } from "lucide-react";
 import { fabric } from "fabric";
+import { useTimerStore } from "../store/useTimerStore";
 
-export default function FlashcardsEditor() {
+interface FlashcardsEditorProps {
+  simName?: string;
+  onNavigate?: (page: any) => void;
+}
+
+export default function FlashcardsEditor({ simName: propSimName, onNavigate }: FlashcardsEditorProps = {}) {
   const location = useLocation();
   const navigate = useNavigate();
   const params = new URLSearchParams(location.search);
-  const simName = params.get("sim") || "";
+  const simName = propSimName || params.get("sim") || "";
+  const { decks } = useStore();
+  const [selectedDeckId, setSelectedDeckId] = useState<string>("");
+
+  useEffect(() => {
+    if (decks.length > 0 && !selectedDeckId) {
+      setSelectedDeckId(decks[0].id);
+    }
+  }, [decks, selectedDeckId]);
 
   const [data, setData] = useState<SimuladoData>({});
   const [currentId, setCurrentId] = useState<number>(1);
   const [qData, setQData] = useState<FlashcardQuestion>({ id: 1 });
   const [score, setScore] = useState({ corretas: 0, total: 0 });
   const [pace, setPace] = useState(0);
+
+  const {
+    pacerIsActive,
+    pacerTotalQuestions,
+    pacerCurrentQuestionTime,
+    pacerCompletedQuestionsTime,
+    setPacerState,
+    setTimerState,
+    stopPacer,
+  } = useTimerStore();
 
   // IO Modal
   const [ioModalOpen, setIoModalOpen] = useState(false);
@@ -95,11 +125,22 @@ export default function FlashcardsEditor() {
         if (q.result === 0) erradas++;
       });
       setScore({ corretas: certas, total: certas + erradas });
+
+      const tStore = useTimerStore.getState();
+      if (tStore.pacerIsActive) {
+        tStore.submitPacerQuestion();
+        tStore.nextPacerQuestion();
+      }
     }
   };
 
   const navigateQ = (dir: number) => {
     if (currentId + dir > 0) {
+      const tStore = useTimerStore.getState();
+      if (tStore.pacerIsActive) {
+        if (dir > 0) tStore.nextPacerQuestion();
+        else tStore.prevPacerQuestion();
+      }
       loadQuestion(data, currentId + dir);
     }
   };
@@ -281,24 +322,41 @@ export default function FlashcardsEditor() {
         <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 flex flex-col gap-3">
           <div className="flex items-center gap-2">
             <button
-              onClick={() => navigate("/flashcards")}
+              onClick={() => (onNavigate ? onNavigate({ type: 'simulados' }) : navigate("/flashcards"))}
               className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:text-gray-100 transition-colors"
             >
               <ChevronLeft className="w-5 h-5" />
             </button>
             <span className="font-bold text-gray-900 dark:text-gray-100 truncate">{simName}</span>
           </div>
-          <button
-            onClick={() =>
-              navigate(
-                `/flashcards/dashboard?sim=${encodeURIComponent(simName)}`,
-              )
-            }
-            className="w-full py-2 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-bold rounded-lg border border-blue-100 hover:bg-blue-100 dark:bg-blue-900/50 transition-colors flex items-center justify-center gap-2"
-          >
-            <BarChart2 className="w-4 h-4" />
-            Dashboard
-          </button>
+          <div className="flex flex-col gap-1.5">
+            <button
+              onClick={() =>
+                onNavigate
+                  ? onNavigate({ type: 'simuladoDashboard', simName })
+                  : navigate(
+                      `/flashcards/dashboard?sim=${encodeURIComponent(simName)}`,
+                    )
+              }
+              className="w-full py-2 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-bold rounded-lg border border-blue-100 hover:bg-blue-100 dark:bg-blue-900/50 transition-colors flex items-center justify-center gap-2 text-sm"
+            >
+              <BarChart2 className="w-4 h-4" />
+              Dashboard
+            </button>
+            <button
+              onClick={async () => {
+                const deckId = await exportSimuladoToCardblocksDeck(simName);
+                if (deckId && onNavigate) {
+                  onNavigate({ type: 'deck', deckId });
+                }
+              }}
+              title="Exporta todas as questões deste simulado para um baralho Anki/Cardblocks"
+              className="w-full py-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-bold rounded-lg border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors flex items-center justify-center gap-1.5 text-xs"
+            >
+              <Layers className="w-3.5 h-3.5" />
+              Exportar p/ Baralho
+            </button>
+          </div>
         </div>
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
           {qList.map((i) => {
@@ -370,6 +428,39 @@ export default function FlashcardsEditor() {
               {String(Math.floor(pace / 60)).padStart(2, "0")}:
               {String(pace % 60).padStart(2, "0")}
             </div>
+
+            {pacerIsActive ? (
+              <div className="px-3.5 py-2 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 rounded-xl shadow-sm flex items-center gap-2 font-mono font-bold text-rose-700 dark:text-rose-300 text-xs">
+                <Activity className="w-3.5 h-3.5 text-rose-500 animate-pulse" />
+                <span>Pacer Q{pacerCompletedQuestionsTime.length + 1}/{pacerTotalQuestions} ({pacerCurrentQuestionTime}s)</span>
+                <button
+                  onClick={() => stopPacer()}
+                  className="text-rose-400 hover:text-rose-600 dark:hover:text-white p-0.5 ml-1"
+                  title="Parar Pacer"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => {
+                  const qCount = Object.keys(data).length || 40;
+                  setPacerState({
+                    pacerIsActive: true,
+                    pacerTotalQuestions: qCount,
+                    pacerTargetTimeSeconds: 72,
+                    pacerCurrentQuestionTime: 0,
+                    pacerCompletedQuestionsTime: [],
+                  });
+                  setTimerState('running');
+                }}
+                className="px-3 py-2 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 rounded-xl shadow-sm flex items-center gap-1.5 font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-100 transition-colors text-xs"
+                title="Sincronizar ritmo com Pacer USMLE (72s/q)"
+              >
+                <Activity className="w-3.5 h-3.5 text-rose-500" />
+                <span>Pacer Correção</span>
+              </button>
+            )}
             <div className="flex gap-2">
               <button
                 onClick={() => handleUpdate({ result: 1 })}
@@ -382,6 +473,14 @@ export default function FlashcardsEditor() {
                 className={`px-5 py-2 font-bold rounded-xl shadow-sm transition-colors border ${qData.result === 0 ? "bg-red-500 text-white border-red-600" : "bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:bg-gray-800/50"}`}
               >
                 Errado
+              </button>
+              <button
+                onClick={() => saveQuestionToCardblocks(qData, selectedDeckId)}
+                title="Salvar esta questão como Flashcard no Baralho Cardblocks"
+                className="px-3.5 py-2 font-bold rounded-xl shadow-sm transition-colors border bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 flex items-center gap-1.5 text-sm"
+              >
+                <BookmarkPlus className="w-4 h-4" />
+                + Cardblocks
               </button>
             </div>
           </div>

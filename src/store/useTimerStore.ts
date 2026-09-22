@@ -13,6 +13,8 @@ export interface PacerSoundSettings {
   submitQuestion: boolean;
   prevQuestion: boolean;
   cycleAlarm: boolean;
+  keepAliveAudio?: boolean;
+  volume?: number;
 }
 
 interface TimerStore {
@@ -122,6 +124,8 @@ export const useTimerStore = create<TimerStore>()(
         submitQuestion: true,
         prevQuestion: true,
         cycleAlarm: true,
+        keepAliveAudio: true,
+        volume: 0.5,
       },
       pacerShowSummary: false,
       

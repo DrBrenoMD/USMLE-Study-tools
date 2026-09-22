@@ -4,7 +4,11 @@ import { flashcardStore } from "../services/flashcardStore";
 import { MouseInteractiveBackground } from "../components/MouseInteractiveBackground";
 import { BookOpen, Plus, ArrowRight } from "lucide-react";
 
-export default function FlashcardsLobby() {
+interface FlashcardsLobbyProps {
+  onNavigate?: (page: any) => void;
+}
+
+export default function FlashcardsLobby({ onNavigate }: FlashcardsLobbyProps = {}) {
   const [simulados, setSimulados] = useState<string[]>([]);
   const [newSimName, setNewSimName] = useState("");
   const navigate = useNavigate();
@@ -20,8 +24,13 @@ export default function FlashcardsLobby() {
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newSimName.trim()) return;
-    navigate(`/flashcards/editor?sim=${encodeURIComponent(newSimName.trim())}`);
+    const trimmed = newSimName.trim();
+    if (!trimmed) return;
+    if (onNavigate) {
+      onNavigate({ type: 'simuladoEditor', simName: trimmed });
+    } else {
+      navigate(`/flashcards/editor?sim=${encodeURIComponent(trimmed)}`);
+    }
   };
 
   return (
@@ -83,11 +92,15 @@ export default function FlashcardsLobby() {
                 >
                   <span className="font-bold text-gray-800 dark:text-gray-200 text-lg">{sim}</span>
                   <button
-                    onClick={() =>
-                      navigate(
-                        `/flashcards/editor?sim=${encodeURIComponent(sim)}`,
-                      )
-                    }
+                    onClick={() => {
+                      if (onNavigate) {
+                        onNavigate({ type: 'simuladoEditor', simName: sim });
+                      } else {
+                        navigate(
+                          `/flashcards/editor?sim=${encodeURIComponent(sim)}`,
+                        );
+                      }
+                    }}
                     className="px-4 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-blue-600 dark:text-blue-400 rounded-lg font-bold hover:bg-blue-50 dark:bg-blue-900/30 hover:border-blue-200 transition-colors flex items-center gap-2 shadow-sm"
                   >
                     Abrir <ArrowRight className="w-4 h-4" />

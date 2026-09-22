@@ -9,7 +9,13 @@ export default defineConfig(() => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
+        'script-loader!sql.js': path.resolve(__dirname, 'node_modules/sql.js/dist/sql-wasm.js'),
+        'sql.js': path.resolve(__dirname, 'node_modules/sql.js/dist/sql-wasm.js'),
+        'anki-apkg-export': 'anki-apkg-export/dist/index.js'
       },
+    },
+    optimizeDeps: {
+      include: ['anki-apkg-export', 'sql.js']
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.

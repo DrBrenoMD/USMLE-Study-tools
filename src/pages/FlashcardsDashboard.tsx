@@ -5,6 +5,7 @@ import {
   SimuladoData,
   FlashcardQuestion,
 } from "../services/flashcardStore";
+import { exportSimuladoToCardblocksDeck } from "../services/cardblocksBridge";
 import {
   PieChart,
   Pie,
@@ -24,15 +25,22 @@ import {
   Download,
   FileText,
   Expand,
+  Layers,
+  Sparkles,
 } from "lucide-react";
 import Papa from "papaparse";
 import { jsPDF } from "jspdf";
 
-export default function FlashcardsDashboard() {
+interface FlashcardsDashboardProps {
+  simName?: string;
+  onNavigate?: (page: any) => void;
+}
+
+export default function FlashcardsDashboard({ simName: propSimName, onNavigate }: FlashcardsDashboardProps = {}) {
   const location = useLocation();
   const navigate = useNavigate();
   const params = new URLSearchParams(location.search);
-  const simName = params.get("sim") || "";
+  const simName = propSimName || params.get("sim") || "";
 
   const [data, setData] = useState<SimuladoData>({});
 
@@ -216,7 +224,7 @@ export default function FlashcardsDashboard() {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-200 dark:border-gray-700 pb-6">
           <div>
             <button
-              onClick={() => navigate("/flashcards")}
+              onClick={() => (onNavigate ? onNavigate({ type: 'simulados' }) : navigate("/flashcards"))}
               className="text-blue-600 dark:text-blue-400 hover:underline text-sm font-bold flex items-center gap-1 mb-2"
             >
               <ChevronLeft className="w-4 h-4" /> Voltar ao Painel
@@ -227,7 +235,9 @@ export default function FlashcardsDashboard() {
           </div>
           <button
             onClick={() =>
-              navigate(`/flashcards/editor?sim=${encodeURIComponent(simName)}`)
+              onNavigate
+                ? onNavigate({ type: 'simuladoEditor', simName })
+                : navigate(`/flashcards/editor?sim=${encodeURIComponent(simName)}`)
             }
             className="px-6 py-3 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-xl font-bold hover:bg-gray-50 dark:bg-gray-800/50 shadow-sm transition-colors"
           >
@@ -236,24 +246,58 @@ export default function FlashcardsDashboard() {
         </div>
 
         {/* Action Buttons */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <button
-            onClick={exportCSV}
-            className="flex flex-col items-center justify-center p-6 bg-blue-600 dark:bg-blue-500 text-white rounded-2xl shadow-sm hover:bg-blue-700 transition-colors"
+            onClick={async () => {
+              const deckId = await exportSimuladoToCardblocksDeck(simName, true);
+              if (deckId && onNavigate) {
+                onNavigate({ type: 'deck', deckId });
+              }
+            }}
+            className="flex flex-col items-center justify-center p-5 bg-gradient-to-br from-amber-500 to-rose-600 text-white rounded-2xl shadow-sm hover:opacity-95 transition-all group"
           >
-            <Download className="w-8 h-8 mb-2" />
-            <span className="font-bold text-lg">Gerar para Anki (.txt)</span>
-            <span className="text-blue-200 text-xs mt-1">
-              Importável via "Arquivo &gt; Importar"
+            <Sparkles className="w-7 h-7 mb-1.5 group-hover:scale-110 transition-transform" />
+            <span className="font-bold text-base text-center">Exportar Erros p/ Cardblocks</span>
+            <span className="text-amber-100 text-xs mt-1 text-center">
+              Cria baralho de repetição espaçada
             </span>
           </button>
+
+          <button
+            onClick={async () => {
+              const deckId = await exportSimuladoToCardblocksDeck(simName, false);
+              if (deckId && onNavigate) {
+                onNavigate({ type: 'deck', deckId });
+              }
+            }}
+            className="flex flex-col items-center justify-center p-5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl shadow-sm transition-colors group"
+          >
+            <Layers className="w-7 h-7 mb-1.5 group-hover:scale-110 transition-transform" />
+            <span className="font-bold text-base text-center">Exportar Tudo p/ Baralho</span>
+            <span className="text-indigo-200 text-xs mt-1 text-center">
+              Todas as questões do bloco
+            </span>
+          </button>
+
+          <button
+            onClick={exportCSV}
+            className="flex flex-col items-center justify-center p-5 bg-blue-600 dark:bg-blue-500 text-white rounded-2xl shadow-sm hover:bg-blue-700 transition-colors"
+          >
+            <Download className="w-7 h-7 mb-1.5" />
+            <span className="font-bold text-base text-center">Gerar p/ Anki (.txt)</span>
+            <span className="text-blue-200 text-xs mt-1 text-center">
+              Importável via Arquivo &gt; Importar
+            </span>
+          </button>
+
           <button
             onClick={exportPDF}
-            className="flex flex-col items-center justify-center p-6 bg-red-600 text-white rounded-2xl shadow-sm hover:bg-red-700 transition-colors"
+            className="flex flex-col items-center justify-center p-5 bg-rose-600 text-white rounded-2xl shadow-sm hover:bg-rose-700 transition-colors"
           >
-            <FileText className="w-8 h-8 mb-2" />
-            <span className="font-bold text-lg">
-              PDF Flashcards (Apenas Texto)
+            <FileText className="w-7 h-7 mb-1.5" />
+            <span className="font-bold text-base text-center">PDF Flashcards</span>
+            <span className="text-rose-200 text-xs mt-1 text-center">
+              Relatório para impressão
             </span>
           </button>
         </div>

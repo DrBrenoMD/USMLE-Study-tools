@@ -10,9 +10,7 @@ import StudyTracker from "./pages/StudyTracker";
 import PacerPage from "./pages/Pacer";
 import NBMECalculator from "./pages/NBMECalculator";
 import ScorePredictor from "./pages/ScorePredictor";
-import FlashcardsLobby from "./pages/FlashcardsLobby";
-import FlashcardsEditor from "./pages/FlashcardsEditor";
-import FlashcardsDashboard from "./pages/FlashcardsDashboard";
+import FlashcardsUnifiedHub from "./pages/FlashcardsUnifiedHub";
 import ExtensionDownload from "./pages/ExtensionDownload";
 import { TopBarTimer } from "./components/TopBarTimer";
 import { ChevronLeft, Palette, Menu } from "lucide-react";
@@ -91,9 +89,8 @@ function AppContent() {
           <Route path="/pacer" element={<PacerPage />} />
           <Route path="/calculator" element={<NBMECalculator />} />
           <Route path="/predictor" element={<ScorePredictor />} />
-          <Route path="/flashcards" element={<FlashcardsLobby />} />
-          <Route path="/flashcards/editor" element={<FlashcardsEditor />} />
-          <Route path="/flashcards/dashboard" element={<FlashcardsDashboard />} />
+          <Route path="/flashcards/*" element={<FlashcardsUnifiedHub />} />
+          <Route path="/flashcards" element={<FlashcardsUnifiedHub />} />
           <Route path="/extensao" element={<ExtensionDownload />} />
         </Routes>
       </div>

@@ -1,8 +1,9 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Play, Square, FastForward, Clock, Activity, TrendingUp, TrendingDown, Volume2, VolumeX, Settings2, Pause, Save, X, BookOpen, Coffee, Chrome, RotateCcw, CheckCircle2, FileText, Check, ArrowRight, Zap, Bell, SlidersHorizontal } from 'lucide-react';
+import { Play, Square, FastForward, Clock, Activity, TrendingUp, TrendingDown, Volume2, VolumeX, Settings2, Pause, Save, X, BookOpen, Coffee, Chrome, RotateCcw, CheckCircle2, FileText, Check, ArrowRight, Zap, Bell, SlidersHorizontal, Timer } from 'lucide-react';
 import { useTimerStore } from '../store/useTimerStore';
 import { SoundSettingsModal } from './SoundSettingsModal';
+import { audioManager } from '../services/audioManager';
 
 export function QuestionPacer({ className }: { className?: string }) {
   const { 
@@ -236,39 +237,35 @@ export function QuestionPacer({ className }: { className?: string }) {
       nextQuestion: true,
       submitQuestion: true,
       prevQuestion: true,
+      keepAliveAudio: true,
+      volume: 0.5,
     };
     if (!settings.master) return;
     if (soundKey && !settings[soundKey]) return;
 
-    try {
-      if (!audioContextRef.current) {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-      }
-      const ctx = audioContextRef.current;
-      if (ctx.state === 'suspended') ctx.resume();
-      
-      const oscillator = ctx.createOscillator();
-      const gainNode = ctx.createGain();
-      
-      oscillator.type = 'sine';
-      oscillator.frequency.setValueAtTime(freq, ctx.currentTime);
-      
-      gainNode.gain.setValueAtTime(0.4, ctx.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
-      
-      oscillator.connect(gainNode);
-      gainNode.connect(ctx.destination);
-      
-      oscillator.start();
-      oscillator.stop(ctx.currentTime + duration);
-    } catch (e) {
-      console.error("Audio playback failed", e);
+    const vol = settings.volume ?? 0.5;
+    if (soundKey === 'nextQuestion') {
+      audioManager.playActionBeep('next', vol);
+    } else if (soundKey === 'submitQuestion') {
+      audioManager.playActionBeep('submit', vol);
+    } else if (soundKey === 'prevQuestion') {
+      audioManager.playActionBeep('prev', vol);
+    } else if (soundKey === 'solveAlarm') {
+      audioManager.playSolveAlarm(vol);
+    } else if (soundKey === 'reviewAlarm') {
+      audioManager.playReviewAlarm(vol);
+    } else if (soundKey === 'cycleAlarm') {
+      audioManager.playCycleAlarm(vol);
+    } else {
+      audioManager.playTone(freq, duration, vol);
     }
   };
 
   const handleStart = () => {
-    if (audioContextRef.current?.state === 'suspended') {
-      audioContextRef.current.resume();
+    audioManager.init();
+    const settings = pacerSoundSettings || { master: true, keepAliveAudio: true };
+    if (settings.master && settings.keepAliveAudio !== false) {
+      audioManager.startKeepAlive();
     }
     // Garante que uma nova sessão inicie limpa na questão 1
     setPacerState({
@@ -978,20 +975,24 @@ export function QuestionPacer({ className }: { className?: string }) {
                     </div>
 
                     <div className="mt-auto pt-3 border-t border-gray-200 dark:border-gray-700/60 flex flex-col gap-1.5 text-xs text-gray-500">
+                      <div className="flex items-center justify-between py-1 px-2.5 rounded-xl bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200/60 dark:border-blue-800/40">
+                        <span className="font-semibold text-blue-900 dark:text-blue-200">Tempo Total em Resolução:</span>
+                        <b className="text-blue-700 dark:text-blue-300 font-mono font-bold text-sm">{formatTime(elapsedSolveTotal)}</b>
+                      </div>
                       <div className="flex items-center justify-between">
                         <span>Pace Médio de Resolução:</span>
-                        <b className="text-gray-900 dark:text-gray-100">{totalQuestionsDone > 0 ? formatTime(averageSolvePace) : '--:--'}</b>
+                        <b className="text-gray-900 dark:text-gray-100 font-mono">{totalQuestionsDone > 0 ? formatTime(averageSolvePace) : '--:--'}</b>
                       </div>
                       <div className="flex items-center justify-between">
                         <span>Status de Resolução:</span>
-                        <b className={diffSolve < 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}>
+                        <b className={diffSolve < 0 ? "text-rose-600 dark:text-rose-400 font-mono" : "text-emerald-600 dark:text-emerald-400 font-mono"}>
                           {diffSolve < 0 ? `Atrasado em ${formatTime(Math.abs(diffSolve))}` : `Adiantado em ${formatTime(diffSolve)}`}
                         </b>
                       </div>
                       {isAdaptiveSession && (
                         <div className="flex items-center justify-between pt-1 border-t border-dashed border-gray-200 dark:border-gray-700">
                           <span>Pace Alvo p/ Terminar:</span>
-                          <b className="text-blue-600 dark:text-blue-400">{formatTime(requiredPaceSolve)}</b>
+                          <b className="text-blue-600 dark:text-blue-400 font-mono">{formatTime(requiredPaceSolve)}</b>
                         </div>
                       )}
                     </div>
@@ -1050,20 +1051,24 @@ export function QuestionPacer({ className }: { className?: string }) {
                     </div>
 
                     <div className="mt-auto pt-3 border-t border-gray-200 dark:border-gray-700/60 flex flex-col gap-1.5 text-xs text-gray-500">
+                      <div className="flex items-center justify-between py-1 px-2.5 rounded-xl bg-purple-50/80 dark:bg-purple-950/40 border border-purple-200/60 dark:border-purple-800/40">
+                        <span className="font-semibold text-purple-900 dark:text-purple-200">Tempo Total em Revisão:</span>
+                        <b className="text-purple-700 dark:text-purple-300 font-mono font-bold text-sm">{formatTime(elapsedReviewTotal)}</b>
+                      </div>
                       <div className="flex items-center justify-between">
                         <span>Pace Médio de Revisão:</span>
-                        <b className="text-gray-900 dark:text-gray-100">{reviewsWithTimeCount > 0 ? formatTime(averageReviewPace) : '--:--'}</b>
+                        <b className="text-gray-900 dark:text-gray-100 font-mono">{reviewsWithTimeCount > 0 ? formatTime(averageReviewPace) : '--:--'}</b>
                       </div>
                       <div className="flex items-center justify-between">
                         <span>Status de Revisão:</span>
-                        <b className={diffReview < 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}>
+                        <b className={diffReview < 0 ? "text-rose-600 dark:text-rose-400 font-mono" : "text-emerald-600 dark:text-emerald-400 font-mono"}>
                           {diffReview < 0 ? `Atrasado em ${formatTime(Math.abs(diffReview))}` : `Adiantado em ${formatTime(diffReview)}`}
                         </b>
                       </div>
                       {isAdaptiveSession && (
                         <div className="flex items-center justify-between pt-1 border-t border-dashed border-gray-200 dark:border-gray-700">
                           <span>Pace Alvo p/ Terminar:</span>
-                          <b className="text-purple-600 dark:text-purple-400">{formatTime(requiredPaceReview)}</b>
+                          <b className="text-purple-600 dark:text-purple-400 font-mono">{formatTime(requiredPaceReview)}</b>
                         </div>
                       )}
                     </div>
@@ -1098,21 +1103,29 @@ export function QuestionPacer({ className }: { className?: string }) {
 
                   {/* Estatísticas em caixas */}
                   <div className="flex flex-col gap-4 col-span-1 md:col-span-2">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 h-full">
-                      <div className="flex flex-col justify-center p-5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30">
-                        <div className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                          <Clock className="w-3.5 h-3.5" /> Pace Médio Atual
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 h-full">
+                      <div className="flex flex-col justify-center p-4 rounded-xl border border-blue-200 dark:border-blue-900/50 bg-blue-50/60 dark:bg-blue-950/30">
+                        <div className="text-xs font-bold text-blue-700 dark:text-blue-300 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                          <Timer className="w-3.5 h-3.5" /> Tempo Total
                         </div>
-                        <div className="text-3xl font-black text-gray-900 dark:text-gray-100 mt-1 mb-1">{totalQuestionsDone > 0 ? formatTime(averagePace) : '--:--'}</div>
-                        <div className="text-xs font-medium text-gray-500">Gasto por questão</div>
+                        <div className="text-2xl font-black text-blue-900 dark:text-blue-100 mt-1 mb-1 font-mono">{formatTime(elapsedSolveTotal)}</div>
+                        <div className="text-[11px] font-medium text-blue-600/80 dark:text-blue-400/80">Em resolução</div>
                       </div>
 
-                      <div className="flex flex-col justify-center p-5 rounded-xl border border-blue-100 dark:border-blue-900/50 bg-blue-50/50 dark:bg-blue-900/20">
-                        <div className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                          <TrendingDown className="w-3.5 h-3.5" /> Pace Alvo (Para Terminar)
+                      <div className="flex flex-col justify-center p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30">
+                        <div className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5" /> Pace Médio
                         </div>
-                        <div className="text-3xl font-black text-blue-700 dark:text-blue-300 mt-1 mb-1">{formatTime(requiredPace)}</div>
-                        <div className="text-xs font-medium text-blue-600/70 dark:text-blue-400/70">Necessário para as {questionsLeftIncludingCurrent} restantes</div>
+                        <div className="text-2xl font-black text-gray-900 dark:text-gray-100 mt-1 mb-1 font-mono">{totalQuestionsDone > 0 ? formatTime(averagePace) : '--:--'}</div>
+                        <div className="text-[11px] font-medium text-gray-500">Por questão</div>
+                      </div>
+
+                      <div className="flex flex-col justify-center p-4 rounded-xl border border-indigo-100 dark:border-indigo-900/50 bg-indigo-50/50 dark:bg-indigo-900/20">
+                        <div className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                          <TrendingDown className="w-3.5 h-3.5" /> Pace Alvo
+                        </div>
+                        <div className="text-2xl font-black text-indigo-700 dark:text-indigo-300 mt-1 mb-1 font-mono">{formatTime(requiredPace)}</div>
+                        <div className="text-[11px] font-medium text-indigo-600/70 dark:text-indigo-400/70">{questionsLeftIncludingCurrent} restantes</div>
                       </div>
                     </div>
                   </div>
