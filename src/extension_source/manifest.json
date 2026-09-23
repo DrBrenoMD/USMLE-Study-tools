@@ -4,10 +4,10 @@
   "version": "1.7",
   "description": "Lê enunciados, executa Question Pacer e inclui aba flutuante integrada para gerar flashcards das questões do Q-Bank.",
   "permissions": [
+    "tabs",
     "activeTab",
     "scripting",
-    "storage",
-    "tabs"
+    "storage"
   ],
   "background": {
     "service_worker": "background.js"

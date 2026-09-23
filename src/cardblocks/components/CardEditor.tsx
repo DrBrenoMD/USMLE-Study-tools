@@ -18,6 +18,8 @@ export const CardEditor: React.FC<{
   // QBank Integration fields (natively collapsed by default)
   const [isQBankOpen, setIsQBankOpen] = useState(false);
   const [questionId, setQuestionId] = useState(card.questionId || '');
+  const [subject, setSubject] = useState(card.subject || card.subjective || '');
+  const [system, setSystem] = useState(card.system || '');
   const [questionStem, setQuestionStem] = useState(card.questionStem || '');
   const [questionChoices, setQuestionChoices] = useState(card.questionChoices || '');
   const [explanation, setExplanation] = useState(card.explanation || '');
@@ -42,6 +44,8 @@ export const CardEditor: React.FC<{
       tags: card.tags,
       flag: card.flag,
       questionId: questionId.trim() || undefined,
+      subject: subject.trim() || undefined,
+      system: system.trim() || undefined,
       questionStem: questionStem.trim() || undefined,
       questionChoices: questionChoices.trim() || undefined,
       explanation: explanation.trim() || undefined,
@@ -106,6 +110,30 @@ export const CardEditor: React.FC<{
     };
     reader.readAsDataURL(file);
     e.target.value = '';
+  };
+
+  const handlePasteImage = (e: React.ClipboardEvent) => {
+    const clipboardData = e.clipboardData;
+    if (!clipboardData) return;
+    const items = clipboardData.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type && items[i].type.startsWith('image/')) {
+        e.preventDefault();
+        const blob = items[i].getAsFile();
+        if (!blob) continue;
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (typeof reader.result === 'string') {
+            const nextImgs = [...questionImages, reader.result as string];
+            setQuestionImages(nextImgs);
+            handleCommitUpdates({ questionImages: nextImgs });
+          }
+        };
+        reader.readAsDataURL(blob);
+        break;
+      }
+    }
   };
 
   return (
@@ -239,20 +267,52 @@ export const CardEditor: React.FC<{
 
           {isQBankOpen && (
             <div className="p-4 space-y-3.5 border-t border-gray-200 dark:border-gray-700 text-sm animate-in fade-in">
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                  Question Id
-                </label>
-                <input
-                  type="text"
-                  value={questionId}
-                  onChange={e => {
-                    setQuestionId(e.target.value);
-                    handleCommitUpdates({ questionId: e.target.value });
-                  }}
-                  placeholder="Ex: UW-1024, AMBOSS-4581"
-                  className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-1.5 text-xs font-mono text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                    Question Id
+                  </label>
+                  <input
+                    type="text"
+                    value={questionId}
+                    onChange={e => {
+                      setQuestionId(e.target.value);
+                      handleCommitUpdates({ questionId: e.target.value });
+                    }}
+                    placeholder="Ex: UW-1024, AMBOSS-4581"
+                    className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-1.5 text-xs font-mono text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                    Subject (Matéria / Área)
+                  </label>
+                  <input
+                    type="text"
+                    value={subject}
+                    onChange={e => {
+                      setSubject(e.target.value);
+                      handleCommitUpdates({ subject: e.target.value });
+                    }}
+                    placeholder="Ex: Pathology, Pharmacology"
+                    className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-1.5 text-xs text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                    System (Sistema)
+                  </label>
+                  <input
+                    type="text"
+                    value={system}
+                    onChange={e => {
+                      setSystem(e.target.value);
+                      handleCommitUpdates({ system: e.target.value });
+                    }}
+                    placeholder="Ex: Cardiovascular System, Renal"
+                    className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-1.5 text-xs text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
               </div>
 
               <div>
@@ -344,6 +404,17 @@ export const CardEditor: React.FC<{
                     <span>Upload</span>
                     <input type="file" accept="image/*" className="hidden" onChange={handleImageFileUpload} />
                   </label>
+                </div>
+
+                {/* Paste Area for Images */}
+                <div
+                  onPaste={handlePasteImage}
+                  tabIndex={0}
+                  className="border-2 border-dashed border-gray-300 dark:border-gray-700 hover:border-blue-500 rounded-xl p-2.5 text-center bg-gray-50/50 dark:bg-gray-800/40 cursor-pointer outline-none focus:ring-2 focus:ring-blue-500 mb-2"
+                >
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    📋 Cole imagens com <kbd className="px-1 py-0.5 rounded bg-gray-200 dark:bg-gray-700 font-mono text-[10px] text-gray-800 dark:text-gray-200">Ctrl+V</kbd> diretamente aqui
+                  </p>
                 </div>
 
                 {questionImages.length > 0 && (

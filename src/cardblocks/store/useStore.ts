@@ -37,6 +37,9 @@ export interface Flashcard {
   explanation?: string;
   educationalObjective?: string;
   questionImages?: string[];
+  subject?: string;
+  subjective?: string;
+  system?: string;
 }
 
 export interface ReviewLog {
@@ -374,6 +377,9 @@ export const useStore = create<StoreState>()(
               explanation: deckIdOrCard.explanation,
               educationalObjective: deckIdOrCard.educationalObjective,
               questionImages: deckIdOrCard.questionImages,
+              subject: deckIdOrCard.subject || deckIdOrCard.subjective,
+              subjective: deckIdOrCard.subjective || deckIdOrCard.subject,
+              system: deckIdOrCard.system,
             };
           } else {
             newCard = {

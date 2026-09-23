@@ -1,88 +1,71 @@
 // =========================================================================
-// Assistente Q-Bank & Pacer - Background Service Worker (Manifest V3)
+// Background Service Worker - Assistente Q-Bank & Pacer v1.7
+// Gerencia a reutilização inteligente de abas abertas da aplicação de Flashcards
 // =========================================================================
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'IMPORT_FLASHCARD_TO_APP') {
-        const payload = request.payload;
-        const isAutoNav = Boolean(request.isAutoNav);
+  if (request.type === 'DISPATCH_FLASHCARD_DATA') {
+    const cardData = request.cardData || {};
+    const fallbackUrl = request.appUrl || 'http://localhost:3000/flashcards?tab=browse&action=create_card';
 
-        // Procura por abas já abertas do app (Flashcards Hub, Gerenciar Baralhos ou Criar Card)
-        chrome.tabs.query({}, (tabs) => {
-            const appTab = tabs.find(t => {
-                if (!t.url) return false;
-                const url = t.url.toLowerCase();
-                return (
-                    url.includes('/flashcards') ||
-                    url.includes('usmle-study-tools') ||
-                    url.includes('localhost:3000') ||
-                    url.includes('.run.app')
-                );
-            });
+    // Salva nos dados locais como garantia de sincronização
+    chrome.storage.local.set({
+      pending_flashcard_import: cardData,
+      pending_flashcard_timestamp: Date.now()
+    });
 
-            if (appTab && appTab.id) {
-                // Aba já aberta encontrada!
-                // Se NÃO for navegação automática, traz a aba e janela para o foco
-                if (!isAutoNav) {
-                    chrome.tabs.update(appTab.id, { active: true }, () => {
-                        if (appTab.windowId) {
-                            chrome.windows.update(appTab.windowId, { focused: true });
-                        }
-                    });
-                }
+    // Procura abas abertas para não abrir uma nova caso já exista alguma aberta
+    chrome.tabs.query({}, (tabs) => {
+      // 1. Prioriza abas que já estão especificamente na rota de flashcards ou navegador
+      let matchedTab = tabs.find(t => {
+        if (!t.url) return false;
+        const u = t.url.toLowerCase();
+        return u.includes('/flashcards') || 
+               u.includes('tab=browse') || 
+               u.includes('action=create_card') ||
+               u.includes('newcard=true');
+      });
 
-                // Envia os dados para a aba existente sem abrir uma nova página
-                chrome.scripting.executeScript({
-                    target: { tabId: appTab.id },
-                    func: (cardData, autoNavFlag) => {
-                        window.postMessage({ type: 'USMLE_GENERATE_FLASHCARD', payload: cardData, isAutoNav: autoNavFlag }, '*');
-                        window.dispatchEvent(new CustomEvent('usmle_generate_flashcard', { detail: { ...cardData, isAutoNav: autoNavFlag } }));
-                        try {
-                            const bc = new BroadcastChannel('usmle_flashcards_sync');
-                            bc.postMessage({ type: 'USMLE_GENERATE_FLASHCARD', payload: cardData, isAutoNav: autoNavFlag });
-                            setTimeout(() => bc.close(), 1000);
-                        } catch (e) {}
-                    },
-                    args: [payload, isAutoNav]
-                }).catch(() => {});
+      // 2. Se não encontrou rota específica, procura qualquer aba aberta do app
+      if (!matchedTab) {
+        matchedTab = tabs.find(t => {
+          if (!t.url) return false;
+          const u = t.url.toLowerCase();
+          return u.includes('usmle-study-tools') || 
+                 (u.includes('localhost:') && (u.includes('3000') || u.includes('5173'))) ||
+                 u.includes('.run.app') ||
+                 u.includes('aistudio.google.com');
+        });
+      }
 
-                sendResponse({ success: true, method: 'existing_tab', tabId: appTab.id });
-            } else {
-                // Se for navegação automática e não houver aba aberta de flashcards, não abre nova aba
-                if (isAutoNav) {
-                    sendResponse({ success: false, reason: 'no_existing_tab_for_auto_nav' });
-                    return;
-                }
+      if (matchedTab && matchedTab.id) {
+        // Foca a janela e a aba existente
+        if (matchedTab.windowId) {
+          chrome.windows.update(matchedTab.windowId, { focused: true }, () => {});
+        }
+        chrome.tabs.update(matchedTab.id, { active: true }, () => {});
 
-                // Se o usuário clicou manualmente para gerar flashcard, abre nova aba
-                const targetUrl = 'https://usmle-study-tools.vercel.app/flashcards?tab=browse&action=create_card';
-                chrome.tabs.create({ url: targetUrl }, (newTab) => {
-                    const onUpdatedListener = (tabId, changeInfo) => {
-                        if (tabId === newTab.id && changeInfo.status === 'complete') {
-                            chrome.tabs.onUpdated.removeListener(onUpdatedListener);
-                            setTimeout(() => {
-                                chrome.scripting.executeScript({
-                                    target: { tabId: newTab.id },
-                                    func: (cardData) => {
-                                        window.postMessage({ type: 'USMLE_GENERATE_FLASHCARD', payload: cardData, isAutoNav: false }, '*');
-                                        window.dispatchEvent(new CustomEvent('usmle_generate_flashcard', { detail: { ...cardData, isAutoNav: false } }));
-                                        try {
-                                            const bc = new BroadcastChannel('usmle_flashcards_sync');
-                                            bc.postMessage({ type: 'USMLE_GENERATE_FLASHCARD', payload: cardData, isAutoNav: false });
-                                            setTimeout(() => bc.close(), 1000);
-                                        } catch (e) {}
-                                    },
-                                    args: [payload]
-                                }).catch(() => {});
-                            }, 800);
-                        }
-                    };
-                    chrome.tabs.onUpdated.addListener(onUpdatedListener);
-                });
-                sendResponse({ success: true, method: 'new_tab' });
-            }
+        // Envia mensagem direta para a aba aberta
+        chrome.tabs.sendMessage(matchedTab.id, {
+          type: 'USMLE_GENERATE_FLASHCARD',
+          payload: cardData
+        }, (res) => {
+          // Se deu erro ou aba não respondeu, tenta atualizar a url com parâmetros se necessário
+          if (chrome.runtime.lastError) {
+            // A aba está aberta mas sem content script injetado no momento
+            console.log('Enviado via storage para aba existente');
+          }
         });
 
-        return true; // Mantém a conexão aberta para resposta assíncrona
-    }
+        sendResponse({ success: true, openedNew: false, tabId: matchedTab.id });
+      } else {
+        // Nenhuma aba aberta encontrada: abre uma nova
+        chrome.tabs.create({ url: fallbackUrl }, (newTab) => {
+          sendResponse({ success: true, openedNew: true, tabId: newTab?.id });
+        });
+      }
+    });
+
+    return true; // Mantém sendResponse ativo para retorno assíncrono
+  }
 });

@@ -58,7 +58,10 @@ export const BrowseView: React.FC<{ onNavigate: (p: Page) => void }> = ({ onNavi
         const fText = c.front.toLowerCase();
         const bText = c.back.toLowerCase();
         const tText = (c.tags || []).join(' ').toLowerCase();
-        if (!fText.includes(query) && !bText.includes(query) && !tText.includes(query)) {
+        const sText = (c.subject || c.subjective || '').toLowerCase();
+        const sysText = (c.system || '').toLowerCase();
+        const qidText = (c.questionId || '').toLowerCase();
+        if (!fText.includes(query) && !bText.includes(query) && !tText.includes(query) && !sText.includes(query) && !sysText.includes(query) && !qidText.includes(query)) {
           return false;
         }
       }
