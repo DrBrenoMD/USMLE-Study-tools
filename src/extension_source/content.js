@@ -146,14 +146,33 @@ styleCustom.innerHTML = `
 
     /* --- Botão Flutuante Discreto na Margem DIREITA e Aba Vertical (Flashcards) --- */
     #qbankly-card-launcher {
-        position: fixed; top: 50%; right: 0; left: auto; transform: translateY(-50%);
-        background: linear-gradient(180deg, #1d4ed8, #3b82f6); color: white;
-        padding: 12px 6px; border-radius: 12px 0 0 12px; display: none; flex-direction: column;
-        align-items: center; justify-content: center; font-size: 11px; font-weight: bold;
-        cursor: pointer; z-index: 999998; box-shadow: -2px 4px 14px rgba(0,0,0,0.3);
-        border: 1px solid rgba(255,255,255,0.3); border-right: none; transition: 0.2s; user-select: none;
+        position: fixed !important;
+        top: 50% !important;
+        right: 0px !important;
+        left: auto !important;
+        transform: translateY(-50%) !important;
+        background: linear-gradient(180deg, #1d4ed8, #3b82f6) !important;
+        color: white !important;
+        padding: 12px 6px !important;
+        border-radius: 12px 0 0 12px !important;
+        display: none;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: center !important;
+        font-size: 11px !important;
+        font-weight: bold !important;
+        cursor: pointer !important;
+        z-index: 2147483647 !important;
+        box-shadow: -4px 0 16px rgba(0,0,0,0.35) !important;
+        border: 1px solid rgba(255,255,255,0.4) !important;
+        border-right: none !important;
+        transition: 0.2s !important;
+        user-select: none !important;
     }
-    #qbankly-card-launcher:hover { padding-left: 9px; background: linear-gradient(180deg, #1e40af, #2563eb); }
+    #qbankly-card-launcher:hover {
+        padding-left: 10px !important;
+        background: linear-gradient(180deg, #1e40af, #2563eb) !important;
+    }
     #qbankly-card-launcher .card-icon { font-size: 14px; margin-bottom: 2px; }
     #qbankly-card-launcher .card-label {
         writing-mode: vertical-rl; text-orientation: mixed; letter-spacing: 2px;
@@ -165,14 +184,26 @@ styleCustom.innerHTML = `
     }
 
     #qbankly-card-drawer {
-        position: fixed; top: 0; right: 0; left: auto; width: 340px; height: 100vh;
-        background: #0f172a; color: #f8fafc; z-index: 999999;
-        box-shadow: -6px 0 25px rgba(0,0,0,0.5); border-left: 1px solid #1e293b; border-right: none;
-        display: none; flex-direction: column; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        box-sizing: border-box; text-align: left;
+        position: fixed !important;
+        top: 0px !important;
+        right: 0px !important;
+        left: auto !important;
+        width: 360px !important;
+        height: 100vh !important;
+        background: #0f172a !important;
+        color: #f8fafc !important;
+        z-index: 2147483647 !important;
+        box-shadow: -8px 0 35px rgba(0,0,0,0.6) !important;
+        border-left: 2px solid #334155 !important;
+        border-right: none !important;
+        display: none;
+        flex-direction: column !important;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+        box-sizing: border-box !important;
+        text-align: left !important;
     }
     #qbankly-card-drawer * { box-sizing: border-box; }
-    #qbankly-card-drawer.open { display: flex; }
+    #qbankly-card-drawer.open { display: flex !important; }
 `;
 document.head.appendChild(styleCustom);
 
@@ -287,15 +318,28 @@ function atualizarVisibilidadeBotaoQBank() {
 
 function extrairIdQuestaoAtual() {
     let qId = '';
-    const idEl = document.querySelector('[id*="question-id"], [class*="question-id"], [class*="q-id"], [data-question-id]');
-    if (idEl) {
-        const text = idEl.innerText.replace(/[^0-9]/g, '');
-        if (text) qId = text;
+    const bodyText = document.body ? document.body.innerText : '';
+
+    // 1. Procura número do item e atualiza número da questão (ex: "Item 50 of 60")
+    const matchItem = bodyText.match(/Item\s*(\d{1,4})\s*of\s*(\d{1,4})/i);
+    if (matchItem && matchItem[1]) {
+        currentQNumberExt = parseInt(matchItem[1], 10);
     }
+
+    // 2. Procura "Question Id: 3046" especificamente (UWorld real da imagem)
+    const matchQId = bodyText.match(/(?:Question\s*Id|Quest[aã]o|QID)\s*[:#]?\s*(\d{2,8})/i);
+    if (matchQId && matchQId[1]) {
+        qId = matchQId[1];
+    }
+
     if (!qId) {
-        const matches = (document.body ? document.body.innerText : '').match(/(?:Question\s*Id|Item|Quest[aã]o)\s*[:#]?\s*(\d{4,8})/i);
-        if (matches) qId = matches[1];
+        const idEl = document.querySelector('[id*="question-id"], [class*="question-id"], [class*="q-id"], [data-question-id]');
+        if (idEl) {
+            const text = idEl.innerText.replace(/[^0-9]/g, '');
+            if (text) qId = text;
+        }
     }
+
     if (!qId) {
         qId = 'Q-' + currentQNumberExt;
     }
@@ -418,55 +462,56 @@ function extrairDadosCompletosQuestao() {
         subjective: subSys.subject || '',
         system: subSys.system || '',
         questionImages: questionImages,
-        // Regra do usuário: O enunciado NÃO deve ser colocado na frente do card
-        // e o educational objective NÃO deve ser colocado no verso.
-        // Ficam vazios para preenchimento manual!
+        // Regra: Frente e verso devem permanecer vazios para preenchimento manual do usuário
         front: '',
         back: '',
         tags: tags
     };
 }
 
-// Despacha os dados aproveitando abas já abertas
+// Despacha os dados aproveitando abas já abertas com conexão ultra confiável
 function despacharDadosParaFlashcards(cardData) {
-    let appUrl = 'https://usmle-study-tools.vercel.app/flashcards?tab=browse&action=create_card';
-    if (window.location.hostname === 'localhost' || window.location.hostname.includes('run.app') || window.location.hostname.includes('web.app')) {
-        appUrl = window.location.origin + '/flashcards?tab=browse&action=create_card';
-    }
+    mostrarFeedbackDrawer('⚡ Sincronizando com o editor de Flashcards...');
 
+    // Salva no storage local da extensão
     chrome.storage.local.set({
         pending_flashcard_import: cardData,
         pending_flashcard_timestamp: Date.now()
     });
 
-    // 1. Mensagem para o background worker (reutiliza aba existente se já houver uma aberta)
-    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
-        chrome.runtime.sendMessage({
-            type: 'DISPATCH_FLASHCARD_DATA',
-            cardData: cardData,
-            appUrl: appUrl
-        }, (response) => {
-            if (response && response.openedNew === false) {
-                mostrarFeedbackDrawer('Aba de Flashcards existente localizada e atualizada!');
-            } else if (response && response.openedNew === true) {
-                mostrarFeedbackDrawer('Nova página de flashcards aberta.');
-            }
-        });
-    }
+    try {
+        localStorage.setItem('pending_flashcard_import', JSON.stringify(cardData));
+    } catch(e) {}
 
-    // 2. BroadcastChannel para comunicação instantânea entre abas
+    // 1. BroadcastChannel para comunicação instantânea entre abas
     try {
         const bc = new BroadcastChannel('usmle_flashcards_sync');
         bc.postMessage({ type: 'USMLE_GENERATE_FLASHCARD', payload: cardData });
-        setTimeout(() => bc.close(), 1000);
+        setTimeout(() => bc.close(), 1500);
     } catch(e) {}
+
+    // 2. Mensagem para o background worker (foca aba existente ou abre no app)
+    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime.sendMessage({
+            type: 'DISPATCH_FLASHCARD_DATA',
+            cardData: cardData
+        }, (response) => {
+            if (response && response.openedNew === false) {
+                mostrarFeedbackDrawer('✅ Aba do App localizada e focada! Flashcard carregado.');
+            } else if (response && response.openedNew === true) {
+                mostrarFeedbackDrawer('🌐 Abrindo o editor de Flashcards...');
+            } else {
+                mostrarFeedbackDrawer('✅ Flashcard da questão sincronizado com sucesso!');
+            }
+        });
+    }
 
     // 3. Fallback se janela já foi aberta diretamente
     if (flashcardWindowRef && !flashcardWindowRef.closed) {
         try {
             flashcardWindowRef.postMessage({ type: 'USMLE_GENERATE_FLASHCARD', payload: cardData }, '*');
             flashcardWindowRef.focus();
-            mostrarFeedbackDrawer('Flashcard sincronizado com a janela aberta!');
+            mostrarFeedbackDrawer('✅ Flashcard sincronizado com a janela aberta!');
         } catch(e) {}
     }
 }
@@ -486,10 +531,19 @@ function autoImportarQuestaoSeNavegou() {
 function criarFlashcardUI() {
     if (document.getElementById('qbankly-card-launcher')) return;
 
-    // 1. Botão Flutuante Discreto na Margem Direita
+    // 1. Botão Flutuante Discreto na Margem Direita (Estilos forçados no elemento)
     const launcher = document.createElement('div');
     launcher.id = 'qbankly-card-launcher';
     launcher.title = 'Abrir Gerador de Flashcard da Questão (Margem Direita)';
+    launcher.style.setProperty('position', 'fixed', 'important');
+    launcher.style.setProperty('top', '50%', 'important');
+    launcher.style.setProperty('right', '0px', 'important');
+    launcher.style.setProperty('left', 'auto', 'important');
+    launcher.style.setProperty('transform', 'translateY(-50%)', 'important');
+    launcher.style.setProperty('border-radius', '12px 0 0 12px', 'important');
+    launcher.style.setProperty('border-right', 'none', 'important');
+    launcher.style.setProperty('border-left', '2px solid rgba(255,255,255,0.4)', 'important');
+    launcher.style.setProperty('z-index', '2147483647', 'important');
     launcher.innerHTML = `
         <span class="card-icon">⚡</span>
         <span class="card-label">Flashcard</span>
@@ -497,9 +551,18 @@ function criarFlashcardUI() {
     `;
     document.body.appendChild(launcher);
 
-    // 2. Aba Vertical na Margem Direita (Drawer Retrátil)
+    // 2. Aba Vertical na Margem Direita (Drawer Retrátil com estilos forçados)
     const drawer = document.createElement('div');
     drawer.id = 'qbankly-card-drawer';
+    drawer.style.setProperty('position', 'fixed', 'important');
+    drawer.style.setProperty('top', '0px', 'important');
+    drawer.style.setProperty('right', '0px', 'important');
+    drawer.style.setProperty('left', 'auto', 'important');
+    drawer.style.setProperty('width', '360px', 'important');
+    drawer.style.setProperty('height', '100vh', 'important');
+    drawer.style.setProperty('border-left', '2px solid #334155', 'important');
+    drawer.style.setProperty('border-right', 'none', 'important');
+    drawer.style.setProperty('z-index', '2147483647', 'important');
     drawer.innerHTML = `
         <div style="padding: 14px 16px; border-bottom: 1px solid #1e293b; display: flex; align-items: center; justify-content: space-between; background: #1e293b;">
             <div style="display: flex; align-items: center; gap: 10px;">
@@ -509,13 +572,13 @@ function criarFlashcardUI() {
                         <span>Flashcard Q-Bank</span>
                         <span id="drawer-header-qid" style="font-family: monospace; font-size: 10px; background: rgba(59,130,246,0.3); color: #93c5fd; padding: 2px 5px; border-radius: 4px;">Q-1</span>
                     </div>
-                    <div style="font-size: 11px; color: #94a3b8;">Integração com Questões</div>
+                    <div style="font-size: 11px; color: #94a3b8;">Margem Direita • Sincronizado</div>
                 </div>
             </div>
             <button id="qbankly-drawer-close" style="background: none; border: none; color: #94a3b8; font-size: 18px; cursor: pointer; padding: 4px 8px; border-radius: 6px;">✕</button>
         </div>
 
-        <div id="drawer-feedback" style="display: none; margin: 12px 14px 0 14px; padding: 8px 12px; background: rgba(16,185,129,0.15); border: 1px solid #10b981; border-radius: 8px; color: #6ee7b7; font-size: 11px;"></div>
+        <div id="drawer-feedback" style="display: none; margin: 12px 14px 0 14px; padding: 8px 12px; background: rgba(16,185,129,0.15); border: 1px solid #10b981; border-radius: 8px; color: #6ee7b7; font-size: 11px; font-weight: 600;"></div>
 
         <div style="flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 14px;">
             <div id="drawer-status-card" style="padding: 14px; border-radius: 12px; background: #1e293b; border: 1px solid #334155;">
@@ -844,26 +907,88 @@ function getBlocosDeTexto(container) {
 }
 
 function extrairEnunciadoParaFila() {
-    const containerQuestao = document.querySelector('.max-w-5xl div.\\!text-ink');
-    const blocos = getBlocosDeTexto(containerQuestao);
-    return blocos.length === 0 ? [{ text: "Question text not found.", node: null }] : blocos;
+    // 1. Tenta seletores diretos de enunciados de Q-Banks
+    const seletoresStem = [
+        '.max-w-5xl div.\\!text-ink',
+        '[class*="questionBody"]',
+        '#questionBody',
+        '.question-stem',
+        '.q-stem',
+        '.stem',
+        'div[id*="qStem"]',
+        'div[class*="question-content"]',
+        'div[data-testid="question-stem"]',
+        'article.question',
+        '.case-study'
+    ];
+    for (let sel of seletoresStem) {
+        try {
+            const el = document.querySelector(sel);
+            if (el && el.innerText && el.innerText.trim().length > 25) {
+                const blocos = getBlocosDeTexto(el);
+                if (blocos.length > 0) return blocos;
+            }
+        } catch(e) {}
+    }
+
+    // 2. Fallback inteligente para UWorld real (parágrafos clínicos antes das opções)
+    const elements = Array.from(document.querySelectorAll('p, div'));
+    const blocosStem = [];
+    for (let el of elements) {
+        const txt = (el.innerText || '').trim();
+        // Filtra enunciados com comprimento clínico e ignora botões de controle
+        if (txt.length > 40 && !txt.includes('Clear highlights') && !txt.includes('Mark Question') && !txt.includes('Item ') && !txt.includes('Question Id:')) {
+            const hasChoiceHeader = /(?:Options|Alternativas|Educational objective)/i.test(txt);
+            if (!hasChoiceHeader && !el.querySelector('table, tr, input[type="radio"]')) {
+                const jaAdicionado = blocosStem.some(b => b.node && (b.node.contains(el) || el.contains(b.node)));
+                if (!jaAdicionado) {
+                    blocosStem.push({ text: txt, node: el });
+                }
+            }
+        }
+    }
+    if (blocosStem.length > 0) return blocosStem;
+
+    return [{ text: "Texto do enunciado não identificado.", node: null }];
 }
 
 function extrairAlternativasParaFila() {
     const itens = [];
-    const linhasAlternativas = document.querySelectorAll('tr.cursor-pointer, tr.cursor-default');
+    // 1. Tabela de alternativas ou linhas com classe de escolha
+    const linhasAlternativas = document.querySelectorAll('tr.cursor-pointer, tr.cursor-default, table.choices tr, .choice-row, [class*="alternative"], [class*="choice"] tr');
     if (linhasAlternativas.length > 0) {
         itens.push({ text: "Options:", node: null });
         linhasAlternativas.forEach(linha => {
-            const textContent = linha.innerText.replace('ab', '').trim();
-            if(textContent) itens.push({ text: textContent, node: linha }); 
+            const textContent = linha.innerText.replace(/^[a-z]{1,2}\s+/i, '').trim();
+            if (textContent && textContent.length > 2) itens.push({ text: textContent, node: linha });
         });
+        if (itens.length > 1) return itens;
     }
+
+    // 2. Fallback por regex para linhas de múltipla escolha (A., B., C., D.)
+    const elementsWithChoices = Array.from(document.querySelectorAll('div, p, tr, td, li'));
+    const matchedChoices = [];
+    elementsWithChoices.forEach(el => {
+        if (el.children.length <= 1) {
+            const txt = (el.innerText || '').trim();
+            if (/^[A-H]\.?\s+[A-Za-z0-9]/m.test(txt) && txt.length < 350) {
+                if (!matchedChoices.some(c => c.text === txt)) {
+                    matchedChoices.push({ text: txt, node: el });
+                }
+            }
+        }
+    });
+
+    if (matchedChoices.length > 0) {
+        return [{ text: "Options:", node: null }, ...matchedChoices];
+    }
+
     return itens;
 }
 
 function extrairExplicacaoParaFila() {
-    const objHeader = Array.from(document.querySelectorAll('h2')).find(h => h.textContent.includes('Educational objective'));
+    const headers = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, b, strong, div'));
+    const objHeader = headers.find(h => /(?:Educational\s*objective|Key\s*point|Take-home)/i.test(h.textContent || ''));
     if (!objHeader) return [{ text: "Explanation not found.", node: null }];
     const container = objHeader.parentElement;
     const blocos = getBlocosDeTexto(container);
@@ -872,11 +997,12 @@ function extrairExplicacaoParaFila() {
         if (objHeader.contains(b.node) || b.node === objHeader) break;
         itens.push(b);
     }
-    return itens;
+    return itens.length > 0 ? itens : [{ text: "Explanation not found.", node: null }];
 }
 
 function extrairObjetivoParaFila() {
-    const objHeader = Array.from(document.querySelectorAll('h2')).find(h => h.textContent.includes('Educational objective'));
+    const headers = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, b, strong, div'));
+    const objHeader = headers.find(h => /(?:Educational\s*objective|Key\s*point|Take-home)/i.test(h.textContent || ''));
     if (!objHeader) return [{ text: "Educational objective not found.", node: null }];
     const container = objHeader.parentElement;
     const blocos = getBlocosDeTexto(container);
@@ -886,7 +1012,7 @@ function extrairObjetivoParaFila() {
         if (objHeader.contains(b.node) || b.node === objHeader) started = true;
         if (started) itens.push(b);
     }
-    return itens;
+    return itens.length > 0 ? itens : [{ text: "Educational objective not found.", node: null }];
 }
 
 function lerEnunciado() { iniciarFila(extrairEnunciadoParaFila()); }
@@ -1063,8 +1189,8 @@ function iniciarReconhecimento() {
     globalRecognition.start();
 }
 
-// --- Mensagens do Popup da Extensão ---
-chrome.runtime.onMessage.addListener(function(request) {
+// --- Mensagens do Popup da Extensão e do Background Worker ---
+chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     if (request.comando === 'ler') lerQuestaoCompleta();
     if (request.comando === 'rep_enunciado') lerEnunciado();
     if (request.comando === 'rep_alt') lerAlternativas();
@@ -1077,4 +1203,31 @@ chrome.runtime.onMessage.addListener(function(request) {
     
     if (request.comando === 'ativar_mic') { playBeep(true); iniciarReconhecimento(); }
     if (request.comando === 'desativar_mic') { isMicActive = false; if(globalRecognition) globalRecognition.stop(); playBeep(false); }
+
+    // Ponte para entrega direta na aba de Flashcards
+    if (request.type === 'USMLE_GENERATE_FLASHCARD') {
+        const payload = request.payload || request.cardData || request;
+        window.postMessage({ type: 'USMLE_GENERATE_FLASHCARD', payload: payload }, '*');
+        window.dispatchEvent(new CustomEvent('usmle_generate_flashcard', { detail: payload }));
+        try {
+            const bc = new BroadcastChannel('usmle_flashcards_sync');
+            bc.postMessage({ type: 'USMLE_GENERATE_FLASHCARD', payload: payload });
+            setTimeout(() => bc.close(), 1000);
+        } catch(e) {}
+        sendResponse({ success: true, delivered: true });
+        return true;
+    }
 });
+
+// Auto-registro da URL da aplicação quando o usuário estiver navegando nela
+try {
+    const isAppPage = window.location.pathname.includes('/flashcards') || 
+                      document.title.includes('USMLE') || 
+                      document.title.includes('CardBlocks') ||
+                      document.title.includes('Study Tools');
+    if (isAppPage && typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.set({
+            last_connected_app_url: window.location.origin + '/flashcards?tab=browse&action=create_card'
+        });
+    }
+} catch(e) {}

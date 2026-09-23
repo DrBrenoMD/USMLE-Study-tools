@@ -30,12 +30,12 @@ export type FlashcardPage = Page;
 export default function FlashcardsUnifiedHub() {
   const location = useLocation();
 
-  // Modal states
+  // Modal states & imported data
+  const [incomingImportData, setIncomingImportData] = useState<any>(null);
   const [isAddCardOpen, setIsAddCardOpen] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get('action') === 'create_card' || params.get('newCard') === 'true';
   });
-  const [pendingImportData, setPendingImportData] = useState<any>(null);
 
   // Global Study Tools Timer & Pacer Store
   const pacerIsActive = useTimerStore((s) => s.pacerIsActive);
@@ -71,42 +71,71 @@ export default function FlashcardsUnifiedHub() {
     }
   }, [location.pathname, location.search]);
 
-  // Se qualquer aba ou janela de flashcard já estiver aberta, receba os dados e abra o modal de criação sem abrir nova página
+  // Listener Global para Mensagens da Extensão (BroadcastChannel, window.message e CustomEvents)
   useEffect(() => {
-    const handleIncomingCard = (e: any) => {
-      const type = e.data?.type || e.type;
-      if (type === 'USMLE_GENERATE_FLASHCARD' || type === 'usmle_generate_flashcard') {
-        const payload = e.data?.payload || e.detail?.payload || e.detail || e.data;
-        if (payload) {
-          setPendingImportData(payload);
-        }
-        setIsAddCardOpen(true);
-      }
+    // 1. Notifica e registra a URL atual para a extensão
+    try {
+      const currentAppUrl = window.location.origin + '/flashcards?tab=browse&action=create_card';
+      window.postMessage({ type: 'USMLE_APP_URL_REGISTRATION', appUrl: currentAppUrl }, '*');
+      localStorage.setItem('usmle_last_app_url', currentAppUrl);
+    } catch (e) {}
+
+    // Handler para processar dados de questão que chegam da extensão
+    const handleIncomingData = (payload: any) => {
+      if (!payload) return;
+      setIncomingImportData(payload);
+      setIsAddCardOpen(true);
     };
 
-    window.addEventListener('message', handleIncomingCard);
-    window.addEventListener('usmle_generate_flashcard' as any, handleIncomingCard);
-
+    // 2. BroadcastChannel
     let bc: BroadcastChannel | null = null;
-    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+    try {
+      bc = new BroadcastChannel('usmle_flashcards_sync');
+      bc.onmessage = (event) => {
+        if (event.data && (event.data.type === 'USMLE_GENERATE_FLASHCARD' || event.data.action === 'create_card_from_question')) {
+          handleIncomingData(event.data.payload || event.data);
+        }
+      };
+    } catch (e) {}
+
+    // 3. window.postMessage
+    const onWindowMessage = (event: MessageEvent) => {
+      if (!event.data) return;
+      if (event.data.type === 'USMLE_GENERATE_FLASHCARD' || event.data.action === 'create_card_from_question') {
+        handleIncomingData(event.data.payload || event.data);
+      }
+    };
+    window.addEventListener('message', onWindowMessage);
+
+    // 4. CustomEvent
+    const onCustomEvent = (e: any) => {
+      if (e.detail) handleIncomingData(e.detail);
+    };
+    window.addEventListener('usmle_generate_flashcard' as any, onCustomEvent);
+
+    // 5. Notificar opener se foi aberto via window.open
+    if (window.opener) {
       try {
-        bc = new BroadcastChannel('usmle_flashcards_sync');
-        bc.onmessage = (event) => {
-          if (event.data?.type === 'USMLE_GENERATE_FLASHCARD') {
-            const payload = event.data.payload;
-            if (payload) {
-              setPendingImportData(payload);
-            }
-            setIsAddCardOpen(true);
-          }
-        };
+        window.opener.postMessage({ type: 'USMLE_FLASHCARD_TAB_READY' }, '*');
       } catch (e) {}
     }
 
+    // 6. Consumir dados pendentes gravados no localStorage recentemente
+    try {
+      const stored = localStorage.getItem('pending_flashcard_import');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed && (parsed.questionId || parsed.questionStem)) {
+          handleIncomingData(parsed);
+          localStorage.removeItem('pending_flashcard_import');
+        }
+      }
+    } catch (e) {}
+
     return () => {
-      window.removeEventListener('message', handleIncomingCard);
-      window.removeEventListener('usmle_generate_flashcard' as any, handleIncomingCard);
       if (bc) bc.close();
+      window.removeEventListener('message', onWindowMessage);
+      window.removeEventListener('usmle_generate_flashcard' as any, onCustomEvent);
     };
   }, []);
 
@@ -254,10 +283,10 @@ export default function FlashcardsUnifiedHub() {
       {/* Global Quick Add Card Modal */}
       {isAddCardOpen && (
         <CardCreationModal 
-          initialData={pendingImportData || undefined}
+          initialData={incomingImportData}
           onClose={() => {
             setIsAddCardOpen(false);
-            setPendingImportData(null);
+            setIncomingImportData(null);
           }} 
         />
       )}

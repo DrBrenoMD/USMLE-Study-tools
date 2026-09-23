@@ -1,13 +1,16 @@
 {
   "manifest_version": 3,
   "name": "Assistente de Questões por Voz + Pacer",
-  "version": "1.7",
+  "version": "1.8",
   "description": "Lê enunciados, executa Question Pacer e inclui aba flutuante integrada para gerar flashcards das questões do Q-Bank.",
   "permissions": [
     "tabs",
     "activeTab",
     "scripting",
     "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
   ],
   "background": {
     "service_worker": "background.js"

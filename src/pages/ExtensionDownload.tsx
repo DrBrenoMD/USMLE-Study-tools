@@ -118,7 +118,7 @@ export default function ExtensionDownload() {
             </div>
             <h3 className="font-bold text-sm text-gray-900 dark:text-white">Flashcard no Q-Bank</h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-              Botão flutuante na margem esquerda que abre uma aba vertical para gerar flashcards das questões (ID, enunciado, alternativas, explicação, educational objective e imagens) com navegação integrada.
+              Botão flutuante exclusivo na margem <strong>DIREITA</strong> exibido somente na resolução de questões. Abre aba vertical retrátil para gerar flashcards completos (ID, enunciado, alternativas, Subject, System, imagens e objetivo educacional) com reutilização de abas abertas.
             </p>
           </div>
 
@@ -223,6 +223,17 @@ export default function ExtensionDownload() {
                   Clique no botão <strong>Carregar sem compactação</strong> (canto superior esquerdo) e selecione a pasta onde você descompactou os arquivos.
                 </p>
               </div>
+            </div>
+          </div>
+
+          {/* Dica para quem já tem a extensão instalada e quer atualizar */}
+          <div className="mt-4 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 flex items-start gap-3">
+            <span className="text-lg">🔄</span>
+            <div className="text-xs space-y-1">
+              <strong className="text-amber-900 dark:text-amber-200 font-bold">Já tinha a extensão instalada? Como atualizar para a v{EXTENSION_VERSION}:</strong>
+              <p className="text-amber-800 dark:text-amber-300 leading-relaxed">
+                Baixe o novo .ZIP e extraia na mesma pasta (substituindo os arquivos antigos). Depois, vá em <code className="bg-amber-100 dark:bg-amber-900/60 px-1 py-0.5 rounded font-mono">chrome://extensions</code>, encontre a extensão e clique no ícone de <strong>Recarregar 🔄</strong>. Por fim, dê F5 na página de resolução do seu Q-Bank!
+              </p>
             </div>
           </div>
         </div>
