@@ -598,13 +598,14 @@
     </div>
     <div class="brand-right">
       <button class="btn-header-sound" id="btn-sound-toggle" title="Alternar som do Pacer">🔊 Som</button>
-      <span class="badge-version">v1.5</span>
+      <span class="badge-version">v1.6</span>
     </div>
   </div>
 
   <!-- Tabs Navigation -->
   <div class="nav-tabs">
     <button class="nav-tab-btn active" id="tab-btn-pacer">⏱️ Pacer</button>
+    <button class="nav-tab-btn" id="tab-btn-cards">⚡ Flashcards</button>
     <button class="nav-tab-btn" id="tab-btn-voice">🎙️ Voz & Ações</button>
     <button class="nav-tab-btn" id="tab-btn-keys">⌨️ Atalhos</button>
   </div>
@@ -968,6 +969,35 @@
       <div class="shortcut-row">
         <span class="shortcut-label">Próxima Frase</span>
         <input type="text" class="shortcut-input" id="kb-next-phrase" value="alt+arrowright">
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 4: FLASHCARDS Q-BANK INTEGRATION -->
+  <div class="tab-content" id="tab-content-cards">
+    <div class="card">
+      <div class="card-header">
+        <span>⚡ Flashcards Q-Bank Integrado</span>
+        <span style="font-size: 9px; color: #10b981; font-weight: 700;">Ativo na Margem Esquerda</span>
+      </div>
+      <p style="margin: 0 0 10px 0; font-size: 11px; color: #475569; line-height: 1.4;">
+        A extensão injeta automaticamente um <b>botão flutuante discreto na margem esquerda</b> do seu Q-Bank (UWorld, Amboss, etc.), que abre uma aba vertical retrátil para gerar flashcards das questões em tempo real.
+      </p>
+
+      <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 10px; margin-bottom: 10px;">
+        <div style="font-size: 11px; font-weight: 700; color: #166534; margin-bottom: 4px;">Recursos da Aba Vertical na Margem Esquerda:</div>
+        <ul style="margin: 0; padding-left: 16px; font-size: 10px; color: #15803d; line-height: 1.5;">
+          <li><b>Cópia Inteligente:</b> Salva Question ID, Enunciado, Alternativas, Explicação, Educational Objective e Imagens.</li>
+          <li><b>Sincronização com Abas Abertas:</b> Se houver uma janela ou aba de criação de flashcards aberta, transfere os dados para ela e traz a janela para foco. Se não houver, abre uma nova e executa a ação.</li>
+          <li><b>Navegação Prev / Next Integrada:</b> Avança e retrocede nas questões sincronizado com os cards associados.</li>
+          <li><b>Proteção Anti-Card Vazio:</b> Se uma questão não tiver flashcard criado, <u>nenhum flashcard vazio é salvo</u>.</li>
+        </ul>
+      </div>
+
+      <div style="display: flex; gap: 8px;">
+        <button class="btn-primary" id="btn-open-flashcards-hub" style="padding: 8px 12px; font-size: 11px;">
+          🌐 Abrir Hub de Flashcards
+        </button>
       </div>
     </div>
   </div>

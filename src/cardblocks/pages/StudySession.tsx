@@ -659,6 +659,50 @@ export function StudySession({ deckId, cardIds, onNavigate }: StudySessionProps)
                                   ))}
                                 </div>
                               )}
+
+                              {(card.questionId || card.questionStem || card.questionChoices || card.explanation || card.educationalObjective || (card.questionImages && card.questionImages.length > 0)) && (
+                                <details className="mt-3 border border-gray-200 dark:border-gray-700/80 rounded-xl p-3 bg-gray-50/70 dark:bg-gray-800/40 text-xs text-gray-800 dark:text-gray-200 text-left">
+                                  <summary className="font-bold text-blue-600 dark:text-blue-400 cursor-pointer select-none">
+                                    📋 Dados da Questão {card.questionId ? `(ID: ${card.questionId})` : ''}
+                                  </summary>
+                                  <div className="mt-3 space-y-2.5 pt-2 border-t border-gray-200 dark:border-gray-700">
+                                    {card.questionStem && (
+                                      <div>
+                                        <span className="font-bold text-gray-900 dark:text-gray-100">Enunciado:</span>
+                                        <p className="mt-0.5 text-gray-700 dark:text-gray-300">{card.questionStem}</p>
+                                      </div>
+                                    )}
+                                    {card.questionChoices && (
+                                      <div>
+                                        <span className="font-bold text-gray-900 dark:text-gray-100">Alternativas:</span>
+                                        <div className="mt-0.5 font-mono text-[11px] whitespace-pre-wrap text-gray-700 dark:text-gray-300">{card.questionChoices}</div>
+                                      </div>
+                                    )}
+                                    {card.explanation && (
+                                      <div>
+                                        <span className="font-bold text-gray-900 dark:text-gray-100">Explicação:</span>
+                                        <p className="mt-0.5 text-gray-700 dark:text-gray-300">{card.explanation}</p>
+                                      </div>
+                                    )}
+                                    {card.educationalObjective && (
+                                      <div className="p-2.5 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/50 rounded-lg">
+                                        <span className="font-bold text-blue-700 dark:text-blue-300">Educational Objective:</span>
+                                        <p className="mt-0.5 text-blue-900 dark:text-blue-100 font-medium">{card.educationalObjective}</p>
+                                      </div>
+                                    )}
+                                    {card.questionImages && card.questionImages.length > 0 && (
+                                      <div>
+                                        <span className="font-bold text-gray-900 dark:text-gray-100">Imagens ({card.questionImages.length}):</span>
+                                        <div className="mt-1.5 flex flex-wrap gap-2">
+                                          {card.questionImages.map((img, i) => (
+                                            <img key={i} src={img} alt={`Questão ${i + 1}`} className="max-h-40 rounded-lg border border-gray-200 dark:border-gray-700" />
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                </details>
+                              )}
                             </div>
                           )}
                         </div>

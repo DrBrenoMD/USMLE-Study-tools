@@ -1,4 +1,4 @@
-import { useState, FormEvent, useRef, ChangeEvent } from 'react';
+import { useState, FormEvent, useRef, ChangeEvent, MouseEvent } from 'react';
 import { useStore, Deck, Flashcard } from '../store/useStore';
 import { Page } from '../App';
 import {
@@ -15,7 +15,8 @@ import {
   Settings2,
   X,
   AlertTriangle,
-  Layers
+  Layers,
+  Download
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Heatmap } from '../components/Heatmap';
@@ -38,6 +39,20 @@ export function Home({ onNavigate }: HomeProps) {
   const apkgInputRef = useRef<HTMLInputElement>(null);
   const { t } = useTranslation();
 
+  const handleExportAnkiDeck = async (targetDeck: Deck, e: MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const deckCards = cards.filter(c => c.deckId === targetDeck.id);
+      setImportNotice(`Gerando pacote Anki para "${targetDeck.name}"...`);
+      const { exportToApkg } = await import('../lib/anki');
+      await exportToApkg(targetDeck, deckCards);
+      setImportNotice(`Baralho "${targetDeck.name}" exportado como Anki (.apkg) com sucesso!`);
+    } catch (err: any) {
+      console.error(err);
+      setImportNotice(`Erro ao exportar Anki: ${err.message}`);
+    }
+  };
+
   const handleImportFile = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -46,7 +61,7 @@ export function Home({ onNavigate }: HomeProps) {
       setImporting(true);
       const ext = file.name.split('.').pop()?.toLowerCase();
       
-      let parsedCards: { front: string, back: string, tags: string[], originalDeckId: string }[] = [];
+      let parsedCards: any[] = [];
       let deckNamesByAnkiId: Record<string, string> = {};
       let fileName = file.name.replace(/\.[^/.]+$/, "");
 
@@ -66,7 +81,14 @@ export function Home({ onNavigate }: HomeProps) {
         parsedCards = arr.map((c: any) => ({
           front: c.front || c.question || '',
           back: c.back || c.answer || '',
+          details: c.details,
           tags: Array.isArray(c.tags) ? c.tags : (c.tags ? c.tags.split(',') : []),
+          questionId: c.questionId,
+          questionStem: c.questionStem,
+          questionChoices: c.questionChoices,
+          explanation: c.explanation,
+          educationalObjective: c.educationalObjective,
+          questionImages: c.questionImages,
           originalDeckId: 'default'
         }));
         deckNamesByAnkiId['default'] = fileName;
@@ -128,6 +150,7 @@ export function Home({ onNavigate }: HomeProps) {
         cardsByDeckId[targetDeckId].push({
           front: c.front,
           back: c.back,
+          details: c.details,
           tags: c.tags,
           repetition: 0,
           interval: 0,
@@ -136,6 +159,12 @@ export function Home({ onNavigate }: HomeProps) {
           createdAt: Date.now(),
           isSuspended: false,
           isBuried: false,
+          questionId: c.questionId,
+          questionStem: c.questionStem,
+          questionChoices: c.questionChoices,
+          explanation: c.explanation,
+          educationalObjective: c.educationalObjective,
+          questionImages: c.questionImages,
         });
         importCount++;
       }
@@ -318,6 +347,15 @@ export function Home({ onNavigate }: HomeProps) {
                >
                  <Settings2 className="w-3.5 h-3.5" />
                  <span>Gerenciar</span>
+               </button>
+
+               <button 
+                 onClick={(e) => handleExportAnkiDeck(deck, e)}
+                 className="px-2.5 py-1.5 bg-gray-50 hover:bg-blue-50 dark:bg-gray-800 dark:hover:bg-blue-950/40 border border-gray-200 dark:border-gray-700 font-semibold text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 rounded-xl text-xs transition-colors flex items-center gap-1"
+                 title="Exportar no formato Anki (.apkg)"
+               >
+                 <Download className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                 <span className="hidden md:inline">Anki</span>
                </button>
 
                <button 

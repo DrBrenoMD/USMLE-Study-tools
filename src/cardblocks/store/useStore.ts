@@ -29,6 +29,14 @@ export interface Flashcard {
   isSuspended?: boolean;
   isBuried?: boolean;
   sourceQuestionId?: string;
+
+  // Campos de integração com QBanks (opcionais e nativamente colapsados)
+  questionId?: string;
+  questionStem?: string;
+  questionChoices?: string;
+  explanation?: string;
+  educationalObjective?: string;
+  questionImages?: string[];
 }
 
 export interface ReviewLog {
@@ -360,6 +368,12 @@ export const useStore = create<StoreState>()(
               isSuspended: false,
               isBuried: false,
               sourceQuestionId: deckIdOrCard.sourceQuestionId,
+              questionId: deckIdOrCard.questionId,
+              questionStem: deckIdOrCard.questionStem,
+              questionChoices: deckIdOrCard.questionChoices,
+              explanation: deckIdOrCard.explanation,
+              educationalObjective: deckIdOrCard.educationalObjective,
+              questionImages: deckIdOrCard.questionImages,
             };
           } else {
             newCard = {

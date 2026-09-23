@@ -10,7 +10,8 @@ import {
   Copy, 
   FileCode, 
   ArrowRight,
-  Sparkles
+  Sparkles,
+  Layers
 } from 'lucide-react';
 import { downloadExtensionZip } from '../utils/downloadExtension';
 import { 
@@ -110,7 +111,17 @@ export default function ExtensionDownload() {
         </div>
 
         {/* Principais Recursos */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-5 rounded-xl shadow-xs space-y-2">
+            <div className="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center border border-blue-100 dark:border-blue-800">
+              <Layers className="w-5 h-5" />
+            </div>
+            <h3 className="font-bold text-sm text-gray-900 dark:text-white">Flashcard no Q-Bank</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+              Botão flutuante na margem esquerda que abre uma aba vertical para gerar flashcards das questões (ID, enunciado, alternativas, explicação, educational objective e imagens) com navegação integrada.
+            </p>
+          </div>
+
           <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-5 rounded-xl shadow-xs space-y-2">
             <div className="w-9 h-9 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center border border-indigo-100 dark:border-indigo-800">
               <Activity className="w-5 h-5" />

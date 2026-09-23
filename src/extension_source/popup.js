@@ -5,25 +5,36 @@
 // --- Navegação por Abas ---
 const tabs = {
     pacer: { btn: document.getElementById('tab-btn-pacer'), content: document.getElementById('tab-content-pacer') },
+    cards: { btn: document.getElementById('tab-btn-cards'), content: document.getElementById('tab-content-cards') },
     voice: { btn: document.getElementById('tab-btn-voice'), content: document.getElementById('tab-content-voice') },
     keys: { btn: document.getElementById('tab-btn-keys'), content: document.getElementById('tab-content-keys') }
 };
 
 function switchTab(tabKey) {
     Object.keys(tabs).forEach(k => {
+        if (!tabs[k].btn || !tabs[k].content) return;
         const isTarget = k === tabKey;
         tabs[k].btn.classList.toggle('active', isTarget);
         tabs[k].content.classList.toggle('active', isTarget);
     });
     const saveBar = document.getElementById('bottom-bar-prefs');
     if (saveBar) {
-        saveBar.style.display = tabKey === 'pacer' ? 'none' : 'block';
+        saveBar.style.display = (tabKey === 'pacer' || tabKey === 'cards') ? 'none' : 'block';
     }
 }
 
-document.getElementById('tab-btn-pacer').addEventListener('click', () => switchTab('pacer'));
-document.getElementById('tab-btn-voice').addEventListener('click', () => switchTab('voice'));
-document.getElementById('tab-btn-keys').addEventListener('click', () => switchTab('keys'));
+if (document.getElementById('tab-btn-pacer')) document.getElementById('tab-btn-pacer').addEventListener('click', () => switchTab('pacer'));
+if (document.getElementById('tab-btn-cards')) document.getElementById('tab-btn-cards').addEventListener('click', () => switchTab('cards'));
+if (document.getElementById('tab-btn-voice')) document.getElementById('tab-btn-voice').addEventListener('click', () => switchTab('voice'));
+if (document.getElementById('tab-btn-keys')) document.getElementById('tab-btn-keys').addEventListener('click', () => switchTab('keys'));
+
+const btnOpenHub = document.getElementById('btn-open-flashcards-hub');
+if (btnOpenHub) {
+    btnOpenHub.addEventListener('click', () => {
+        chrome.tabs.create({ url: 'https://usmle-study-tools.vercel.app/flashcards' });
+    });
+}
+
 switchTab('pacer');
 
 // --- Som do Pacer (Web Audio API) ---

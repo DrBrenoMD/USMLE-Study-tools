@@ -1,8 +1,8 @@
 /**
  * Centralized High-Fidelity Audio Manager
- * - Emits soft, gentle, pure SINE wave tones (suaves e agradáveis, sem estridência)
- * - Solves DAC / Bluetooth sleep latency via a continuous silent keep-alive carrier
- *   so the gentle attack is never swallowed or cut off.
+ * - Emits soft, gentle, warm bell chimes (suaves, aveludados e agradáveis, sem estridência)
+ * - Eliminates DAC / Bluetooth latency and audio clipping by maintaining a continuous
+ *   inaudible sub-carrier so no notes are ever swallowed or truncated.
  */
 
 class AudioManager {
@@ -37,9 +37,9 @@ class AudioManager {
   }
 
   /**
-   * Keeps the physical audio DAC & Bluetooth headset awake by playing
-   * an inaudible, zero-CPU looping buffer.
-   * This completely avoids the 200-400ms wake-up clipping without needing loud or harsh sounds.
+   * Keeps physical audio DAC & Bluetooth links warm and active with an inaudible
+   * continuous sub-carrier. Uses real non-zero sub-audible waveform so hardware DSP
+   * sleep detectors do not put the audio pipeline to sleep.
    */
   public startKeepAlive(): void {
     if (this.isKeepAliveRunning) return;
@@ -50,15 +50,20 @@ class AudioManager {
         ctx.resume().catch(() => {});
       }
 
-      // Create a 1-second silent buffer
-      const buffer = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+      // 2-second buffer containing inaudible 20Hz sub-bass waveform
+      const sampleRate = ctx.sampleRate || 44100;
+      const buffer = ctx.createBuffer(1, sampleRate * 2, sampleRate);
+      const channelData = buffer.getChannelData(0);
+      for (let i = 0; i < channelData.length; i++) {
+        channelData[i] = Math.sin((2 * Math.PI * 20 * i) / sampleRate) * 0.0001;
+      }
+
       const source = ctx.createBufferSource();
       source.buffer = buffer;
       source.loop = true;
 
-      // Inaudible gain (0.00005) to keep physical DAC/Bluetooth link active
       const gain = ctx.createGain();
-      gain.gain.setValueAtTime(0.00005, ctx.currentTime);
+      gain.gain.setValueAtTime(0.0002, ctx.currentTime);
 
       source.connect(gain);
       gain.connect(ctx.destination);
@@ -96,12 +101,12 @@ class AudioManager {
   }
 
   /**
-   * Play a pure, soft SINE wave tone with smooth linear attack and gentle exponential decay.
-   * Zero harmonics, zero distortion, smooth on ears.
+   * Play a warm, organic bell chime tone with smooth attack and generous decay.
+   * Uses fundamental sine wave plus a subtle second harmonic to create a rounded, soothing bell sound.
    */
   public playTone(
     freq: number,
-    duration: number = 0.35,
+    duration: number = 0.65,
     volumeMultiplier: number = 0.5,
     startTimeOffset: number = 0
   ): void {
@@ -111,58 +116,74 @@ class AudioManager {
         ctx.resume().catch(() => {});
       }
 
-      const start = ctx.currentTime + startTimeOffset;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
+      // Safe lead time to ensure full attack is played through DAC
+      const start = ctx.currentTime + Math.max(0.03, startTimeOffset);
 
-      // Pure sine wave for the softest, most natural bell sound
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, start);
+      // Master gain for this note
+      const masterGain = ctx.createGain();
+      const peakVol = Math.max(0.08, Math.min(0.75, 0.45 * (volumeMultiplier / 0.5)));
 
-      // Calibrated soft volume (base peak 0.35 scaled by volumeMultiplier)
-      const peakVol = Math.max(0.05, Math.min(0.6, 0.35 * (volumeMultiplier / 0.5)));
+      // Fundamental oscillator (soft pure sine)
+      const osc1 = ctx.createOscillator();
+      osc1.type = 'sine';
+      osc1.frequency.setValueAtTime(freq, start);
 
-      // Smooth attack: 15ms fade-in to prevent any "click/pop"
-      gain.gain.setValueAtTime(0.0001, start);
-      gain.gain.linearRampToValueAtTime(peakVol, start + 0.02);
-      // Soft gentle exponential decay
-      gain.gain.exponentialRampToValueAtTime(0.005, start + duration);
+      // Subtle harmonic overtone (1 octave up, -18dB) for warmth and rich chime body
+      const osc2 = ctx.createOscillator();
+      osc2.type = 'sine';
+      osc2.frequency.setValueAtTime(freq * 2, start);
 
-      osc.connect(gain);
-      gain.connect(ctx.destination);
+      const gain2 = ctx.createGain();
+      gain2.gain.setValueAtTime(0.12, start);
 
-      osc.start(start);
-      osc.stop(start + duration + 0.03);
+      // Smooth, natural bell envelope:
+      // 1. Soft 35ms linear attack (eliminates clicks/pops and harsh onset)
+      // 2. Short sustain body
+      // 3. Gentle exponential decay so sound resonates smoothly without abrupt cut-off
+      masterGain.gain.setValueAtTime(0.0001, start);
+      masterGain.gain.linearRampToValueAtTime(peakVol, start + 0.035);
+      masterGain.gain.exponentialRampToValueAtTime(peakVol * 0.4, start + Math.min(0.25, duration * 0.45));
+      masterGain.gain.exponentialRampToValueAtTime(0.001, start + duration);
+
+      osc1.connect(masterGain);
+      osc2.connect(gain2);
+      gain2.connect(masterGain);
+      masterGain.connect(ctx.destination);
+
+      osc1.start(start);
+      osc2.start(start);
+      osc1.stop(start + duration + 0.05);
+      osc2.stop(start + duration + 0.05);
     } catch (e) {
       console.warn('playTone error:', e);
     }
   }
 
   /**
-   * Alarme de Resolução / Questão (880 Hz)
-   * Som original suave: onda senoidal pura em 880 Hz com decaimento suave.
+   * Alarme de Resolução / Questão:
+   * Sino suave em C5 (523.25 Hz) - timbre aveludado e acolhedor, não estridente.
    */
   public playSolveAlarm(volumeMultiplier: number = 0.5): void {
-    this.playTone(880, 0.35, volumeMultiplier);
+    this.playTone(523.25, 0.70, volumeMultiplier);
   }
 
   /**
-   * Alarme de Revisão - Modo Tutored (660 Hz)
-   * Som original suave: onda senoidal pura em 660 Hz mais aveludada.
+   * Alarme de Revisão - Modo Tutored:
+   * Sino quente em A4 (440.00 Hz) - relaxante e claramente distinguível da resolução.
    */
   public playReviewAlarm(volumeMultiplier: number = 0.5): void {
-    this.playTone(660, 0.35, volumeMultiplier);
+    this.playTone(440.00, 0.65, volumeMultiplier);
   }
 
   /**
-   * Alarme de Ciclo Pomodoro / Timer (Melodia de 4 notas senoidais)
-   * C5 (523 Hz), E5 (659 Hz), G5 (784 Hz), C6 (1046 Hz) com envelopes suaves e espaçados.
+   * Alarme de Ciclo Pomodoro / Bloco de Estudo:
+   * Melodia harmônica relaxante de 3 notas ascendentes em médios suaves: G4 (392 Hz) -> A4 (440 Hz) -> C5 (523 Hz)
    */
   public playCycleAlarm(volumeMultiplier: number = 0.5): void {
     try {
-      const notes = [523.25, 659.25, 783.99, 1046.50];
+      const notes = [392.00, 440.00, 523.25];
       notes.forEach((freq, i) => {
-        this.playTone(freq, 0.28, volumeMultiplier * 0.85, i * 0.1);
+        this.playTone(freq, 0.60, volumeMultiplier * 0.85, i * 0.16);
       });
     } catch (e) {
       console.warn('playCycleAlarm error:', e);
@@ -170,21 +191,21 @@ class AudioManager {
   }
 
   /**
-   * Sons curtos de ação (Next, Submit, Anterior) - senoides puras e discretas
+   * Sons curtos de navegação e ação (Next, Submit, Anterior) - toques discretos e agradáveis
    */
   public playActionBeep(action: 'next' | 'submit' | 'prev', volumeMultiplier: number = 0.5): void {
     switch (action) {
       case 'next':
-        // Beep curto e suave (880 Hz, 0.18s)
-        this.playTone(880, 0.18, volumeMultiplier);
+        // Toque suave em C5 (523 Hz, 0.28s)
+        this.playTone(523.25, 0.28, volumeMultiplier * 0.75);
         break;
       case 'submit':
-        // Beep agradável de transição (660 Hz, 0.22s)
-        this.playTone(660, 0.22, volumeMultiplier);
+        // Toque suave em E4 (329 Hz, 0.32s)
+        this.playTone(329.63, 0.32, volumeMultiplier * 0.75);
         break;
       case 'prev':
-        // Beep grave suave (520 Hz, 0.16s)
-        this.playTone(520, 0.16, volumeMultiplier * 0.9);
+        // Toque aveludado em C4 (261 Hz, 0.26s)
+        this.playTone(261.63, 0.26, volumeMultiplier * 0.7);
         break;
     }
   }

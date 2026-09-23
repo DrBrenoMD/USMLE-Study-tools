@@ -1,5 +1,5 @@
 // =========================================================================
-// Fonte da Extensão do Chrome: Assistente de Questões por Voz + Pacer v1.5
+// Fonte da Extensão do Chrome: Assistente de Questões por Voz + Pacer v1.6
 // Toda alteração feita aqui atualiza automaticamente o arquivo .ZIP para download no site!
 // =========================================================================
 
@@ -9,7 +9,7 @@ import popupJs from './popup.js?raw';
 import contentJs from './content.js?raw';
 import readmeTxt from './README.txt?raw';
 
-export const EXTENSION_VERSION = "1.5";
+export const EXTENSION_VERSION = "1.6";
 export const EXTENSION_NAME = "Assistente de Questões por Voz + Pacer";
 
 export { manifestJson, popupHtml, popupJs, contentJs, readmeTxt };

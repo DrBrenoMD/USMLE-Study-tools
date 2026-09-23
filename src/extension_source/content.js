@@ -143,6 +143,36 @@ styleCustom.innerHTML = `
     #tts-drag-handle:active { cursor: grabbing; }
     #tts-btn-close { font-size: 14px !important; margin-left: 5px; opacity: 0.7; }
     #tts-btn-close:hover { opacity: 1; color: #ff4444 !important; }
+
+    /* --- Botão Flutuante Discreto na Margem Esquerda e Aba Vertical (Flashcards) --- */
+    #qbankly-card-launcher {
+        position: fixed; top: 50%; left: 0; transform: translateY(-50%);
+        background: linear-gradient(180deg, #1d4ed8, #3b82f6); color: white;
+        padding: 12px 6px; border-radius: 0 12px 12px 0; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; font-size: 11px; font-weight: bold;
+        cursor: pointer; z-index: 999998; box-shadow: 2px 4px 14px rgba(0,0,0,0.3);
+        border: 1px solid rgba(255,255,255,0.3); border-left: none; transition: 0.2s; user-select: none;
+    }
+    #qbankly-card-launcher:hover { padding-right: 9px; background: linear-gradient(180deg, #1e40af, #2563eb); }
+    #qbankly-card-launcher .card-icon { font-size: 14px; margin-bottom: 2px; }
+    #qbankly-card-launcher .card-label {
+        writing-mode: vertical-rl; text-orientation: mixed; letter-spacing: 2px;
+        text-transform: uppercase; font-size: 9px; font-weight: 800; margin: 3px 0;
+    }
+    #qbankly-card-launcher .card-badge {
+        font-size: 8px; font-family: monospace; background: rgba(255,255,255,0.25);
+        padding: 2px 3px; border-radius: 4px;
+    }
+
+    #qbankly-card-drawer {
+        position: fixed; top: 0; left: 0; width: 330px; height: 100vh;
+        background: #0f172a; color: #f8fafc; z-index: 999999;
+        box-shadow: 6px 0 25px rgba(0,0,0,0.5); border-right: 1px solid #1e293b;
+        display: none; flex-direction: column; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        box-sizing: border-box; text-align: left;
+    }
+    #qbankly-card-drawer * { box-sizing: border-box; }
+    #qbankly-card-drawer.open { display: flex; }
 `;
 document.head.appendChild(styleCustom);
 
@@ -208,7 +238,298 @@ function esconderBarraUI() {
     if (bar) { bar.style.display = 'none'; launcher.style.display = 'none'; }
 }
 
-window.addEventListener('DOMContentLoaded', criarBarraUI);
+// =========================================================================
+// Módulo de Flashcards Q-Bank: Botão Flutuante e Aba Vertical na Margem Esquerda
+// =========================================================================
+let flashcardWindowRef = null;
+let currentQNumberExt = 1;
+
+function extrairIdQuestaoAtual() {
+    let qId = '';
+    const idEl = document.querySelector('[id*="question-id"], [class*="question-id"], [class*="q-id"], [data-question-id]');
+    if (idEl) {
+        const text = idEl.innerText.replace(/[^0-9]/g, '');
+        if (text) qId = text;
+    }
+    if (!qId) {
+        const matches = document.body.innerText.match(/(?:Question\s*Id|Item|Quest[aã]o)\s*[:#]?\s*(\d{4,8})/i);
+        if (matches) qId = matches[1];
+    }
+    if (!qId) {
+        qId = 'Q-' + currentQNumberExt;
+    }
+    return qId;
+}
+
+function extrairDadosCompletosQuestao() {
+    const qId = extrairIdQuestaoAtual();
+    const stemArr = extrairEnunciadoParaFila();
+    const questionStem = stemArr.map(i => i.text).join('\n\n');
+    const choicesArr = extrairAlternativasParaFila();
+    const questionChoices = choicesArr.filter(i => i.text !== 'Options:').map(i => i.text).join('\n');
+    const expArr = extrairExplicacaoParaFila();
+    const explanation = expArr.filter(i => i.text !== 'Explanation not found.').map(i => i.text).join('\n\n');
+    const objArr = extrairObjetivoParaFila();
+    const educationalObjective = objArr.filter(i => i.text !== 'Educational objective not found.').map(i => i.text).join('\n\n');
+    
+    const questionImages = [];
+    const container = document.querySelector('.max-w-5xl') || document.body;
+    const imgs = container.querySelectorAll('img');
+    imgs.forEach(img => {
+        if (img.src && !img.src.includes('data:image/svg') && (img.width > 60 || img.height > 60 || img.src.includes('uworld') || img.src.includes('amboss'))) {
+            questionImages.push(img.src);
+        }
+    });
+
+    return {
+        questionId: qId,
+        questionStem: questionStem || `Questão #${currentQNumberExt}`,
+        questionChoices: questionChoices || '',
+        explanation: explanation || '',
+        educationalObjective: educationalObjective || '',
+        questionImages: questionImages,
+        front: `<p><b>Questão (ID: ${qId})</b></p><p>${(questionStem || '').replace(/\n\n/g, '</p><p>')}</p>`,
+        back: educationalObjective 
+            ? `<p><b>Educational Objective:</b></p><p>${educationalObjective.replace(/\n\n/g, '</p><p>')}</p><hr/><p><b>Explicação:</b></p><p>${(explanation || '').replace(/\n\n/g, '</p><p>')}</p>`
+            : `<p>${(explanation || '').replace(/\n\n/g, '</p><p>')}</p>`,
+        tags: [`q-${qId}`, 'qbank-sync']
+    };
+}
+
+function criarFlashcardUI() {
+    if (document.getElementById('qbankly-card-launcher')) return;
+
+    // 1. Botão Flutuante Discreto na Margem Esquerda
+    const launcher = document.createElement('div');
+    launcher.id = 'qbankly-card-launcher';
+    launcher.title = 'Abrir Gerador de Flashcard da Questão (Margem Esquerda)';
+    launcher.innerHTML = `
+        <span class="card-icon">⚡</span>
+        <span class="card-label">Flashcard</span>
+        <span class="card-badge" id="qbankly-launcher-badge">Q1</span>
+    `;
+    document.body.appendChild(launcher);
+
+    // 2. Aba Vertical na Margem Esquerda (Drawer Retrátil)
+    const drawer = document.createElement('div');
+    drawer.id = 'qbankly-card-drawer';
+    drawer.innerHTML = `
+        <div style="padding: 14px 16px; border-bottom: 1px solid #1e293b; display: flex; align-items: center; justify-content: space-between; background: #1e293b;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 32px; height: 32px; border-radius: 8px; background: #2563eb; display: flex; align-items: center; justify-content: center; font-size: 16px;">⚡</div>
+                <div>
+                    <div style="font-weight: 800; font-size: 13px; color: #fff; display: flex; align-items: center; gap: 6px;">
+                        <span>Flashcard Q-Bank</span>
+                        <span id="drawer-header-qid" style="font-family: monospace; font-size: 10px; background: rgba(59,130,246,0.3); color: #93c5fd; padding: 2px 5px; border-radius: 4px;">Q-1</span>
+                    </div>
+                    <div style="font-size: 11px; color: #94a3b8;">Integração com Questões</div>
+                </div>
+            </div>
+            <button id="qbankly-drawer-close" style="background: none; border: none; color: #94a3b8; font-size: 18px; cursor: pointer; padding: 4px 8px; border-radius: 6px;">✕</button>
+        </div>
+
+        <div id="drawer-feedback" style="display: none; margin: 12px 14px 0 14px; padding: 8px 12px; background: rgba(16,185,129,0.15); border: 1px solid #10b981; border-radius: 8px; color: #6ee7b7; font-size: 11px;"></div>
+
+        <div style="flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 14px;">
+            <div id="drawer-status-card" style="padding: 14px; border-radius: 12px; background: #1e293b; border: 1px solid #334155;">
+                <!-- Preenchido dinamicamente por atualizarStatusCardQuestaoAtual() -->
+            </div>
+
+            <div style="padding: 12px; border-radius: 12px; background: rgba(30,41,59,0.5); border: 1px solid #334155; font-size: 11px; color: #94a3b8;">
+                <div style="font-weight: 700; color: #cbd5e1; text-transform: uppercase; margin-bottom: 8px; font-size: 10px; letter-spacing: 1px;">Sessões da Questão Exportadas:</div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+                    <div style="background: #0f172a; padding: 6px 8px; border-radius: 6px; border: 1px solid #1e293b; color: #e2e8f0;">✓ Question ID</div>
+                    <div style="background: #0f172a; padding: 6px 8px; border-radius: 6px; border: 1px solid #1e293b; color: #e2e8f0;">✓ Enunciado</div>
+                    <div style="background: #0f172a; padding: 6px 8px; border-radius: 6px; border: 1px solid #1e293b; color: #e2e8f0;">✓ Alternativas</div>
+                    <div style="background: #0f172a; padding: 6px 8px; border-radius: 6px; border: 1px solid #1e293b; color: #e2e8f0;">✓ Explicação</div>
+                    <div style="grid-column: span 2; background: #0f172a; padding: 6px 8px; border-radius: 6px; border: 1px solid #1e293b; color: #e2e8f0;">✓ Educational Objective & Imagens</div>
+                </div>
+            </div>
+        </div>
+
+        <div style="padding: 12px 14px; border-top: 1px solid #1e293b; background: #1e293b; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+            <button id="drawer-btn-prev" style="flex: 1; padding: 8px 12px; border-radius: 8px; border: 1px solid #475569; background: #0f172a; color: #e2e8f0; font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">⏮️ Anterior</button>
+            <span id="drawer-q-counter" style="font-family: monospace; font-size: 12px; font-weight: bold; color: #94a3b8; padding: 0 4px;">Q1</span>
+            <button id="drawer-btn-next" style="flex: 1; padding: 8px 12px; border-radius: 8px; border: 1px solid #2563eb; background: #2563eb; color: #fff; font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">Próxima ⏭️</button>
+        </div>
+    `;
+    document.body.appendChild(drawer);
+
+    // Eventos
+    launcher.addEventListener('click', () => {
+        drawer.classList.add('open');
+        launcher.style.display = 'none';
+        atualizarStatusCardQuestaoAtual();
+    });
+
+    document.getElementById('qbankly-drawer-close').addEventListener('click', () => {
+        drawer.classList.remove('open');
+        launcher.style.display = 'flex';
+    });
+
+    document.getElementById('drawer-btn-prev').addEventListener('click', () => navegarQuestaoDrawer(-1));
+    document.getElementById('drawer-btn-next').addEventListener('click', () => navegarQuestaoDrawer(1));
+
+    atualizarStatusCardQuestaoAtual();
+}
+
+function mostrarFeedbackDrawer(texto) {
+    const fb = document.getElementById('drawer-feedback');
+    if (fb) {
+        fb.innerText = texto;
+        fb.style.display = 'block';
+        setTimeout(() => { fb.style.display = 'none'; }, 4000);
+    }
+}
+
+function atualizarStatusCardQuestaoAtual() {
+    const qId = extrairIdQuestaoAtual();
+    const badgeLauncher = document.getElementById('qbankly-launcher-badge');
+    if (badgeLauncher) badgeLauncher.innerText = 'Q' + currentQNumberExt;
+
+    const headerQid = document.getElementById('drawer-header-qid');
+    if (headerQid) headerQid.innerText = qId;
+
+    const counter = document.getElementById('drawer-q-counter');
+    if (counter) counter.innerText = 'Q' + currentQNumberExt;
+
+    const statusCard = document.getElementById('drawer-status-card');
+    if (!statusCard) return;
+
+    chrome.storage.local.get(['saved_question_cards'], function(res) {
+        const cardsMap = res.saved_question_cards || {};
+        const cardExistente = cardsMap[qId];
+
+        if (cardExistente) {
+            statusCard.innerHTML = `
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                    <span style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Questão #${currentQNumberExt}</span>
+                    <span style="font-size: 10px; font-weight: 700; background: rgba(16,185,129,0.2); color: #34d399; padding: 2px 8px; border-radius: 12px; display: inline-flex; align-items: center; gap: 4px;">
+                        ● Flashcard Criado
+                    </span>
+                </div>
+                <div style="font-size: 11px; color: #cbd5e1; background: #0f172a; padding: 8px; border-radius: 8px; border: 1px solid #1e293b; margin-bottom: 10px; max-height: 80px; overflow: hidden; text-overflow: ellipsis;">
+                    <b>Frente:</b> ${cardExistente.front.replace(/<[^>]+>/g, '').substring(0, 100)}...
+                </div>
+                <button id="btn-gerar-card" style="width: 100%; padding: 9px 12px; border-radius: 8px; border: none; background: #2563eb; color: #fff; font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 2px 8px rgba(37,99,235,0.4);">
+                    ⚡ Abrir / Atualizar no Editor
+                </button>
+            `;
+        } else {
+            statusCard.innerHTML = `
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                    <span style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Questão #${currentQNumberExt}</span>
+                    <span style="font-size: 10px; font-weight: 700; background: rgba(148,163,184,0.2); color: #94a3b8; padding: 2px 8px; border-radius: 12px;">
+                        Sem Flashcard
+                    </span>
+                </div>
+                <p style="font-size: 11px; color: #94a3b8; line-height: 1.4; margin: 0 0 10px 0;">
+                    Nenhum flashcard criado ainda para esta questão.
+                </p>
+                <button id="btn-gerar-card" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: none; background: linear-gradient(135deg, #2563eb, #4f46e5); color: #fff; font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 4px 12px rgba(37,99,235,0.3);">
+                    ⚡ Gerar Flashcard da Questão
+                </button>
+                <div style="margin-top: 8px; font-size: 10px; color: #fbbf24; background: rgba(251,191,36,0.1); padding: 6px 8px; border-radius: 6px; border: 1px solid rgba(251,191,36,0.2);">
+                    ℹ️ <b>Proteção:</b> Se uma questão não tiver flashcard criado, <u>nenhum flashcard vazio é salvo</u> ao avançar ou retroceder.
+                </div>
+            `;
+        }
+
+        const btnGerar = document.getElementById('btn-gerar-card');
+        if (btnGerar) {
+            btnGerar.addEventListener('click', executarGeracaoFlashcard);
+        }
+    });
+}
+
+function executarGeracaoFlashcard() {
+    const cardData = extrairDadosCompletosQuestao();
+    const qId = cardData.questionId;
+
+    // Salva associação desta questão no storage
+    chrome.storage.local.get(['saved_question_cards'], function(res) {
+        const cardsMap = res.saved_question_cards || {};
+        cardsMap[qId] = {
+            id: 'card-' + Date.now(),
+            questionId: qId,
+            front: cardData.front,
+            back: cardData.back,
+            createdAt: Date.now()
+        };
+        chrome.storage.local.set({ saved_question_cards: cardsMap }, function() {
+            atualizarStatusCardQuestaoAtual();
+        });
+    });
+
+    // Notificar BroadcastChannel se suportado
+    try {
+        const bc = new BroadcastChannel('usmle_flashcards_sync');
+        bc.postMessage({ type: 'USMLE_GENERATE_FLASHCARD', payload: cardData });
+        setTimeout(() => bc.close(), 1000);
+    } catch(e) {}
+
+    // Transmissão Cross-Window / Aba
+    let appUrl = 'https://usmle-study-tools.vercel.app/flashcards?tab=browse&action=create_card';
+    if (window.location.hostname === 'localhost' || window.location.hostname.includes('run.app') || window.location.hostname.includes('web.app')) {
+        appUrl = window.location.origin + '/flashcards?tab=browse&action=create_card';
+    }
+
+    if (flashcardWindowRef && !flashcardWindowRef.closed) {
+        flashcardWindowRef.postMessage({ type: 'USMLE_GENERATE_FLASHCARD', payload: cardData }, '*');
+        flashcardWindowRef.focus();
+        mostrarFeedbackDrawer('Dados copiados para a janela de Flashcards aberta!');
+    } else {
+        flashcardWindowRef = window.open(appUrl, 'USMLEFlashcardsWindow');
+        chrome.storage.local.set({ pending_flashcard_import: cardData });
+        mostrarFeedbackDrawer('Abrindo editor de flashcards com os dados...');
+        
+        let attempts = 0;
+        const sendInterval = setInterval(() => {
+            attempts++;
+            if (flashcardWindowRef && !flashcardWindowRef.closed) {
+                flashcardWindowRef.postMessage({ type: 'USMLE_GENERATE_FLASHCARD', payload: cardData }, '*');
+            }
+            if (attempts > 5) clearInterval(sendInterval);
+        }, 1200);
+    }
+}
+
+// Handshake: Se a janela aberta informar que está pronta para receber os dados
+window.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'USMLE_FLASHCARD_TAB_READY') {
+        if (event.source) {
+            flashcardWindowRef = event.source;
+            const cardData = extrairDadosCompletosQuestao();
+            try {
+                event.source.postMessage({ type: 'USMLE_GENERATE_FLASHCARD', payload: cardData }, '*');
+                mostrarFeedbackDrawer('Sessão conectada! Dados importados com sucesso.');
+            } catch (e) {}
+        }
+    }
+});
+
+function navegarQuestaoDrawer(direcao) {
+    if (direcao > 0) {
+        acionarBotao('next');
+        currentQNumberExt++;
+    } else if (direcao < 0 && currentQNumberExt > 1) {
+        acionarBotao('previous');
+        currentQNumberExt--;
+    }
+    // Regra estrita: se uma questão não tiver flashcard criado, NÃO SALVA CARD VAZIO!
+    // Apenas aguarda o DOM atualizar e verifica se existe card prévio
+    setTimeout(() => {
+        atualizarStatusCardQuestaoAtual();
+    }, 600);
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+    criarBarraUI();
+    criarFlashcardUI();
+});
+if (document.body) {
+    criarFlashcardUI();
+}
 
 // --- Beep Sonoro ---
 function playBeep(isActivation) {
@@ -491,6 +812,13 @@ document.addEventListener('click', (e) => {
 
         if (isNext || isSubmit || isPrev) {
             notificarPacer(isNext, isSubmit, isPrev);
+            if (isNext) currentQNumberExt++;
+            else if (isPrev && currentQNumberExt > 1) currentQNumberExt--;
+            setTimeout(() => {
+                if (typeof atualizarStatusCardQuestaoAtual === 'function') {
+                    atualizarStatusCardQuestaoAtual();
+                }
+            }, 600);
         }
     }
 

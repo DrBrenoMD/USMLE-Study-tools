@@ -953,7 +953,7 @@ export function QuestionPacer({ className }: { className?: string }) {
                       )}
                     </div>
 
-                    <div className="flex flex-col items-center justify-center my-4">
+                    <div className="flex flex-col items-center justify-center my-3">
                       <div className={`text-6xl font-black tracking-tight ${
                         tutoredPhase === 'solve' && currentSolveTime >= effectiveTargetSolve && timerState === 'running'
                           ? 'text-red-500 animate-pulse'
@@ -968,15 +968,42 @@ export function QuestionPacer({ className }: { className?: string }) {
                           </span>
                         ) : (
                           <span>
-                            Alvo de Resolução: <b>{formatTime(targetSolveSec)}</b>
+                            Alvo da Questão Atual: <b>{formatTime(targetSolveSec)}</b>
                           </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Destaque: Tempo Gasto com Resolução Naquele Momento de Estudo */}
+                    <div className="w-full my-2 p-3 bg-blue-50/90 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800/60 rounded-xl flex items-center justify-between shadow-xs">
+                      <div className="flex items-center gap-2">
+                        <div className="p-2 rounded-lg bg-blue-600 text-white shadow-xs">
+                          <Clock className="w-4 h-4" />
+                        </div>
+                        <div className="text-left">
+                          <div className="text-[11px] font-bold uppercase tracking-wider text-blue-900 dark:text-blue-200">
+                            Tempo em Resolução
+                          </div>
+                          <div className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold">
+                            Gasto neste momento de estudo
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-mono text-xl font-black text-blue-900 dark:text-blue-100">
+                          {formatTime(elapsedSolveTotal)}
+                        </div>
+                        {studyDuration > 0 && (
+                          <div className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">
+                            {formatTime(Math.max(0, studyDuration - timeLeft))} de estudo decorrido
+                          </div>
                         )}
                       </div>
                     </div>
 
                     <div className="mt-auto pt-3 border-t border-gray-200 dark:border-gray-700/60 flex flex-col gap-1.5 text-xs text-gray-500">
                       <div className="flex items-center justify-between py-1 px-2.5 rounded-xl bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200/60 dark:border-blue-800/40">
-                        <span className="font-semibold text-blue-900 dark:text-blue-200">Tempo Total em Resolução:</span>
+                        <span className="font-semibold text-blue-900 dark:text-blue-200">Tempo Gasto em Resolução (Sessão):</span>
                         <b className="text-blue-700 dark:text-blue-300 font-mono font-bold text-sm">{formatTime(elapsedSolveTotal)}</b>
                       </div>
                       <div className="flex items-center justify-between">
@@ -1106,10 +1133,10 @@ export function QuestionPacer({ className }: { className?: string }) {
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 h-full">
                       <div className="flex flex-col justify-center p-4 rounded-xl border border-blue-200 dark:border-blue-900/50 bg-blue-50/60 dark:bg-blue-950/30">
                         <div className="text-xs font-bold text-blue-700 dark:text-blue-300 uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                          <Timer className="w-3.5 h-3.5" /> Tempo Total
+                          <Timer className="w-3.5 h-3.5" /> Tempo de Resolução
                         </div>
                         <div className="text-2xl font-black text-blue-900 dark:text-blue-100 mt-1 mb-1 font-mono">{formatTime(elapsedSolveTotal)}</div>
-                        <div className="text-[11px] font-medium text-blue-600/80 dark:text-blue-400/80">Em resolução</div>
+                        <div className="text-[11px] font-semibold text-blue-600/90 dark:text-blue-400/90">Gasto neste momento de estudo</div>
                       </div>
 
                       <div className="flex flex-col justify-center p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30">
