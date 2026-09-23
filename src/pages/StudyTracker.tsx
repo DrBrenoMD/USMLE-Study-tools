@@ -180,6 +180,7 @@ export default function StudyTracker() {
     localStorage.setItem('usmle_customDateMarks_v4', JSON.stringify(customDateMarks));
     localStorage.setItem('usmle_resources_v4', JSON.stringify(resources));
     localStorage.setItem('usmle_study_logs_v4', JSON.stringify(studyLogs));
+    window.dispatchEvent(new Event('usmle_tracker_updated'));
   }, [mode, examDateStr, bufferDays, daysOff, specificDaysOff, customDateMarks, resources, studyLogs]);
 
   const plan = useStudyPlan(resources, examDateStr, daysOff, mode, bufferDays, specificDaysOff);

@@ -9,6 +9,8 @@ import {
 import { doc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import { cloudSyncService, SyncResult } from '../services/cloudSyncService';
+import { useStore } from '../cardblocks/store/useStore';
+import { useTimerStore } from '../store/useTimerStore';
 
 export type SyncState = 'idle' | 'saving' | 'synced' | 'downloading' | 'error';
 
@@ -154,27 +156,93 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => unsubscribe();
   }, []);
 
-  // Debounced auto-save quando eventos locais ocorrem
+  // Auto-save inteligente em tempo real para qualquer alteração
   useEffect(() => {
     if (!currentUser) return;
 
-    const triggerDebouncedSync = () => {
+    let isDirty = false;
+
+    const triggerDebouncedSync = (immediate = false) => {
+      isDirty = true;
       if (autoSaveTimerRef.current) {
         clearTimeout(autoSaveTimerRef.current);
       }
-      autoSaveTimerRef.current = setTimeout(() => {
+      if (immediate) {
+        isDirty = false;
         syncNow();
-      }, 5000); // 5 segundos de inatividade após mudanças
+        return;
+      }
+      // Debounce rápido de 1200ms após a última digitação/clique
+      autoSaveTimerRef.current = setTimeout(() => {
+        isDirty = false;
+        syncNow();
+      }, 1200);
     };
 
-    window.addEventListener('usmle_logs_updated', triggerDebouncedSync);
-    window.addEventListener('usmle_tracker_updated', triggerDebouncedSync);
-    window.addEventListener('usmle_scores_updated', triggerDebouncedSync);
+    // 1. Ouvir alterações em Flashcards, Cadernos, Questões, Decks, Notas e Configurações
+    const unsubCardStore = useStore.subscribe((state, prevState) => {
+      if (
+        state.cards !== prevState.cards ||
+        state.decks !== prevState.decks ||
+        state.notebooks !== prevState.notebooks ||
+        state.questions !== prevState.questions ||
+        state.reviewHistory !== prevState.reviewHistory ||
+        state.reviewLog !== prevState.reviewLog ||
+        state.notebookHistory !== prevState.notebookHistory ||
+        state.notes !== prevState.notes ||
+        state.questionBanks !== prevState.questionBanks ||
+        state.settings !== prevState.settings
+      ) {
+        triggerDebouncedSync();
+      }
+    });
+
+    // 2. Ouvir alterações no Timer / Pacer / Métricas diárias
+    const unsubTimerStore = useTimerStore.subscribe((state, prevState) => {
+      if (
+        state.dailyNetTime !== prevState.dailyNetTime ||
+        state.pacerCompletedQuestionsTime !== prevState.pacerCompletedQuestionsTime ||
+        state.pacerSoundSettings !== prevState.pacerSoundSettings
+      ) {
+        triggerDebouncedSync();
+      }
+    });
+
+    // 3. Ouvir eventos de StudyTracker, Scores, Logs e Tema
+    const handleLogs = () => triggerDebouncedSync();
+    const handleTracker = () => triggerDebouncedSync();
+    const handleScores = () => triggerDebouncedSync();
+    const handleTheme = () => triggerDebouncedSync();
+
+    window.addEventListener('usmle_logs_updated', handleLogs);
+    window.addEventListener('usmle_tracker_updated', handleTracker);
+    window.addEventListener('usmle_scores_updated', handleScores);
+    window.addEventListener('app_theme_updated', handleTheme);
+
+    // 4. Salvar imediatamente se o usuário sair da aba ou fechar a janela
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden' && isDirty) {
+        triggerDebouncedSync(true);
+      }
+    };
+    const handleBeforeUnload = () => {
+      if (isDirty) {
+        triggerDebouncedSync(true);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('beforeunload', handleBeforeUnload);
 
     return () => {
-      window.removeEventListener('usmle_logs_updated', triggerDebouncedSync);
-      window.removeEventListener('usmle_tracker_updated', triggerDebouncedSync);
-      window.removeEventListener('usmle_scores_updated', triggerDebouncedSync);
+      unsubCardStore();
+      unsubTimerStore();
+      window.removeEventListener('usmle_logs_updated', handleLogs);
+      window.removeEventListener('usmle_tracker_updated', handleTracker);
+      window.removeEventListener('usmle_scores_updated', handleScores);
+      window.removeEventListener('app_theme_updated', handleTheme);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     };
   }, [currentUser, syncNow]);

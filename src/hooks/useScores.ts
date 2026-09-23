@@ -20,6 +20,7 @@ export function useScores() {
 
   useEffect(() => {
     localStorage.setItem('usmle_scores_v1', JSON.stringify(scores));
+    window.dispatchEvent(new Event('usmle_scores_updated'));
   }, [scores]);
 
   const addScore = (score: Omit<SavedScore, 'id'>) => {
