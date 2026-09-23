@@ -445,5 +445,19 @@
 }
 
 html, body {
-  @apply bg-brand-bg-light dark:bg-brand-bg-dark dark:text-gray-100 m-0 p-0 w-full h-full;
+  background-color: var(--color-brand-bg-light, #F9FAFB);
+  color: #0f172a;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100%;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
+
+html.dark,
+html.dark body,
+body.dark {
+  background-color: var(--color-brand-bg-dark, #191d2d);
+  color: #f9fafb;
+}
+

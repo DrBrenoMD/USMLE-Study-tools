@@ -16,6 +16,8 @@ import { TopBarTimer } from "./components/TopBarTimer";
 import { ChevronLeft, Palette, Menu } from "lucide-react";
 import { Sidebar } from "./components/Sidebar";
 import { ThemeSelector, themes } from "./components/ThemeSelector";
+import { AuthProvider } from "./contexts/AuthContext";
+import { UserAuthWidget } from "./components/UserAuthWidget";
 
 function AppContent() {
   const location = useLocation();
@@ -31,10 +33,14 @@ function AppContent() {
   useEffect(() => {
     // Reset all theme classes first
     document.documentElement.className = '';
+    document.body.className = '';
     // Add current theme class(es)
     if (activeTheme.class) {
       const classes = activeTheme.class.split(' ');
-      classes.forEach(c => document.documentElement.classList.add(c));
+      classes.forEach(c => {
+        document.documentElement.classList.add(c);
+        document.body.classList.add(c);
+      });
     }
     localStorage.setItem('app-theme-id', activeTheme.id);
   }, [activeTheme]);
@@ -70,6 +76,7 @@ function AppContent() {
         </div>
         
         <div className="flex items-center gap-3">
+          <UserAuthWidget />
           <button 
             onClick={() => setIsThemeModalOpen(true)}
             className="p-2 rounded-full text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
@@ -101,7 +108,9 @@ function AppContent() {
 export default function App() {
   return (
     <BrowserRouter>
-      <AppContent />
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
     </BrowserRouter>
   );
 }

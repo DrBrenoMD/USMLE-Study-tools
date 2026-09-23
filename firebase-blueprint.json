@@ -1,0 +1,40 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "description": "User email address" },
+        "displayName": { "type": "string", "description": "Display name" },
+        "photoURL": { "type": "string", "description": "Avatar image URL" },
+        "createdAt": { "type": "string", "description": "Account creation timestamp" },
+        "lastLoginAt": { "type": "string", "description": "Last sign in timestamp" }
+      },
+      "required": ["uid", "email"]
+    },
+    "UserDataSync": {
+      "title": "UserDataSync",
+      "description": "User synchronized data bundle for study tools, tracker, cards, notebooks, metrics and preferences",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Owner user UID" },
+        "dataType": { "type": "string", "description": "Type of synchronized data (study_tracker, cardblocks, timer_metrics, scores, preferences)" },
+        "payload": { "type": "string", "description": "Serialized JSON data payload" },
+        "updatedAt": { "type": "string", "description": "Timestamp of last modification" }
+      },
+      "required": ["userId", "dataType", "payload"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Root user profile document"
+    },
+    "/users/{userId}/data/{dataType}": {
+      "schema": "UserDataSync",
+      "description": "Subcollection of user synchronized study data documents partitioned by data type"
+    }
+  }
+}

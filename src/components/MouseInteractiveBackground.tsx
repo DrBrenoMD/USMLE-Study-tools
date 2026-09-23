@@ -24,9 +24,9 @@ export function MouseInteractiveBackground({ className }: { className?: string }
   }, [mouseX, mouseY]);
 
   return (
-    <div className={cn("pointer-events-none fixed inset-0 overflow-hidden bg-slate-50", className)}>
+    <div className={cn("pointer-events-none fixed inset-0 overflow-hidden bg-transparent -z-10", className)}>
       <motion.div
-        className="absolute h-[500px] w-[500px] rounded-full bg-slate-200/50 blur-[120px]"
+        className="absolute h-[500px] w-[500px] rounded-full bg-slate-200/40 dark:bg-blue-600/10 blur-[120px]"
         style={{
           x: smoothX,
           y: smoothY,

@@ -73,7 +73,7 @@ export default function Home() {
               }`}
             >
               <div>
-                <div className="mb-4 inline-flex items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-900/30 p-3 text-blue-600 dark:text-blue-400 transition-colors border border-blue-100">
+                <div className="mb-4 inline-flex items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-900/30 p-3 text-blue-600 dark:text-blue-400 transition-colors border border-blue-100 dark:border-blue-800/40">
                   <item.icon className="h-5 w-5" />
                 </div>
                 <h2 className="mb-2 text-sm font-bold text-gray-900 dark:text-gray-100">
