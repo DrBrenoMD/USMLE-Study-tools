@@ -34,6 +34,7 @@ export function UserAuthWidget() {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
+  const [loginError, setLoginError] = useState<string | null>(null);
 
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -52,14 +53,28 @@ export function UserAuthWidget() {
   const handleSignIn = async () => {
     try {
       setIsActionLoading(true);
+      setLoginError(null);
       await signInWithGoogle();
       setIsLoginModalOpen(false);
       setFeedbackMsg('Login realizado com sucesso! Seus dados foram sincronizados.');
       setTimeout(() => setFeedbackMsg(null), 4000);
     } catch (e: any) {
-      console.error(e);
-      setFeedbackMsg('Não foi possível concluir o login com o Google.');
-      setTimeout(() => setFeedbackMsg(null), 4000);
+      console.error("Firebase Auth Error:", e);
+      const code = e?.code || '';
+      let msg = 'Não foi possível concluir o login com o Google.';
+      if (code === 'auth/unauthorized-domain') {
+        msg = `Domínio não autorizado (${window.location.hostname}). Adicione este domínio no Firebase Console > Authentication > Settings > Authorized domains.`;
+      } else if (code === 'auth/operation-not-allowed') {
+        msg = 'O provedor Google ainda não está ativado no Firebase. Ative-o em Authentication > Sign-in method.';
+      } else if (code === 'auth/popup-closed-by-user') {
+        msg = 'A janela do Google foi fechada antes de finalizar.';
+      } else if (code === 'auth/popup-blocked') {
+        msg = 'O navegador bloqueou a janela pop-up do Google. Permita pop-ups para este site.';
+      } else if (e?.message) {
+        msg = `Erro (${code || 'Auth'}): ${e.message}`;
+      }
+      setLoginError(msg);
+      setFeedbackMsg(msg);
     } finally {
       setIsActionLoading(false);
     }
@@ -159,6 +174,13 @@ export function UserAuthWidget() {
                     <span className="font-medium text-gray-700 dark:text-gray-300 text-[11px]">Preferências & Temas</span>
                   </div>
                 </div>
+
+                {loginError && (
+                  <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 text-xs">
+                    <p className="font-semibold mb-0.5">Aviso de Login:</p>
+                    <p className="text-[11px] leading-relaxed">{loginError}</p>
+                  </div>
+                )}
 
                 <div className="pt-2">
                   <button

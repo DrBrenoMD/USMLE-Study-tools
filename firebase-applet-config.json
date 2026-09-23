@@ -1,12 +1,12 @@
 {
-  "projectId": "gen-lang-client-0646211489",
-  "appId": "1:1008920978300:web:d9912d048e335e8743baf9",
-  "apiKey": "AIzaSyAfNvJwc1ZZS7RyRmzP0Q7oMtgquGJygTg",
-  "authDomain": "gen-lang-client-0646211489.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-brenomdusmlestud-2e538f43-5124-4c03-8350-f615099afcaf",
-  "storageBucket": "gen-lang-client-0646211489.firebasestorage.app",
-  "messagingSenderId": "1008920978300",
-  "measurementId": "",
-  "oAuthClientId": "1008920978300-jnfe8kj900d0fuchmcqq30nvd9lbh0l3.apps.googleusercontent.com",
+  "projectId": "usmle-study",
+  "appId": "1:43204570070:web:d29f3e4869ca39c11a5277",
+  "apiKey": "AIzaSyB9bA_EmFdX44A3BPAbwDeK0ICwzLVEZyA",
+  "authDomain": "usmle-study.firebaseapp.com",
+  "firestoreDatabaseId": "",
+  "storageBucket": "usmle-study.firebasestorage.app",
+  "messagingSenderId": "43204570070",
+  "measurementId": "G-HHFMQTX71P",
+  "oAuthClientId": "",
   "recaptchaSiteKey": ""
 }
