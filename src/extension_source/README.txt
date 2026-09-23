@@ -1,26 +1,23 @@
 ===========================================================
-ASSISTENTE Q-BANK & PACER - VERSÃO 1.8
+ASSISTENTE Q-BANK & PACER - VERSÃO 1.9
 ===========================================================
 
-Novidades da Versão 1.8:
-- ⚡ Botão Flutuante Discreto na Margem DIREITA:
-  - Posicionado na margem DIREITA da tela com alta prioridade visual (z-index máximo).
-  - Exibido EXCLUSIVAMENTE nas páginas de resolução de questões do Q-Bank (UWorld, Amboss, etc.).
-  - Ao clicar, abre uma aba vertical retrátil integrada às questões.
-- ⚡ Gerador Instantâneo de Flashcards da Questão:
-  - Botão de geração ultra confiável com injeção direta de scripts, storage síncrono e BroadcastChannel.
-  - Sincronização inteligente: Se já houver uma janela ou aba de criação de flashcards aberta (ou gerenciador de baralho), transfere os dados para ela e foca a tela sem abrir abas duplicadas.
-  - Campos isolados: O enunciado e o educational objective vão exclusivamente para seus campos dedicados (frente e verso ficam livres para preenchimento manual).
-  - Novos campos dedicados: Subject e System com geração de tags únicas correspondentes.
-  - Tags limpas sem duplicações: 'qid' e 'qbank-sync' aparecem apenas uma vez.
-  - Captura avançada de imagens e links de imagem da explicação, com suporte a colar imagens no campo.
-  - Descarte automático: Durante a navegação, cards sem frente e verso preenchidos são automaticamente descartados, salvando apenas os completados pelo usuário.
-- Question Pacer idêntico ao do site com suporte completo aos 3 Modos (Clássico, Adaptativo e Sessões).
-- Personalização total dos Comandos de Voz (PT/EN), Leitura e Atalhos de Teclado.
+Novidades da Versão 1.9:
+- ⚡ Correção Cirúrgica na Extração de Explicação vs Educational Objective:
+  - O cabeçalho 'Educational objective' agora é detectado de forma estrita em elementos dedicados (h1..h6), eliminando a captura indevida de divs contêineres pai.
+  - A Explicação inteira agora vai exclusivamente para o campo 'Explicação', sem misturar com o Educational Objective.
+  - O Educational Objective vai exclusivamente para o campo 'Educational Objective'.
+- ⚡ Extração Perfeita de Subject, System e Q ID:
+  - Mapeamento direto da tabela/linhas de metadados do QBankly/UWorld (ex: Subject: Medicine | System: Biostatistics & Epidemiology | Q ID: 4262).
+  - Geração automática de tags únicas sem duplicidades (ex: 'qid:4262', 'subject:medicine', 'system:biostatistics-epidemiology', 'qbank-sync').
+- ⚡ Pré-visualização em Tempo Real no Drawer:
+  - O painel vertical da margem direita agora mostra em tempo real os valores detectados de Subject, System e Q ID antes mesmo de você clicar em gerar o card.
+- ⚡ Captura Abrangente de Imagens Clínicas:
+  - Identifica e copia imagens e thumbnails médicas em alta resolução do QBankly e UWorld (incluindo imagens clicáveis com zoom).
 
 COMO ATUALIZAR UMA EXTENSÃO JÁ INSTALADA:
 1. Baixe o novo arquivo .zip no site e extraia os arquivos substituindo os existentes na sua pasta da extensão.
 2. Abra o Google Chrome, digite chrome://extensions e dê Enter.
 3. No cartão da extensão "Assistente de Questões por Voz + Pacer", clique no ícone de "Recarregar" (círculo com seta 🔄).
-4. Volte para a aba do Q-Bank e aperte F5 (recarregar página).
-5. O botão aparecerá na margem DIREITA da tela pronto para uso!
+4. Volte para a aba do seu Q-Bank (UWorld/QBankly) e aperte F5 (recarregar página).
+5. Pronto! Os campos serão extraídos com 100% de fidelidade!

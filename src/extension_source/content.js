@@ -318,26 +318,45 @@ function atualizarVisibilidadeBotaoQBank() {
 
 function extrairIdQuestaoAtual() {
     let qId = '';
-    const bodyText = document.body ? document.body.innerText : '';
 
-    // 1. Procura número do item e atualiza número da questão (ex: "Item 50 of 60")
-    const matchItem = bodyText.match(/Item\s*(\d{1,4})\s*of\s*(\d{1,4})/i);
-    if (matchItem && matchItem[1]) {
-        currentQNumberExt = parseInt(matchItem[1], 10);
-    }
-
-    // 2. Procura "Question Id: 3046" especificamente (UWorld real da imagem)
-    const matchQId = bodyText.match(/(?:Question\s*Id|Quest[aã]o|QID)\s*[:#]?\s*(\d{2,8})/i);
-    if (matchQId && matchQId[1]) {
-        qId = matchQId[1];
-    }
-
-    if (!qId) {
-        const idEl = document.querySelector('[id*="question-id"], [class*="question-id"], [class*="q-id"], [data-question-id]');
-        if (idEl) {
-            const text = idEl.innerText.replace(/[^0-9]/g, '');
-            if (text) qId = text;
+    // 1. Procura label "Q ID" e seu irmão adjacente (como no QBankly: span com texto "Q ID" seguido de span com "4262")
+    const allLabels = Array.from(document.querySelectorAll('span, button, div, dt, td'));
+    for (let el of allLabels) {
+        const txt = (el.innerText || el.textContent || '').trim();
+        if (/^Q\s*ID$/i.test(txt)) {
+            const next = el.nextElementSibling || (el.parentElement ? el.parentElement.querySelector('span:nth-child(2), [title], [class*="semibold"]') : null);
+            if (next && next !== el) {
+                const val = (next.getAttribute('title') || next.innerText || next.textContent || '').replace(/[^0-9]/g, '');
+                if (val) { qId = val; break; }
+            }
         }
+    }
+
+    // 2. Procura Question Id na navbar superior: "Question Id: 4262"
+    if (!qId) {
+        const headerEl = Array.from(document.querySelectorAll('span, div')).find(el => 
+            /Question\s*Id\s*:\s*\d+/i.test(el.textContent || '')
+        );
+        if (headerEl) {
+            const m = headerEl.textContent.match(/Question\s*Id\s*:\s*(\d+)/i);
+            if (m) qId = m[1];
+        }
+    }
+
+    // 3. Atualiza o número da questão pelo item (ex: "Item 51 of 60" ou "51 / 60")
+    const itemEl = Array.from(document.querySelectorAll('span, div')).find(el => 
+        /Item\s*\d+\s*of\s*\d+/i.test(el.textContent || '') || /^\s*\d+\s*\/\s*\d+\s*$/.test(el.textContent || '')
+    );
+    if (itemEl) {
+        const m = itemEl.textContent.match(/(?:Item\s*)?(\d+)\s*(?:of|\/)\s*(\d+)/i);
+        if (m) currentQNumberExt = parseInt(m[1], 10);
+    }
+
+    // 4. Fallback no body text
+    const bodyText = document.body ? document.body.innerText : '';
+    if (!qId) {
+        const matchQId = bodyText.match(/(?:Question\s*Id|Quest[aã]o|QID)\s*[:#]?\s*(\d{2,8})/i);
+        if (matchQId && matchQId[1]) qId = matchQId[1];
     }
 
     if (!qId) {
@@ -351,25 +370,44 @@ function extrairSubjectESystem() {
     let subject = '';
     let system = '';
 
-    const subjectEl = document.querySelector('[data-subject], .subject-name, [class*="subject"], [id*="subject"], [class*="discipline"]');
-    if (subjectEl) {
-        const text = subjectEl.innerText.replace(/(?:Subject|Mat[eé]ria|Discipline)[:\s]*/i, '').trim();
-        if (text && text.length < 50 && !text.includes('\n')) subject = text;
+    // 1. Busca específica por pares de label/valor (como no QBankly / UWorld)
+    const allLabels = Array.from(document.querySelectorAll('span, button, div, dt, td, label, b, strong'));
+    for (let el of allLabels) {
+        const txt = (el.innerText || el.textContent || '').trim();
+        
+        if (!subject && /^Subject$/i.test(txt)) {
+            const next = el.nextElementSibling || (el.parentElement ? el.parentElement.querySelector('span:nth-child(2), button, [title], [class*="semibold"]') : null);
+            if (next && next !== el) {
+                subject = (next.getAttribute('title') || next.innerText || next.textContent || '').trim();
+            }
+        }
+        
+        if (!system && /^System$/i.test(txt)) {
+            const next = el.nextElementSibling || (el.parentElement ? el.parentElement.querySelector('button, span:nth-child(2), [title], [class*="semibold"]') : null);
+            if (next && next !== el) {
+                system = (next.getAttribute('title') || next.innerText || next.textContent || '').trim();
+            }
+        }
     }
 
-    const systemEl = document.querySelector('[data-system], .system-name, [class*="system"], [id*="system"]');
-    if (systemEl) {
-        const text = systemEl.innerText.replace(/(?:System|Sistema)[:\s]*/i, '').trim();
-        if (text && text.length < 50 && !text.includes('\n')) system = text;
+    // 2. Fallbacks com seletores conhecidos
+    if (!subject) {
+        const subEl = document.querySelector('[data-subject], .subject-name, [class*="subject"]');
+        if (subEl) subject = subEl.getAttribute('title') || subEl.innerText.trim();
+    }
+    if (!system) {
+        const sysEl = document.querySelector('[data-system], .system-name, [class*="system"]');
+        if (sysEl) system = sysEl.getAttribute('title') || sysEl.innerText.trim();
     }
 
+    // 3. Fallback por regex no body text
     const bodyText = document.body ? document.body.innerText : '';
     if (!subject) {
-        const matchSub = bodyText.match(/(?:Subject|Mat[eé]ria)\s*[:#]\s*([^\n\r<|]{2,40})/i);
+        const matchSub = bodyText.match(/Subject\s*[\n\r:]+\s*([^\n\r<|]{2,60})/i);
         if (matchSub && matchSub[1]) subject = matchSub[1].trim();
     }
     if (!system) {
-        const matchSys = bodyText.match(/(?:System|Sistema)\s*[:#]\s*([^\n\r<|]{2,40})/i);
+        const matchSys = bodyText.match(/System\s*[\n\r:]+\s*([^\n\r<|]{2,80})/i);
         if (matchSys && matchSys[1]) system = matchSys[1].trim();
     }
 
@@ -379,14 +417,23 @@ function extrairSubjectESystem() {
 // Extração de imagens presentes na explicação ou em links no texto
 function extrairTodasImagensQuestao() {
     const imagesSet = new Set();
-    const container = document.querySelector('.max-w-5xl') || document.querySelector('[class*="question"]') || document.body;
-    if (!container) return [];
-
-    // 1. Tags <img> na explicação e no enunciado
-    const imgs = container.querySelectorAll('img');
+    const imgs = document.querySelectorAll('img');
     imgs.forEach(img => {
         const src = img.getAttribute('src') || img.getAttribute('data-src') || img.src;
-        if (src && !src.includes('data:image/svg') && (img.width > 50 || img.height > 50 || src.includes('uworld') || src.includes('amboss') || src.includes('media') || src.includes('image') || src.includes('asset') || src.includes('upload'))) {
+        if (!src || src.includes('data:image/svg')) return;
+
+        const isMedicalImage = src.includes('/media/') || 
+                               src.includes('/webi/') ||
+                               src.includes('qbankly.app') || 
+                               src.includes('uworld') || 
+                               src.includes('amboss') ||
+                               src.includes('Thumbnail') || 
+                               img.alt?.includes('Thumbnail') ||
+                               img.closest('button[aria-label*="Enlarge"]') ||
+                               img.closest('div[class*="aspect-square"]') ||
+                               (img.width > 60 || img.height > 60);
+
+        if (isMedicalImage && !src.includes('favicon') && !src.includes('avatar') && !src.includes('logo')) {
             try {
                 const absUrl = new URL(src, window.location.href).href;
                 imagesSet.add(absUrl);
@@ -396,18 +443,15 @@ function extrairTodasImagensQuestao() {
         }
     });
 
-    // 2. Links <a> apontando para imagens ao longo do texto da explicação
-    const links = container.querySelectorAll('a[href]');
+    // Links <a> apontando para imagens ao longo do texto da explicação
+    const links = document.querySelectorAll('a[href]');
     links.forEach(a => {
         const href = a.getAttribute('href');
         if (!href) return;
         const isImgLink = /\.(png|jpe?g|webp|gif|svg|bmp)(\?.*)?$/i.test(href) ||
                           href.includes('/media/') ||
                           href.includes('/images/') ||
-                          href.includes('/asset/') ||
-                          href.includes('/attachment/') ||
-                          a.hasAttribute('data-lightbox') ||
-                          a.hasAttribute('data-image');
+                          href.includes('/webi/');
         if (isImgLink) {
             try {
                 const absUrl = new URL(href, window.location.href).href;
@@ -440,7 +484,7 @@ function gerarTagsUnicas(qId, subject, system) {
 function extrairDadosCompletosQuestao() {
     const qId = extrairIdQuestaoAtual();
     const stemArr = extrairEnunciadoParaFila();
-    const questionStem = stemArr.map(i => i.text).join('\n\n');
+    const questionStem = stemArr.filter(i => i.text !== "Question text not found." && i.text !== "Texto do enunciado não identificado.").map(i => i.text).join('\n\n');
     const choicesArr = extrairAlternativasParaFila();
     const questionChoices = choicesArr.filter(i => i.text !== 'Options:').map(i => i.text).join('\n');
     const expArr = extrairExplicacaoParaFila();
@@ -653,6 +697,15 @@ function atualizarStatusCardQuestaoAtual() {
         const cardsMap = res.saved_question_cards || {};
         const cardExistente = cardsMap[qId];
 
+        const subSys = extrairSubjectESystem();
+        const detectedFieldsHtml = `
+            <div style="margin-top: 8px; margin-bottom: 8px; padding: 8px 10px; background: rgba(15,23,42,0.8); border-radius: 8px; border: 1px solid #334155; font-size: 10px; line-height: 1.5; color: #94a3b8;">
+                <div><b style="color: #cbd5e1;">Subject:</b> <span style="color: #60a5fa;">${subSys.subject || 'Detectando...'}</span></div>
+                <div><b style="color: #cbd5e1;">System:</b> <span style="color: #60a5fa;">${subSys.system || 'Detectando...'}</span></div>
+                <div><b style="color: #cbd5e1;">Q ID:</b> <span style="color: #34d399;">${qId}</span></div>
+            </div>
+        `;
+
         if (cardExistente) {
             statusCard.innerHTML = `
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
@@ -661,6 +714,7 @@ function atualizarStatusCardQuestaoAtual() {
                         ● Flashcard Salvo
                     </span>
                 </div>
+                ${detectedFieldsHtml}
                 <div style="font-size: 11px; color: #cbd5e1; background: #0f172a; padding: 8px; border-radius: 8px; border: 1px solid #1e293b; margin-bottom: 10px; max-height: 80px; overflow: hidden; text-overflow: ellipsis;">
                     <b>Frente:</b> ${(cardExistente.front || '').replace(/<[^>]+>/g, '').substring(0, 100)}...
                 </div>
@@ -676,6 +730,7 @@ function atualizarStatusCardQuestaoAtual() {
                         Sem Flashcard
                     </span>
                 </div>
+                ${detectedFieldsHtml}
                 <p style="font-size: 11px; color: #94a3b8; line-height: 1.4; margin: 0 0 10px 0;">
                     Nenhum flashcard criado ainda para esta questão.
                 </p>
@@ -986,32 +1041,117 @@ function extrairAlternativasParaFila() {
     return itens;
 }
 
-function extrairExplicacaoParaFila() {
-    const headers = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, b, strong, div'));
-    const objHeader = headers.find(h => /(?:Educational\s*objective|Key\s*point|Take-home)/i.test(h.textContent || ''));
-    if (!objHeader) return [{ text: "Explanation not found.", node: null }];
-    const container = objHeader.parentElement;
-    const blocos = getBlocosDeTexto(container);
-    const itens = [];
-    for (let b of blocos) {
-        if (objHeader.contains(b.node) || b.node === objHeader) break;
-        itens.push(b);
+// Localiza estritamente o cabeçalho do Educational Objective (evita capturar divs pai que englobam a página)
+function encontrarCabecalhoObjetivo() {
+    const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6, strong, b, [class*="header"]'));
+    const directHeading = headings.find(h => {
+        const txt = (h.textContent || '').trim();
+        return /(?:Educational\s*objective|Key\s*point|Take-home)/i.test(txt) && txt.length < 80;
+    });
+    if (directHeading) return directHeading;
+
+    const all = Array.from(document.querySelectorAll('*'));
+    return all.find(el => {
+        const txt = (el.textContent || '').trim();
+        return /(?:Educational\s*objective|Key\s*point|Take-home)/i.test(txt) && txt.length < 60 && el.children.length <= 2;
+    }) || null;
+}
+
+function obterContainerExplicacao() {
+    // 1. Procura pela aba "Explanation"
+    const expTab = Array.from(document.querySelectorAll('span, li, button, h2, h3')).find(el => 
+        /^\s*Explanation\s*$/i.test((el.textContent || '').trim())
+    );
+    if (expTab) {
+        const section = expTab.closest('div.mt-8, div[class*="mt-"], main, article');
+        if (section) return section;
     }
+
+    // 2. Container pai do cabeçalho do objetivo
+    const objHeader = encontrarCabecalhoObjetivo();
+    if (objHeader && objHeader.parentElement) {
+        return objHeader.parentElement.closest('div.mt-8, div[class*="pt-5"], main') || objHeader.parentElement;
+    }
+
+    return document.body;
+}
+
+function extrairExplicacaoParaFila() {
+    const objHeader = encontrarCabecalhoObjetivo();
+    const expContainer = obterContainerExplicacao();
+    const itens = [];
+
+    // Todos os parágrafos dentro do container de explicação
+    const allP = Array.from(expContainer.querySelectorAll('p'));
+    for (let p of allP) {
+        if (objHeader && (objHeader === p || objHeader.contains(p))) continue;
+
+        // Se o parágrafo vem DEPOIS do objHeader, ele pertence ao Educational Objective!
+        if (objHeader && (objHeader.compareDocumentPosition(p) & Node.DOCUMENT_POSITION_FOLLOWING)) {
+            continue;
+        }
+
+        // Ignora metadados de Subject / System
+        if (p.closest('[class*="border-y"]') || /(?:Subject|System|Q\s*ID)\s*:/i.test(p.innerText || '')) {
+            continue;
+        }
+
+        const txt = (p.innerText || '').trim();
+        if (txt.length > 5 && !/(?:Clear highlights|Mark Question)/i.test(txt)) {
+            itens.push({ text: txt, node: p });
+        }
+    }
+
+    // Fallback: se allP não achou nada, pega blocos de texto antes do objHeader
+    if (itens.length === 0 && objHeader) {
+        let prev = objHeader.previousElementSibling;
+        const prevNodes = [];
+        while (prev) {
+            const txt = (prev.innerText || '').trim();
+            if (txt.length > 5) prevNodes.unshift({ text: txt, node: prev });
+            prev = prev.previousElementSibling;
+        }
+        if (prevNodes.length > 0) return prevNodes;
+    }
+
     return itens.length > 0 ? itens : [{ text: "Explanation not found.", node: null }];
 }
 
 function extrairObjetivoParaFila() {
-    const headers = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, b, strong, div'));
-    const objHeader = headers.find(h => /(?:Educational\s*objective|Key\s*point|Take-home)/i.test(h.textContent || ''));
+    const objHeader = encontrarCabecalhoObjetivo();
     if (!objHeader) return [{ text: "Educational objective not found.", node: null }];
-    const container = objHeader.parentElement;
-    const blocos = getBlocosDeTexto(container);
+
     const itens = [];
-    let started = false;
-    for (let b of blocos) {
-        if (objHeader.contains(b.node) || b.node === objHeader) started = true;
-        if (started) itens.push(b);
+
+    // 1. Pega os irmãos diretos que vêm depois do objHeader
+    let next = objHeader.nextElementSibling;
+    while (next) {
+        // Se encontrou a barra de metadados Subject / System / Q ID, para imediatamente!
+        if (next.querySelector('[class*="border-y"]') || /(?:Subject|System|Q\s*ID)\s*:/i.test(next.innerText || '')) {
+            break;
+        }
+        const txt = (next.innerText || '').trim();
+        if (txt.length > 5) {
+            itens.push({ text: txt, node: next });
+        }
+        next = next.nextElementSibling;
     }
+
+    // 2. Se os irmãos diretos não trouxeram nada, varre parágrafos com compareDocumentPosition
+    if (itens.length === 0) {
+        const expContainer = obterContainerExplicacao();
+        const allP = Array.from(expContainer.querySelectorAll('p'));
+        for (let p of allP) {
+            if (objHeader === p || objHeader.contains(p)) continue;
+            // Se vem DEPOIS do objHeader
+            if (objHeader.compareDocumentPosition(p) & Node.DOCUMENT_POSITION_FOLLOWING) {
+                if (p.closest('[class*="border-y"]') || /(?:Subject|System|Q\s*ID)/i.test(p.innerText || '')) break;
+                const txt = (p.innerText || '').trim();
+                if (txt.length > 5) itens.push({ text: txt, node: p });
+            }
+        }
+    }
+
     return itens.length > 0 ? itens : [{ text: "Educational objective not found.", node: null }];
 }
 

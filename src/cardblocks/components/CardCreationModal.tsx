@@ -69,6 +69,26 @@ export const CardCreationModal: React.FC<{
     }
   }, [decks]);
 
+  // Sincroniza campos caso initialData seja injetado ou alterado dinamicamente
+  useEffect(() => {
+    if (initialData) {
+      if (initialData.questionId || initialData.questionStem || initialData.educationalObjective || initialData.subject || initialData.system) {
+        setIsQBankFieldsOpen(true);
+      }
+      if (initialData.questionId) setQuestionId(initialData.questionId);
+      if (initialData.questionStem) setQuestionStem(initialData.questionStem);
+      if (initialData.questionChoices) setQuestionChoices(initialData.questionChoices);
+      if (initialData.explanation) setExplanation(initialData.explanation);
+      if (initialData.educationalObjective) setEducationalObjective(initialData.educationalObjective);
+      if (initialData.subject || (initialData as any).subjective) setSubject(initialData.subject || (initialData as any).subjective);
+      if (initialData.system) setSystem(initialData.system);
+      if (initialData.questionImages) setQuestionImages(initialData.questionImages);
+      if (initialData.tags) setTags(deduplicateTags(tags, initialData.tags));
+      if (initialData.front !== undefined) setFront(initialData.front);
+      if (initialData.back !== undefined) setBack(initialData.back);
+    }
+  }, [initialData]);
+
   // Função centralizada para processar nova questão recebida
   const processIncomingQuestion = (payload: any) => {
     if (!payload) return;

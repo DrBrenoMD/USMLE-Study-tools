@@ -1,5 +1,5 @@
 // =========================================================================
-// Background Service Worker - Assistente Q-Bank & Pacer v1.8
+// Background Service Worker - Assistente Q-Bank & Pacer v1.9
 // Gerencia a reutilização inteligente de abas abertas da aplicação de Flashcards
 // =========================================================================
 
