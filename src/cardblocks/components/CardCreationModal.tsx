@@ -1,7 +1,65 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useStore, Question } from '../store/useStore';
-import { X, Save, Sparkles, PlusCircle, ChevronDown, ChevronUp, Copy, Image as ImageIcon, Trash2 } from 'lucide-react';
+import { X, Save, Sparkles, PlusCircle, ChevronDown, ChevronUp, Copy, Image as ImageIcon, Trash2, Clipboard } from 'lucide-react';
 import { RichEditor } from './RichEditor';
+
+// Helper para verificar se texto ou HTML possui conteúdo real preenchido pelo usuário (ignora tags vazias como <p></p> e espaços)
+export function hasMeaningfulContent(htmlOrText: string): boolean {
+  if (!htmlOrText) return false;
+  if (/<img|<audio|<video/i.test(htmlOrText)) return true;
+  const text = htmlOrText
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text.length > 0;
+}
+
+// Helper para deduplicar tags e garantir que q-* e qbank-sync nunca se repitam
+export function deduplicateTags(rawTags: string | string[], newQId?: string): string[] {
+  const list = Array.isArray(rawTags)
+    ? rawTags
+    : (rawTags || '').split(',').map(t => t.trim()).filter(Boolean);
+
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const item of list) {
+    const trimmed = item.trim();
+    if (!trimmed) continue;
+
+    // Se um novo questionId for informado, descarta tags antigas q-* que não sejam da questão atual
+    if (newQId && trimmed.startsWith('q-') && trimmed.toLowerCase() !== `q-${newQId}`.toLowerCase()) {
+      continue;
+    }
+
+    const lower = trimmed.toLowerCase();
+    if (!seen.has(lower)) {
+      seen.add(lower);
+      result.push(trimmed);
+    }
+  }
+
+  // Garante a tag q-${newQId} uma única vez se houver newQId
+  if (newQId && newQId.trim()) {
+    const qTag = `q-${newQId.trim()}`;
+    if (!seen.has(qTag.toLowerCase())) {
+      seen.add(qTag.toLowerCase());
+      result.unshift(qTag);
+    }
+  }
+
+  // Garante a tag qbank-sync uma única vez
+  if ((newQId || seen.has('qbank-sync')) && !seen.has('qbank-sync')) {
+    result.push('qbank-sync');
+  }
+
+  return result;
+}
+
+export function deduplicateTagsString(rawTags: string | string[], newQId?: string): string {
+  return deduplicateTags(rawTags, newQId).join(', ');
+}
 
 export const CardCreationModal: React.FC<{ 
   onClose: () => void;
@@ -19,11 +77,15 @@ export const CardCreationModal: React.FC<{
     tags?: string[];
   };
 }> = ({ onClose, sourceQuestion, initialData }) => {
-  const { decks, createDeck, createCard, updateCard } = useStore();
+  const { decks, cards, createDeck, createCard, updateCard } = useStore();
   const [deckId, setDeckId] = useState<string>('');
   const [front, setFront] = useState(initialData?.front || '');
   const [back, setBack] = useState(initialData?.back || '');
-  const [tags, setTags] = useState<string>(initialData?.tags?.join(', ') || sourceQuestion?.tags?.join(', ') || '');
+  const [tags, setTags] = useState<string>(
+    deduplicateTagsString(initialData?.tags || sourceQuestion?.tags || [], initialData?.questionId || sourceQuestion?.id)
+  );
+
+  const [currentCardId, setCurrentCardId] = useState<string | null>(initialData?.id || null);
 
   // QBank integration fields (natively collapsed by default unless imported)
   const [isQBankFieldsOpen, setIsQBankFieldsOpen] = useState(
@@ -42,7 +104,50 @@ export const CardCreationModal: React.FC<{
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedCards, setGeneratedCards] = useState<{front: string, back: string}[]>([]);
-  const [saveSuccessMsg, setSaveSuccessMsg] = useState(false);
+  const [notificationMsg, setNotificationMsg] = useState<{ type: 'success' | 'info' | 'error', text: string } | null>(null);
+
+  // Refs para manter valores atualizados em listeners de eventos assíncronos
+  const cardsRef = useRef(cards);
+  useEffect(() => {
+    cardsRef.current = cards;
+  }, [cards]);
+
+  const currentStateRef = useRef({
+    front,
+    back,
+    tags,
+    deckId,
+    questionId,
+    questionStem,
+    questionChoices,
+    explanation,
+    educationalObjective,
+    questionImages,
+    cardId: currentCardId,
+  });
+
+  useEffect(() => {
+    currentStateRef.current = {
+      front,
+      back,
+      tags,
+      deckId,
+      questionId,
+      questionStem,
+      questionChoices,
+      explanation,
+      educationalObjective,
+      questionImages,
+      cardId: currentCardId,
+    };
+  });
+
+  useEffect(() => {
+    if (notificationMsg) {
+      const timer = setTimeout(() => setNotificationMsg(null), 3800);
+      return () => clearTimeout(timer);
+    }
+  }, [notificationMsg]);
 
   useEffect(() => {
     const genDeck = decks.find(d => d.name === "Generated Cards");
@@ -53,55 +158,141 @@ export const CardCreationModal: React.FC<{
     }
   }, [decks]);
 
+  const getFinalDeckId = () => {
+    let finalDeckId = deckId;
+    if (!finalDeckId) {
+      if (decks.length === 0) {
+        finalDeckId = createDeck("Default Deck");
+      } else {
+        finalDeckId = decks[0].id;
+      }
+    }
+    return finalDeckId;
+  };
+
+  const notifyCardSaved = (qId?: string, f?: string, b?: string) => {
+    if (!qId) return;
+    const payload = { questionId: qId, front: f, back: b };
+    try {
+      const bc = new BroadcastChannel('usmle_flashcards_sync');
+      bc.postMessage({ type: 'USMLE_FLASHCARD_SAVED', payload });
+      setTimeout(() => bc.close(), 1000);
+    } catch (e) {}
+    if (typeof window !== 'undefined' && window.opener) {
+      try {
+        window.opener.postMessage({ type: 'USMLE_FLASHCARD_SAVED', payload }, '*');
+      } catch (e) {}
+    }
+  };
+
+  // Processa nova questão recebida (navegação automática ou manual):
+  // Salva o card anterior SE frente e verso foram preenchidos manualmente; caso contrário, descarta o card incompleto!
+  const handleIncomingQuestion = (payload: any) => {
+    if (!payload) return;
+    const incomingQId = (payload.questionId || '').trim();
+    const incomingStem = (payload.questionStem || payload.stem || '').trim();
+
+    const prev = currentStateRef.current;
+    const hadPrevQuestion = Boolean(prev.questionId || prev.questionStem);
+    const isDifferentQuestion = incomingQId 
+      ? incomingQId !== prev.questionId 
+      : (incomingStem && incomingStem !== prev.questionStem);
+
+    // Se estiver navegando para uma questão diferente:
+    if (hadPrevQuestion && isDifferentQuestion) {
+      const userCompleted = hasMeaningfulContent(prev.front) && hasMeaningfulContent(prev.back);
+      if (userCompleted) {
+        // Usuário preencheu manualmente frente e verso: SALVA O FLASHCARD!
+        const targetDeckId = getFinalDeckId();
+        if (targetDeckId) {
+          const cleanTags = deduplicateTags(prev.tags, prev.questionId);
+          if (prev.cardId) {
+            updateCard(prev.cardId, {
+              deckId: targetDeckId,
+              front: prev.front,
+              back: prev.back,
+              tags: cleanTags,
+              questionId: prev.questionId.trim() || undefined,
+              questionStem: prev.questionStem.trim() || undefined,
+              questionChoices: prev.questionChoices.trim() || undefined,
+              explanation: prev.explanation.trim() || undefined,
+              educationalObjective: prev.educationalObjective.trim() || undefined,
+              questionImages: prev.questionImages.length > 0 ? prev.questionImages : undefined,
+            });
+          } else {
+            createCard({
+              deckId: targetDeckId,
+              front: prev.front,
+              back: prev.back,
+              tags: cleanTags,
+              questionId: prev.questionId.trim() || undefined,
+              questionStem: prev.questionStem.trim() || undefined,
+              questionChoices: prev.questionChoices.trim() || undefined,
+              explanation: prev.explanation.trim() || undefined,
+              educationalObjective: prev.educationalObjective.trim() || undefined,
+              questionImages: prev.questionImages.length > 0 ? prev.questionImages : undefined,
+            });
+          }
+          notifyCardSaved(prev.questionId, prev.front, prev.back);
+          setNotificationMsg({
+            type: 'success',
+            text: `Card da questão ${prev.questionId || ''} salvo com sucesso!`
+          });
+        }
+      } else {
+        // NÃO completou frente e verso: DESCARTE O FLASHCARD INCOMPLETO!
+        setNotificationMsg({
+          type: 'info',
+          text: `Questão ${prev.questionId || 'anterior'} descartada (frente e verso não foram preenchidos).`
+        });
+      }
+    }
+
+    // Carrega a nova questão
+    // Verifica se já existia um card salvo para esta questão no banco de cartões
+    const existing = cardsRef.current.find(c => 
+      (incomingQId && c.questionId === incomingQId) || 
+      (incomingQId && c.tags?.some(t => t.toLowerCase() === `q-${incomingQId}`.toLowerCase()))
+    );
+
+    if (existing) {
+      setFront(existing.front || '');
+      setBack(existing.back || '');
+      setCurrentCardId(existing.id);
+      setTags(deduplicateTagsString(existing.tags || [], incomingQId));
+    } else {
+      setFront('');
+      setBack('');
+      setCurrentCardId(null);
+      setTags(deduplicateTagsString(payload.tags || [], incomingQId));
+    }
+
+    setQuestionId(incomingQId);
+    setQuestionStem(incomingStem);
+    setQuestionChoices(payload.questionChoices || payload.choices || '');
+    setExplanation(payload.explanation || '');
+    setEducationalObjective(payload.educationalObjective || payload.objective || '');
+    const imgs = Array.isArray(payload.questionImages || payload.images)
+      ? (payload.questionImages || payload.images)
+      : [];
+    setQuestionImages(imgs);
+
+    setIsQBankFieldsOpen(true);
+  };
+
   // Integration listener: Allows Chrome Extension or parent window to send question data directly
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (!event.data) return;
       if (event.data.type === 'USMLE_GENERATE_FLASHCARD' || event.data.action === 'create_card_from_question') {
         const payload = event.data.payload || event.data.data || event.data;
-        if (payload.questionId) setQuestionId(payload.questionId);
-        if (payload.questionStem || payload.stem) {
-          const stem = payload.questionStem || payload.stem;
-          setQuestionStem(stem);
-          if (!front) setFront(`<p>${stem}</p>`);
-        }
-        if (payload.questionChoices || payload.choices) setQuestionChoices(payload.questionChoices || payload.choices);
-        if (payload.explanation) {
-          setExplanation(payload.explanation);
-          if (!back && !payload.educationalObjective) setBack(`<p>${payload.explanation}</p>`);
-        }
-        if (payload.educationalObjective || payload.objective) {
-          const obj = payload.educationalObjective || payload.objective;
-          setEducationalObjective(obj);
-          if (!back) setBack(`<p><b>Educational Objective:</b></p><p>${obj}</p>`);
-        }
-        if (payload.questionImages || payload.images) {
-          const imgs = Array.isArray(payload.questionImages || payload.images) ? (payload.questionImages || payload.images) : [];
-          setQuestionImages(imgs);
-        }
-        if (payload.tags && Array.isArray(payload.tags)) {
-          setTags(prev => prev ? `${prev}, ${payload.tags.join(', ')}` : payload.tags.join(', '));
-        }
-        setIsQBankFieldsOpen(true);
+        handleIncomingQuestion(payload);
       }
     };
 
     const handleCustomEvent = (e: any) => {
       const payload = e.detail;
-      if (!payload) return;
-      if (payload.questionId) setQuestionId(payload.questionId);
-      if (payload.questionStem) {
-        setQuestionStem(payload.questionStem);
-        if (!front) setFront(`<p>${payload.questionStem}</p>`);
-      }
-      if (payload.questionChoices) setQuestionChoices(payload.questionChoices);
-      if (payload.explanation) setExplanation(payload.explanation);
-      if (payload.educationalObjective) {
-        setEducationalObjective(payload.educationalObjective);
-        if (!back) setBack(`<p><b>Educational Objective:</b></p><p>${payload.educationalObjective}</p>`);
-      }
-      if (payload.questionImages) setQuestionImages(payload.questionImages);
-      setIsQBankFieldsOpen(true);
+      if (payload) handleIncomingQuestion(payload);
     };
 
     window.addEventListener('message', handleMessage);
@@ -110,31 +301,16 @@ export const CardCreationModal: React.FC<{
     // BroadcastChannel sync across tabs and windows
     let channel: BroadcastChannel | null = null;
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-      channel = new BroadcastChannel('usmle_flashcards_sync');
-      channel.onmessage = (event) => {
-        if (!event.data) return;
-        if (event.data.type === 'USMLE_GENERATE_FLASHCARD' || event.data.action === 'create_card_from_question') {
-          const payload = event.data.payload || event.data.data || event.data;
-          if (payload.questionId) setQuestionId(payload.questionId);
-          if (payload.questionStem || payload.stem) {
-            const stem = payload.questionStem || payload.stem;
-            setQuestionStem(stem);
-            setFront(`<p>${stem}</p>`);
+      try {
+        channel = new BroadcastChannel('usmle_flashcards_sync');
+        channel.onmessage = (event) => {
+          if (!event.data) return;
+          if (event.data.type === 'USMLE_GENERATE_FLASHCARD' || event.data.action === 'create_card_from_question') {
+            const payload = event.data.payload || event.data.data || event.data;
+            handleIncomingQuestion(payload);
           }
-          if (payload.questionChoices || payload.choices) setQuestionChoices(payload.questionChoices || payload.choices);
-          if (payload.explanation) setExplanation(payload.explanation);
-          if (payload.educationalObjective || payload.objective) {
-            const obj = payload.educationalObjective || payload.objective;
-            setEducationalObjective(obj);
-            setBack(`<p><b>Educational Objective:</b></p><p>${obj}</p>`);
-          }
-          if (payload.questionImages || payload.images) {
-            const imgs = Array.isArray(payload.questionImages || payload.images) ? (payload.questionImages || payload.images) : [];
-            setQuestionImages(imgs);
-          }
-          setIsQBankFieldsOpen(true);
-        }
-      };
+        };
+      } catch (e) {}
     }
 
     // Handshake with window.opener if opened from Q-Bank extension
@@ -144,52 +320,71 @@ export const CardCreationModal: React.FC<{
       } catch (e) {}
     }
 
+    // Suporte a colar imagens (Ctrl+V) de qualquer lugar no modal
+    const handleGlobalPaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.type.indexOf('image') !== -1) {
+          const file = item.getAsFile();
+          if (file) {
+            const reader = new FileReader();
+            reader.onload = (uploadEvent) => {
+              if (uploadEvent.target?.result) {
+                setQuestionImages(prev => [...prev, uploadEvent.target!.result as string]);
+                setIsQBankFieldsOpen(true);
+              }
+            };
+            reader.readAsDataURL(file);
+          }
+        }
+      }
+    };
+    window.addEventListener('paste', handleGlobalPaste);
+
     // Also check URL parameters if user opened with query params
     const params = new URLSearchParams(window.location.search);
     const qid = params.get('import_qid');
     const stem = params.get('import_stem');
     const obj = params.get('import_obj');
     if (qid || stem || obj) {
-      if (qid) setQuestionId(qid);
-      if (stem) {
-        setQuestionStem(stem);
-        if (!front) setFront(`<p>${stem}</p>`);
-      }
-      if (obj) {
-        setEducationalObjective(obj);
-        if (!back) setBack(`<p><b>Educational Objective:</b></p><p>${obj}</p>`);
-      }
-      setIsQBankFieldsOpen(true);
+      handleIncomingQuestion({
+        questionId: qid || '',
+        questionStem: stem || '',
+        educationalObjective: obj || '',
+        tags: qid ? [`q-${qid}`, 'qbank-sync'] : ['qbank-sync']
+      });
     }
 
     return () => {
       window.removeEventListener('message', handleMessage);
       window.removeEventListener('usmle_generate_flashcard' as any, handleCustomEvent);
+      window.removeEventListener('paste', handleGlobalPaste);
       if (channel) channel.close();
     };
-  }, [front, back]);
-
-  const getFinalDeckId = () => {
-    let finalDeckId = deckId;
-    if (!finalDeckId) {
-      if (decks.length === 0) {
-        finalDeckId = createDeck("Default Deck");
-      } else {
-        return null;
-      }
-    }
-    return finalDeckId;
-  };
+  }, []);
 
   const handleCreate = () => {
-    const finalDeckId = getFinalDeckId();
-    if (!finalDeckId) return;
+    const targetDeckId = getFinalDeckId();
+    if (!targetDeckId) {
+      setNotificationMsg({ type: 'error', text: 'Por favor, selecione um baralho.' });
+      return;
+    }
+
+    if (!hasMeaningfulContent(front) || !hasMeaningfulContent(back)) {
+      setNotificationMsg({
+        type: 'error',
+        text: 'Preencha manualmente a frente e o verso do flashcard para salvar.'
+      });
+      return;
+    }
     
-    const tagArray = tags.split(',').map(t => t.trim()).filter(Boolean);
+    const tagArray = deduplicateTags(tags, questionId);
     
-    if (initialData?.id) {
-      updateCard(initialData.id, {
-        deckId: finalDeckId,
+    if (currentCardId) {
+      updateCard(currentCardId, {
+        deckId: targetDeckId,
         front,
         back,
         tags: tagArray,
@@ -202,7 +397,7 @@ export const CardCreationModal: React.FC<{
       });
     } else {
       createCard({
-        deckId: finalDeckId,
+        deckId: targetDeckId,
         front,
         back,
         tags: tagArray,
@@ -215,18 +410,21 @@ export const CardCreationModal: React.FC<{
         questionImages: questionImages.length > 0 ? questionImages : undefined,
       });
     }
+
+    notifyCardSaved(questionId, front, back);
     
     setFront('');
     setBack('');
+    setCurrentCardId(null);
     setQuestionId('');
     setQuestionStem('');
     setQuestionChoices('');
     setExplanation('');
     setEducationalObjective('');
     setQuestionImages([]);
+    setTags('');
     setIsQBankFieldsOpen(false);
-    setSaveSuccessMsg(true);
-    setTimeout(() => setSaveSuccessMsg(false), 2500);
+    setNotificationMsg({ type: 'success', text: 'Cartão salvo com sucesso!' });
   };
 
   const handleAddImage = () => {
@@ -250,6 +448,51 @@ export const CardCreationModal: React.FC<{
     };
     reader.readAsDataURL(file);
     e.target.value = '';
+  };
+
+  const handleImagePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.indexOf('image') !== -1) {
+        const file = item.getAsFile();
+        if (file) {
+          e.preventDefault();
+          const reader = new FileReader();
+          reader.onload = (uploadEvent) => {
+            if (uploadEvent.target?.result) {
+              setQuestionImages(prev => [...prev, uploadEvent.target!.result as string]);
+            }
+          };
+          reader.readAsDataURL(file);
+        }
+      } else if (item.type === 'text/plain') {
+        item.getAsString(text => {
+          if (text && (text.startsWith('http://') || text.startsWith('https://')) && (/\.(jpe?g|png|gif|webp|svg)/i.test(text) || text.includes('image') || text.includes('media') || text.includes('cloudfront') || text.includes('uworld') || text.includes('amboss'))) {
+            setQuestionImages(prev => [...prev, text.trim()]);
+          }
+        });
+      }
+    }
+  };
+
+  const handleImageDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const files = e.dataTransfer?.files;
+    if (!files || files.length === 0) return;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = (uploadEvent) => {
+          if (uploadEvent.target?.result) {
+            setQuestionImages(prev => [...prev, uploadEvent.target!.result as string]);
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+    }
   };
 
   const handleApplyStemToFront = () => {
@@ -286,9 +529,24 @@ export const CardCreationModal: React.FC<{
         
         {/* Scrollable Content */}
         <div className="p-4 sm:p-6 overflow-y-auto space-y-5 flex-1">
-          {saveSuccessMsg && (
-            <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/60 text-emerald-700 dark:text-emerald-300 rounded-xl text-xs font-semibold animate-in fade-in">
-              Cartão salvo com sucesso! Você pode continuar adicionando outros cartões.
+          {notificationMsg && (
+            <div className={`p-3.5 rounded-xl text-xs font-semibold animate-in fade-in flex items-center justify-between gap-2 shadow-sm ${
+              notificationMsg.type === 'success'
+                ? 'bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
+                : notificationMsg.type === 'error'
+                ? 'bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200'
+                : 'bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200'
+            }`}>
+              <div className="flex items-center gap-2">
+                <span>{notificationMsg.type === 'success' ? '✅' : notificationMsg.type === 'error' ? '⚠️' : 'ℹ️'}</span>
+                <span>{notificationMsg.text}</span>
+              </div>
+              <button 
+                onClick={() => setNotificationMsg(null)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer p-0.5"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
             </div>
           )}
 
@@ -311,7 +569,7 @@ export const CardCreationModal: React.FC<{
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
-                Frente (Pergunta ou Prompt)
+                Frente (Pergunta ou Prompt) *
               </label>
               {questionStem && (
                 <button
@@ -333,7 +591,7 @@ export const CardCreationModal: React.FC<{
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
-                Verso (Resposta)
+                Verso (Resposta) *
               </label>
               {(educationalObjective || explanation) && (
                 <button
@@ -353,13 +611,19 @@ export const CardCreationModal: React.FC<{
 
           {/* Tags */}
           <div>
-            <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1.5">
-              Tags (separadas por vírgula)
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+                Tags (separadas por vírgula)
+              </label>
+              <span className="text-[11px] text-gray-400 font-normal">
+                Sem duplicações de qid ou qbank-sync
+              </span>
+            </div>
             <input 
               type="text" 
               value={tags}
               onChange={e => setTags(e.target.value)}
+              onBlur={() => setTags(prev => deduplicateTagsString(prev, questionId))}
               className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3.5 py-2 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="ex: cardio, step1, uworld, high-yield"
             />
@@ -465,8 +729,8 @@ export const CardCreationModal: React.FC<{
                 {/* 6. Imagens da Questão */}
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5 flex items-center justify-between">
-                    <span>Imagens da Questão</span>
-                    <span className="text-[11px] text-gray-400 font-normal">URLs ou arquivos locais</span>
+                    <span>Imagens da Questão (Explicação / Links / Anexos)</span>
+                    <span className="text-[11px] text-gray-400 font-normal">Aceita Ctrl+V, Links e Upload</span>
                   </label>
                   
                   <div className="flex gap-2 mb-2">
@@ -474,7 +738,7 @@ export const CardCreationModal: React.FC<{
                       type="text"
                       value={newImageUrl}
                       onChange={e => setNewImageUrl(e.target.value)}
-                      placeholder="Cole o link direto da imagem (https://...)"
+                      placeholder="Cole link da imagem ou da explicação..."
                       className="flex-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-1.5 text-xs text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddImage(); } }}
                     />
@@ -490,6 +754,25 @@ export const CardCreationModal: React.FC<{
                       <span>Upload</span>
                       <input type="file" accept="image/*" className="hidden" onChange={handleImageFileUpload} />
                     </label>
+                  </div>
+
+                  {/* Área interativa para Colar (Ctrl+V) ou Arrastar imagens */}
+                  <div
+                    onPaste={handleImagePaste}
+                    onDragOver={e => e.preventDefault()}
+                    onDrop={handleImageDrop}
+                    tabIndex={0}
+                    className="border-2 border-dashed border-gray-300 dark:border-gray-700 hover:border-blue-500 dark:hover:border-blue-500 focus:border-blue-500 focus:outline-none rounded-xl p-3 text-center transition-colors cursor-pointer bg-gray-50/50 dark:bg-gray-800/40"
+                  >
+                    <div className="flex flex-col items-center justify-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                      <div className="flex items-center gap-1.5 font-semibold text-blue-600 dark:text-blue-400">
+                        <Clipboard className="w-4 h-4" />
+                        <span>Clique aqui e cole imagens (Ctrl+V) ou arraste imagens</span>
+                      </div>
+                      <span className="text-[11px] text-gray-400">
+                        Recebe capturas de tela, imagens copiadas da explicação ou links da questão
+                      </span>
+                    </div>
                   </div>
 
                   {questionImages.length > 0 && (
@@ -521,6 +804,11 @@ export const CardCreationModal: React.FC<{
             O flashcard será salvo no baralho selecionado com suporte a Anki.
           </p>
           <div className="flex items-center gap-2 sm:gap-3 ml-auto">
+            {(!hasMeaningfulContent(front) || !hasMeaningfulContent(back)) && (
+              <span className="text-[11px] text-amber-600 dark:text-amber-400 font-medium hidden md:inline">
+                ⚠️ Preencha a frente e o verso para salvar
+              </span>
+            )}
             <button 
               type="button" 
               onClick={onClose} 
@@ -531,7 +819,7 @@ export const CardCreationModal: React.FC<{
             <button 
               type="button"
               onClick={handleCreate}
-              disabled={(!deckId && decks.length > 0) || !front.trim()}
+              disabled={(!deckId && decks.length > 0) || !hasMeaningfulContent(front) || !hasMeaningfulContent(back)}
               className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs sm:text-sm font-bold rounded-xl transition-all shadow-sm shadow-blue-500/20 disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
             >
               <Save className="w-4 h-4" />

@@ -35,6 +35,7 @@ export default function FlashcardsUnifiedHub() {
     const params = new URLSearchParams(window.location.search);
     return params.get('action') === 'create_card' || params.get('newCard') === 'true';
   });
+  const [pendingImportData, setPendingImportData] = useState<any>(null);
 
   // Global Study Tools Timer & Pacer Store
   const pacerIsActive = useTimerStore((s) => s.pacerIsActive);
@@ -69,6 +70,45 @@ export default function FlashcardsUnifiedHub() {
       setIsAddCardOpen(true);
     }
   }, [location.pathname, location.search]);
+
+  // Se qualquer aba ou janela de flashcard já estiver aberta, receba os dados e abra o modal de criação sem abrir nova página
+  useEffect(() => {
+    const handleIncomingCard = (e: any) => {
+      const type = e.data?.type || e.type;
+      if (type === 'USMLE_GENERATE_FLASHCARD' || type === 'usmle_generate_flashcard') {
+        const payload = e.data?.payload || e.detail?.payload || e.detail || e.data;
+        if (payload) {
+          setPendingImportData(payload);
+        }
+        setIsAddCardOpen(true);
+      }
+    };
+
+    window.addEventListener('message', handleIncomingCard);
+    window.addEventListener('usmle_generate_flashcard' as any, handleIncomingCard);
+
+    let bc: BroadcastChannel | null = null;
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        bc = new BroadcastChannel('usmle_flashcards_sync');
+        bc.onmessage = (event) => {
+          if (event.data?.type === 'USMLE_GENERATE_FLASHCARD') {
+            const payload = event.data.payload;
+            if (payload) {
+              setPendingImportData(payload);
+            }
+            setIsAddCardOpen(true);
+          }
+        };
+      } catch (e) {}
+    }
+
+    return () => {
+      window.removeEventListener('message', handleIncomingCard);
+      window.removeEventListener('usmle_generate_flashcard' as any, handleIncomingCard);
+      if (bc) bc.close();
+    };
+  }, []);
 
   // Navigation tabs
   const isDecksActive = ['home', 'deck', 'study'].includes(page.type);
@@ -213,7 +253,13 @@ export default function FlashcardsUnifiedHub() {
 
       {/* Global Quick Add Card Modal */}
       {isAddCardOpen && (
-        <CardCreationModal onClose={() => setIsAddCardOpen(false)} />
+        <CardCreationModal 
+          initialData={pendingImportData || undefined}
+          onClose={() => {
+            setIsAddCardOpen(false);
+            setPendingImportData(null);
+          }} 
+        />
       )}
     </div>
   );

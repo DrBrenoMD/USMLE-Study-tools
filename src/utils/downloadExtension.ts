@@ -6,6 +6,7 @@ import {
   popupHtml,
   popupJs,
   contentJs,
+  backgroundJs,
   readmeTxt
 } from '../extension_source/extensionFiles';
 
@@ -16,6 +17,7 @@ export async function downloadExtensionZip(): Promise<void> {
   zip.file('popup.html', popupHtml);
   zip.file('popup.js', popupJs);
   zip.file('content.js', contentJs);
+  zip.file('background.js', backgroundJs);
   zip.file('LEIA-ME_Instalacao.txt', readmeTxt);
 
   const blob = await zip.generateAsync({ type: 'blob' });
