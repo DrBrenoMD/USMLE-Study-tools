@@ -566,10 +566,10 @@ function extrairTodasImagensQuestao() {
     const imagesSet = new Set();
     
     // 1. Imagens no Enunciado (Stem)
-    const stemEls = document.querySelectorAll('.question-stem, .q-stem, .stem, div[id*="qStem"], [class*="questionBody"], #questionBody, div[class*="question-content"], .max-w-5xl, article.question');
+    const stemEls = document.querySelectorAll('.question-stem, .q-stem, .stem, div[id*="qStem"], [class*="questionBody"], #questionBody, div[class*="question-content"], .max-w-5xl, article.question, .case-study');
     stemEls.forEach(container => {
         container.querySelectorAll('img').forEach(img => {
-            const src = img.getAttribute('src') || img.getAttribute('data-src') || img.src;
+            const src = img.getAttribute('src') || img.getAttribute('data-src') || img.getAttribute('data-zoom-src') || img.getAttribute('data-original-src') || img.src;
             if (src && !src.includes('data:image/svg') && !src.includes('favicon') && !src.includes('avatar') && !src.includes('logo')) {
                 try {
                     imagesSet.add(new URL(src, window.location.href).href);
@@ -580,10 +580,40 @@ function extrairTodasImagensQuestao() {
         });
     });
 
-    // 2. Todas as imagens da página com filtros médicos ou tamanho representativo
+    // 2. Imagens no Container de Explicação e Educational Objective
+    const expContainer = typeof obterContainerExplicacao === 'function' ? obterContainerExplicacao() : document.querySelector('.explanation, [class*="explanation" i]');
+    if (expContainer) {
+        expContainer.querySelectorAll('img').forEach(img => {
+            const src = img.getAttribute('src') || img.getAttribute('data-src') || img.getAttribute('data-zoom-src') || img.getAttribute('data-original-src') || img.src;
+            if (src && !src.includes('data:image/svg') && !src.includes('favicon') && !src.includes('avatar') && !src.includes('logo')) {
+                try {
+                    imagesSet.add(new URL(src, window.location.href).href);
+                } catch(e) {
+                    imagesSet.add(src);
+                }
+            }
+        });
+    }
+
+    // 3. Imagens dentro das Alternativas
+    const choiceEls = document.querySelectorAll('table tbody tr, table.choices tr, .choice-row, [class*="alternative"]');
+    choiceEls.forEach(container => {
+        container.querySelectorAll('img').forEach(img => {
+            const src = img.getAttribute('src') || img.getAttribute('data-src') || img.getAttribute('data-zoom-src') || img.src;
+            if (src && !src.includes('data:image/svg') && !src.includes('favicon')) {
+                try {
+                    imagesSet.add(new URL(src, window.location.href).href);
+                } catch(e) {
+                    imagesSet.add(src);
+                }
+            }
+        });
+    });
+
+    // 4. Todas as imagens da página com filtros médicos ou tamanho representativo
     const imgs = document.querySelectorAll('img');
     imgs.forEach(img => {
-        const src = img.getAttribute('src') || img.getAttribute('data-src') || img.src;
+        const src = img.getAttribute('src') || img.getAttribute('data-src') || img.getAttribute('data-zoom-src') || img.getAttribute('data-original-src') || img.src;
         if (!src || src.includes('data:image/svg')) return;
 
         const isMedicalImage = src.includes('/media/') || 
@@ -596,8 +626,8 @@ function extrairTodasImagensQuestao() {
                                img.closest('button[aria-label*="Enlarge" i]') ||
                                img.closest('div[class*="aspect-square"]') ||
                                img.closest('.choices-container, .answer-choices, table.choices, tr') ||
-                               img.closest('.explanation, article, main') ||
-                               (img.width > 50 || img.height > 50);
+                               img.closest('.explanation, article, main, section') ||
+                               (img.width > 40 || img.height > 40);
 
         if (isMedicalImage && !src.includes('favicon') && !src.includes('avatar') && !src.includes('logo')) {
             try {
@@ -609,7 +639,7 @@ function extrairTodasImagensQuestao() {
         }
     });
 
-    // 3. Links <a> apontando para imagens ao longo do texto da explicação
+    // 5. Links <a> apontando para imagens ao longo do texto da explicação
     const links = document.querySelectorAll('a[href]');
     links.forEach(a => {
         const href = a.getAttribute('href');
@@ -1348,7 +1378,7 @@ function limparEFormatarTabelaHtml(tableEl) {
     return clone.outerHTML;
 }
 
-// Limpa e normaliza o HTML do enunciado preservando imagens, tabelas e trechos com highlight
+// Limpa e normaliza o HTML preservando imagens, tabelas e trechos com highlight
 function limparEFormatarConteudoHtml(containerEl) {
     if (!containerEl) return '';
     const clone = containerEl.cloneNode(true);
@@ -1356,11 +1386,13 @@ function limparEFormatarConteudoHtml(containerEl) {
     // 1. Remove scripts, styles, toolbars de highlight que NÃO contêm imagens
     clone.querySelectorAll('script, style, .markBtnContainer, [aria-label*="Clear highlights" i], [class*="Clear highlights" i]').forEach(el => el.remove());
     
-    // 2. Trata botões / links de ampliar imagem (desembrulha a imagem para não perder na remoção)
-    clone.querySelectorAll('button, a, div[role="button"], [class*="cursor-pointer"]').forEach(btn => {
-        const img = btn.querySelector('img');
-        if (img) {
-            btn.replaceWith(img);
+    // 2. Trata botões / links / containers de ampliar imagem (desembrulha a imagem para não perder na remoção)
+    clone.querySelectorAll('button, a, div[role="button"], span[role="button"], figure, div[class*="aspect-square"]').forEach(btn => {
+        const imgs = Array.from(btn.querySelectorAll('img'));
+        if (imgs.length > 0) {
+            const fragment = document.createDocumentFragment();
+            imgs.forEach(im => fragment.appendChild(im));
+            btn.replaceWith(fragment);
         } else {
             const btnText = (btn.innerText || '').trim().toLowerCase();
             if (btnText.includes('clear highlights') || btnText.includes('mark question') || btnText.includes('exhibit')) {
@@ -1371,17 +1403,45 @@ function limparEFormatarConteudoHtml(containerEl) {
 
     // 3. Converte todas as imagens para URLs absolutas e aplica estilização responsiva
     clone.querySelectorAll('img').forEach(img => {
-        const src = img.getAttribute('src') || img.getAttribute('data-src') || img.src;
-        if (src) {
+        const rawSrc = img.getAttribute('src') || 
+                       img.getAttribute('data-src') || 
+                       img.getAttribute('data-zoom-src') || 
+                       img.getAttribute('data-original-src') || 
+                       img.getAttribute('data-highres-src') || 
+                       img.src;
+        if (rawSrc) {
             try {
-                img.src = new URL(src, window.location.href).href;
-            } catch(e) {}
+                img.src = new URL(rawSrc, window.location.href).href;
+            } catch(e) {
+                img.src = rawSrc;
+            }
         }
+        img.removeAttribute('srcset');
         img.removeAttribute('style');
-        img.className = 'max-h-96 max-w-full rounded-xl my-3 shadow-xs border border-gray-200 dark:border-gray-700 object-contain mx-auto block';
+        img.removeAttribute('loading');
+        img.className = 'max-h-96 max-w-full rounded-xl my-3 shadow-xs border border-gray-200 dark:border-gray-700 object-contain mx-auto block cursor-pointer';
     });
 
-    // 4. Converte e normaliza todas as variações de trechos com Highlight (<mark>, spans com classes ou inline styles)
+    // 4. Converte links para imagens em tags <img> nativas
+    clone.querySelectorAll('a[href]').forEach(a => {
+        const href = a.getAttribute('href');
+        if (!href) return;
+        const isImgLink = /\.(png|jpe?g|webp|gif|svg|bmp)(\?.*)?$/i.test(href) ||
+                          href.includes('/media/') ||
+                          href.includes('/images/') ||
+                          href.includes('/webi/');
+        if (isImgLink && !a.querySelector('img')) {
+            try {
+                const absSrc = new URL(href, window.location.href).href;
+                const img = document.createElement('img');
+                img.src = absSrc;
+                img.className = 'max-h-96 max-w-full rounded-xl my-3 shadow-xs border border-gray-200 dark:border-gray-700 object-contain mx-auto block cursor-pointer';
+                a.replaceWith(img);
+            } catch(e) {}
+        }
+    });
+
+    // 5. Converte e normaliza todas as variações de trechos com Highlight (<mark>, spans com classes ou inline styles)
     const highlightElements = clone.querySelectorAll('mark, [class*="highlight" i], [class*="bg-yellow" i], [class*="bg-amber" i], [data-highlight], span[style*="background"]');
     highlightElements.forEach(hlEl => {
         hlEl.className = 'qbank-highlight bg-amber-200 dark:bg-amber-400/40 text-gray-900 dark:text-gray-100 px-1 py-0.5 rounded font-medium shadow-xs';
@@ -1391,7 +1451,7 @@ function limparEFormatarConteudoHtml(containerEl) {
         hlEl.style.padding = '1px 3px';
     });
 
-    // 5. Formata tabelas internas
+    // 6. Formata tabelas internas
     clone.querySelectorAll('table').forEach(tbl => {
         const tblHtml = limparEFormatarTabelaHtml(tbl);
         if (tblHtml) {
@@ -1724,17 +1784,23 @@ function encontrarCabecalhoObjetivo() {
 }
 
 function obterContainerExplicacao() {
-    const expTab = Array.from(document.querySelectorAll('span, li, button, h2, h3')).find(el => 
+    // 1. Seletores diretos por classe ou atributo do container de explicação
+    const direct = document.querySelector('.explanation, [class*="explanation" i], [id*="explanation" i], [data-testid*="explanation" i]');
+    if (direct) return direct;
+
+    // 2. Tab ou texto "Explanation"
+    const expTab = Array.from(document.querySelectorAll('span, li, button, h2, h3, h4, div')).find(el => 
         /^\s*Explanation\s*$/i.test((el.textContent || '').trim())
     );
     if (expTab) {
-        const section = expTab.closest('div.mt-8, div[class*="mt-"], main, article');
+        const section = expTab.closest('div.mt-8, div[class*="mt-"], div[class*="pt-"], main, article, section') || expTab.parentElement;
         if (section) return section;
     }
 
+    // 3. Fallback antes do Educational objective
     const objHeader = encontrarCabecalhoObjetivo();
     if (objHeader && objHeader.parentElement) {
-        return objHeader.parentElement.closest('div.mt-8, div[class*="pt-5"], main') || objHeader.parentElement;
+        return objHeader.parentElement.closest('div.mt-8, div[class*="pt-5"], main, article, section') || objHeader.parentElement;
     }
 
     return document.body;
@@ -1744,30 +1810,72 @@ function extrairExplicacaoParaFila() {
     const objHeader = encontrarCabecalhoObjetivo();
     const expContainer = obterContainerExplicacao();
     const itens = [];
+    const processedNodes = new Set();
 
-    // Se houver tabelas dentro da explicação
-    const tables = expContainer.querySelectorAll('table');
-    tables.forEach(tbl => {
-        if (objHeader && (objHeader.compareDocumentPosition(tbl) & Node.DOCUMENT_POSITION_FOLLOWING)) return;
-        const tableHtml = limparEFormatarTabelaHtml(tbl);
-        if (tableHtml) {
-            itens.push({ text: tableHtml, node: tbl });
+    // Procura elementos de bloco e imagens dentro do container em ordem natural do DOM
+    const allElements = Array.from(expContainer.querySelectorAll('p, table, figure, img, ul, ol, div:has(> img), div:has(> button > img), div:has(> figure), h1, h2, h3, h4, h5, h6, blockquote'));
+
+    for (let el of allElements) {
+        if (processedNodes.has(el)) continue;
+
+        // Se o elemento está dentro de uma tabela já processada
+        if (el.closest('table') && el.tagName !== 'TABLE') continue;
+
+        // Se o elemento é/está após o Educational Objective
+        if (objHeader) {
+            if (objHeader === el || objHeader.contains(el)) break;
+            if (objHeader.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) break;
         }
-    });
 
-    const allP = Array.from(expContainer.querySelectorAll('p, ul, ol'));
-    for (let p of allP) {
-        if (objHeader && (objHeader === p || objHeader.contains(p))) continue;
-        if (objHeader && (objHeader.compareDocumentPosition(p) & Node.DOCUMENT_POSITION_FOLLOWING)) continue;
-        if (p.closest('table')) continue;
-
-        if (p.closest('[class*="border-y"]') || /(?:Subject|System|Q\s*ID)\s*:/i.test(p.innerText || '')) {
+        // Ignora botões de toolbar, marcações, e rodapés de metadados
+        if (el.closest('[class*="border-y"]') || /(?:Subject|System|Q\s*ID)\s*:/i.test(el.innerText || '')) {
             continue;
         }
 
-        const txt = (p.innerText || '').trim();
-        if (txt.length > 5 && !/(?:Clear highlights|Mark Question)/i.test(txt)) {
-            itens.push({ text: p.innerHTML.trim() || txt, node: p });
+        // Se for tabela
+        if (el.tagName === 'TABLE') {
+            const tableHtml = limparEFormatarTabelaHtml(el);
+            if (tableHtml) {
+                itens.push({ text: tableHtml, node: el });
+                processedNodes.add(el);
+                el.querySelectorAll('*').forEach(c => processedNodes.add(c));
+            }
+            continue;
+        }
+
+        // Se tiver imagem (seja tag <img> direta ou contida no elemento)
+        const hasImg = el.tagName === 'IMG' || Boolean(el.querySelector('img'));
+        if (hasImg) {
+            const formatted = limparEFormatarConteudoHtml(el);
+            if (formatted && formatted.length > 0) {
+                itens.push({ text: formatted, node: el });
+                processedNodes.add(el);
+                el.querySelectorAll('*').forEach(c => processedNodes.add(c));
+                continue;
+            }
+        }
+
+        // Se for parágrafo ou bloco de texto
+        const rawText = (el.innerText || '').trim();
+        if (rawText.length > 3 && !/(?:Clear highlights|Mark Question|Educational\s*Objective)/i.test(rawText)) {
+            // Evita adicionar nó filho se o pai já foi adicionado
+            const isChildOfProcessed = Array.from(processedNodes).some(p => p.contains(el));
+            if (!isChildOfProcessed) {
+                const formatted = limparEFormatarConteudoHtml(el);
+                if (formatted) {
+                    itens.push({ text: formatted, node: el });
+                    processedNodes.add(el);
+                    el.querySelectorAll('*').forEach(c => processedNodes.add(c));
+                }
+            }
+        }
+    }
+
+    // Fallback: Se não encontrou blocos individuais, formata o container inteiro
+    if (itens.length === 0 && expContainer && expContainer !== document.body) {
+        const fullFormatted = limparEFormatarConteudoHtml(expContainer);
+        if (fullFormatted && fullFormatted.length > 20) {
+            itens.push({ text: fullFormatted, node: expContainer });
         }
     }
 
@@ -1784,22 +1892,28 @@ function extrairObjetivoParaFila() {
         if (next.querySelector('[class*="border-y"]') || /(?:Subject|System|Q\s*ID)\s*:/i.test(next.innerText || '')) {
             break;
         }
+        const hasImg = next.tagName === 'IMG' || Boolean(next.querySelector('img'));
         const txt = (next.innerText || '').trim();
-        if (txt.length > 5) {
-            itens.push({ text: next.innerHTML.trim() || txt, node: next });
+        if (txt.length > 3 || hasImg) {
+            const formatted = limparEFormatarConteudoHtml(next);
+            itens.push({ text: formatted || txt, node: next });
         }
         next = next.nextElementSibling;
     }
 
     if (itens.length === 0) {
         const expContainer = obterContainerExplicacao();
-        const allP = Array.from(expContainer.querySelectorAll('p'));
+        const allP = Array.from(expContainer.querySelectorAll('p, figure, div:has(> img)'));
         for (let p of allP) {
             if (objHeader === p || objHeader.contains(p)) continue;
             if (objHeader.compareDocumentPosition(p) & Node.DOCUMENT_POSITION_FOLLOWING) {
                 if (p.closest('[class*="border-y"]') || /(?:Subject|System|Q\s*ID)/i.test(p.innerText || '')) break;
+                const hasImg = p.tagName === 'IMG' || Boolean(p.querySelector('img'));
                 const txt = (p.innerText || '').trim();
-                if (txt.length > 5) itens.push({ text: p.innerHTML.trim() || txt, node: p });
+                if (txt.length > 3 || hasImg) {
+                    const formatted = limparEFormatarConteudoHtml(p);
+                    itens.push({ text: formatted || txt, node: p });
+                }
             }
         }
     }
