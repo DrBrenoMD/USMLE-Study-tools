@@ -455,8 +455,34 @@ function revelarCamposOcultos() {
     return count;
 }
 
-// Validador estrito de integridade: Só permite importação se TODOS os dados estiverem disponíveis
+// Validador de integridade com auto-recuperação
 function validarDadosCompletosQuestao(cardData) {
+    // Tenta revelar campos ocultos se algum estiver pendente
+    revelarCamposOcultos();
+
+    // Se o system ainda estiver com "Click to show", tenta preencher com o subject ou geral
+    if (!cardData.system || /click\s*to\s*show/i.test(cardData.system)) {
+        const subSys = extrairSubjectESystem();
+        if (subSys.system && !/click\s*to\s*show/i.test(subSys.system)) {
+            cardData.system = subSys.system;
+        } else if (cardData.subject) {
+            cardData.system = cardData.subject;
+        } else {
+            cardData.system = 'General';
+        }
+    }
+
+    if (!cardData.subject || /click\s*to\s*show/i.test(cardData.subject)) {
+        const subSys = extrairSubjectESystem();
+        if (subSys.subject && !/click\s*to\s*show/i.test(subSys.subject)) {
+            cardData.subject = subSys.subject;
+            cardData.subjective = subSys.subject;
+        } else {
+            cardData.subject = 'General';
+            cardData.subjective = 'General';
+        }
+    }
+
     const pendencias = [];
     const status = {
         qid: Boolean(cardData.questionId && cardData.questionId !== 'Q-0'),
@@ -464,19 +490,17 @@ function validarDadosCompletosQuestao(cardData) {
         choices: Boolean(cardData.questionChoices && cardData.questionChoices.trim().length > 0 && cardData.questionChoices !== 'Options:'),
         explanation: Boolean(cardData.explanation && cardData.explanation !== 'Explanation not found.' && cardData.explanation.trim().length > 10),
         objective: Boolean(cardData.educationalObjective && cardData.educationalObjective !== 'Educational objective not found.' && cardData.educationalObjective.trim().length > 10),
-        system: Boolean(cardData.system && cardData.system.trim().length > 1 && !/click\s*to\s*show/i.test(cardData.system)),
-        subject: Boolean(cardData.subject && cardData.subject.trim().length > 1 && !/click\s*to\s*show/i.test(cardData.subject))
+        system: Boolean(cardData.system && cardData.system.trim().length > 0),
+        subject: Boolean(cardData.subject && cardData.subject.trim().length > 0)
     };
 
     if (!status.stem) pendencias.push('Enunciado não identificado');
     if (!status.choices) pendencias.push('Alternativas não identificadas');
     if (!status.explanation) pendencias.push('Explicação oculta (responda a questão para liberar)');
     if (!status.objective) pendencias.push('Educational Objective oculto');
-    if (!status.system) pendencias.push('System oculto (clique em "Click to Show" no cabeçalho)');
-    if (!status.subject) pendencias.push('Subject não identificado');
 
     return {
-        completo: pendencias.length === 0,
+        completo: Boolean(status.qid && status.stem && status.choices),
         pendencias,
         status
     };
@@ -608,8 +632,11 @@ function extrairDadosCompletosQuestao() {
     const qId = extrairIdQuestaoAtual();
     const stemArr = extrairEnunciadoParaFila();
     const questionStem = stemArr.filter(i => i.text !== "Question text not found." && i.text !== "Texto do enunciado não identificado.").map(i => i.text).join('\n\n');
-    const choicesArr = extrairAlternativasParaFila();
-    const questionChoices = choicesArr.filter(i => i.text !== 'Options:').map(i => i.text).join('\n');
+    
+    // Extrai alternativas estruturadas e limpas
+    const detailedAlternatives = extrairAlternativasDetalhadas();
+    const questionChoices = detailedAlternatives.map(a => `${a.letter}. ${a.text}`).join('\n');
+
     const expArr = extrairExplicacaoParaFila();
     const explanation = expArr.filter(i => i.text !== 'Explanation not found.').map(i => i.text).join('\n\n');
     const objArr = extrairObjetivoParaFila();
@@ -622,6 +649,8 @@ function extrairDadosCompletosQuestao() {
     return {
         questionId: qId,
         questionStem: questionStem || `Questão #${currentQNumberExt}`,
+        alternatives: detailedAlternatives,
+        choices: detailedAlternatives,
         questionChoices: questionChoices || '',
         explanation: explanation || '',
         educationalObjective: educationalObjective || '',
@@ -1040,8 +1069,29 @@ function navegarQuestaoDrawer(direcao) {
     setTimeout(() => {
         atualizarVisibilidadeBotaoQBank();
         atualizarStatusCardQuestaoAtual();
-        autoImportarQuestaoSeNavegou();
-    }, 600);
+        agendarImportacaoRapida();
+    }, 150);
+}
+
+// Mecanismo de agendamento ultra-rápido de importação com retentativas
+let activeSyncTimers = [];
+function agendarImportacaoRapida() {
+    activeSyncTimers.forEach(t => clearTimeout(t));
+    activeSyncTimers = [];
+
+    const delays = [30, 100, 250, 500, 900, 1500];
+    delays.forEach(d => {
+        const timer = setTimeout(() => {
+            if (isPaginaResolucaoQBank()) {
+                revelarCamposOcultos();
+                autoImportarQuestaoSeNavegou();
+                if (typeof atualizarStatusCardQuestaoAtual === 'function') {
+                    atualizarStatusCardQuestaoAtual();
+                }
+            }
+        }, d);
+        activeSyncTimers.push(timer);
+    });
 }
 
 // Monitoramento contínuo da página de resolução e navegação
@@ -1050,13 +1100,54 @@ setInterval(() => {
     if (isPaginaResolucaoQBank()) {
         const qId = extrairIdQuestaoAtual();
         if (qId && qId !== lastImportedQId) {
-            autoImportarQuestaoSeNavegou();
-            if (typeof atualizarStatusCardQuestaoAtual === 'function') {
-                atualizarStatusCardQuestaoAtual();
-            }
+            agendarImportacaoRapida();
         }
     }
-}, 800);
+}, 500);
+
+// Observador de mutações no DOM para capturar imediatamente mudanças de questão
+try {
+    const domObserver = new MutationObserver((mutations) => {
+        if (!isPaginaResolucaoQBank()) return;
+        const qId = extrairIdQuestaoAtual();
+        if (qId && qId !== lastImportedQId) {
+            agendarImportacaoRapida();
+        }
+    });
+
+    if (document.body) {
+        domObserver.observe(document.body, {
+            childList: true,
+            subtree: true,
+            attributes: false
+        });
+    } else {
+        window.addEventListener('DOMContentLoaded', () => {
+            domObserver.observe(document.body, {
+                childList: true,
+                subtree: true,
+                attributes: false
+            });
+        });
+    }
+} catch(e) {}
+
+// Listeners de clique e teclado para navegação veloz (Next, Prev, números 1..10, setas)
+document.addEventListener('click', (e) => {
+    const target = e.target;
+    if (!target) return;
+    const isNavElement = target.closest('button[title*="Next"], button[title*="Previous"], button, a, li[tabindex], [class*="cursor-pointer"]');
+    if (isNavElement && isPaginaResolucaoQBank()) {
+        agendarImportacaoRapida();
+    }
+}, true);
+
+document.addEventListener('keydown', (e) => {
+    if (!isPaginaResolucaoQBank()) return;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'Enter' || e.key === 'n' || e.key === 'p' || e.altKey) {
+        agendarImportacaoRapida();
+    }
+}, true);
 
 window.addEventListener('DOMContentLoaded', () => {
     criarBarraUI();
@@ -1270,38 +1361,194 @@ function extrairEnunciadoParaFila() {
     return [{ text: "Texto do enunciado não identificado.", node: null }];
 }
 
-function extrairAlternativasParaFila() {
-    const itens = [];
-    // 1. Tabela de alternativas ou linhas com classe de escolha
-    const linhasAlternativas = document.querySelectorAll('tr.cursor-pointer, tr.cursor-default, table.choices tr, .choice-row, [class*="alternative"], [class*="choice"] tr');
-    if (linhasAlternativas.length > 0) {
-        itens.push({ text: "Options:", node: null });
-        linhasAlternativas.forEach(linha => {
-            const textContent = linha.innerText.replace(/^[a-z]{1,2}\s+/i, '').trim();
-            if (textContent && textContent.length > 2) itens.push({ text: textContent, node: linha });
-        });
-        if (itens.length > 1) return itens;
-    }
+function extrairAlternativasDetalhadas() {
+    const list = [];
+    
+    // 0. Procura banner superior de resultado da questão (role="alert")
+    // Em questões incorretas: exibe "Incorrect" e "Correct answer" com a letra exata (ex: "F")
+    // Em questões corretas: exibe "Correct"
+    let explicitCorrectFromBanner = '';
+    let isQuestionMarkedCorrectOnPage = false;
+    let isQuestionMarkedIncorrectOnPage = false;
 
-    // 2. Fallback por regex para linhas de múltipla escolha (A., B., C., D.)
-    const elementsWithChoices = Array.from(document.querySelectorAll('div, p, tr, td, li'));
-    const matchedChoices = [];
-    elementsWithChoices.forEach(el => {
-        if (el.children.length <= 1) {
-            const txt = (el.innerText || '').trim();
-            if (/^[A-H]\.?\s+[A-Za-z0-9]/m.test(txt) && txt.length < 350) {
-                if (!matchedChoices.some(c => c.text === txt)) {
-                    matchedChoices.push({ text: txt, node: el });
-                }
-            }
+    const alertElements = Array.from(document.querySelectorAll('div[role="alert"], [class*="border-l-red"], [class*="border-l-green"]'));
+    alertElements.forEach(alertEl => {
+        const textAlert = (alertEl.innerText || alertEl.textContent || '').trim();
+        if (/Incorrect/i.test(textAlert)) isQuestionMarkedIncorrectOnPage = true;
+        if (/^Correct|\bCorrect\b/i.test(textAlert) && !/Incorrect/i.test(textAlert)) isQuestionMarkedCorrectOnPage = true;
+
+        const matchCorrect = textAlert.match(/Correct\s*answer\s*[:\n\s]*([A-H])/i);
+        if (matchCorrect && matchCorrect[1]) {
+            explicitCorrectFromBanner = matchCorrect[1].toUpperCase();
         }
     });
 
-    if (matchedChoices.length > 0) {
-        return [{ text: "Options:", node: null }, ...matchedChoices];
+    // 1. Tabela de alternativas do Q-Bank
+    const linhas = Array.from(document.querySelectorAll('table tbody tr, table.choices tr, tr[class*="flex items-start"], .choice-row, [class*="alternative"]'));
+    
+    // Filtra apenas linhas que realmente parecem alternativas (com A., B., C. ou radio)
+    const validRows = linhas.filter(tr => {
+        const txt = (tr.innerText || '').trim();
+        return /^[A-H][\.\)]|^\s*[A-H]\s*[\.\)]/m.test(txt) || tr.querySelector('[role="radio"], input[type="radio"], .lucide-check, .lucide-x');
+    });
+
+    if (validRows.length > 0) {
+        validRows.forEach((tr, idx) => {
+            // A. Detectar letra
+            let letter = String.fromCharCode(65 + idx);
+            const letterEl = tr.querySelector('td:first-child span, [class*="font-normal"], b, strong');
+            const rowText = tr.innerText || '';
+            const letterMatch = rowText.match(/^([A-H])[\.\)]/m) || (letterEl ? letterEl.innerText.match(/([A-H])[\.\)]?/i) : null);
+            if (letterMatch && letterMatch[1]) {
+                letter = letterMatch[1].toUpperCase();
+            }
+
+            // B. Detectar texto da alternativa (sem a letra e sem porcentagens como (8%))
+            let text = '';
+            // Tenta pegar da 2ª coluna / td se existir
+            const secondTd = tr.querySelector('td:nth-child(2), td.w-full, [class*="w-full"]');
+            if (secondTd) {
+                const clone = secondTd.cloneNode(true);
+                clone.querySelectorAll('span').forEach(s => {
+                    if (/^\s*\(\d+%\)\s*$/.test(s.innerText || '')) {
+                        s.remove();
+                    }
+                });
+                text = (clone.innerText || clone.textContent || '').replace(/\s*\(\d+%\)\s*$/, '').trim();
+            }
+
+            // Fallback para texto da linha inteira
+            if (!text) {
+                text = rowText
+                    .replace(/^[A-H][\.\)]\s*/im, '')
+                    .replace(/\(\d+%\)/g, '')
+                    .replace(/\n+/g, ' ')
+                    .trim();
+            }
+
+            // C. Detectar se é a alternativa correta
+            let isCorrect = false;
+
+            // 1. Se o banner informou a letra exata (ex: "Correct answer F")
+            if (explicitCorrectFromBanner && letter === explicitCorrectFromBanner) {
+                isCorrect = true;
+            }
+
+            // 2. Ícone de checkmark SVG verde no primeiro td / linha
+            if (!isCorrect) {
+                const checkSvg = tr.querySelector('svg.lucide-check, svg[class*="text-green"], svg[class*="fill-green"], svg[class*="text-emerald"], path[d*="M20 6 9 17l-5-5"], path[d*="M10.97 4.97"]');
+                if (checkSvg) isCorrect = true;
+            }
+
+            // 3. Classes de cor verde ou correta no tr / td
+            if (!isCorrect) {
+                const hasGreenClass = Array.from(tr.querySelectorAll('*')).some(el => {
+                    const cls = (el.className || '').toString();
+                    return cls.includes('text-green') || cls.includes('bg-green') || cls.includes('text-emerald') || cls.includes('bg-emerald');
+                });
+                if (hasGreenClass && (tr.querySelector('.lucide-check') || tr.innerHTML.includes('M20 6 9 17l-5-5') || tr.innerHTML.includes('M10.97 4.97'))) {
+                    isCorrect = true;
+                }
+            }
+
+            // 4. Se a questão foi marcada como "Correct" na página e esta linha possui radio button marcado
+            if (!isCorrect && isQuestionMarkedCorrectOnPage && !isQuestionMarkedIncorrectOnPage) {
+                const isSelectedRadio = tr.querySelector('[role="radio"][aria-checked="true"], input[type="radio"]:checked, [class*="bg-[#004976]"], [class*="bg-blue"]');
+                if (isSelectedRadio) {
+                    isCorrect = true;
+                }
+            }
+
+            // 5. Texto com checkmark explícito
+            if (!isCorrect && (rowText.includes('✓') || rowText.includes('✔'))) {
+                isCorrect = true;
+            }
+
+            if (text && text.length > 0) {
+                list.push({
+                    id: `alt-${idx + 1}`,
+                    letter,
+                    text,
+                    isCorrect
+                });
+            }
+        });
     }
 
-    return itens;
+    // Fallback: Se não encontrou linhas na tabela, busca por parágrafos/divs com "A. ", "B. "
+    if (list.length === 0) {
+        const elementsWithChoices = Array.from(document.querySelectorAll('div, p, li'));
+        const matched = [];
+        elementsWithChoices.forEach(el => {
+            if (el.children.length <= 1) {
+                const txt = (el.innerText || '').trim();
+                const m = txt.match(/^([A-H])[\.\)]\s+(.*)$/);
+                if (m && txt.length < 350) {
+                    const cleanText = m[2].replace(/\s*\(\d+%\)\s*$/, '').trim();
+                    const letter = m[1].toUpperCase();
+                    let isCorr = false;
+                    if (explicitCorrectFromBanner && letter === explicitCorrectFromBanner) {
+                        isCorr = true;
+                    } else if (el.querySelector('svg[class*="green"], .lucide-check') !== null || el.classList.contains('correct')) {
+                        isCorr = true;
+                    }
+                    if (!matched.some(c => c.letter === letter)) {
+                        matched.push({
+                            id: `alt-${matched.length + 1}`,
+                            letter,
+                            text: cleanText,
+                            isCorrect: isCorr
+                        });
+                    }
+                }
+            }
+        });
+        if (matched.length > 0) return matched;
+    }
+
+    // Se nenhuma foi marcada como correta ainda, analisa a explicação
+    if (list.length > 0 && !list.some(a => a.isCorrect)) {
+        const bodyText = document.body ? document.body.innerText : '';
+        // 1. Procura frase explícita: "Choice C is correct" ou "(Choice C) is correct" ou "The correct answer is C"
+        const explicitMatch = bodyText.match(/(?:The\s+correct\s+(?:answer|choice|option)\s+is|correct\s+answer\s*[:\s]+)\s*\(?([A-H])\)?/i);
+        if (explicitMatch && explicitMatch[1]) {
+            const corr = explicitMatch[1].toUpperCase();
+            const target = list.find(a => a.letter === corr);
+            if (target) target.isCorrect = true;
+        } else {
+            // 2. No USMLE (UWorld), as alternativas INCORRETAS são listadas como "(Choice A)", "(Choices A and B)", "(Choice D)", "(Choice E)"
+            // A alternativa que NÃO aparece na lista de Choices incorretas da explicação é a CORRETA!
+            const incorrectChoicesSet = new Set();
+            const choiceRegex = /\((?:Choices?|Options?)\s+([A-H](?:\s*(?:and|or|,)\s*[A-H])*)\)/gi;
+            let match;
+            while ((match = choiceRegex.exec(bodyText)) !== null) {
+                const lettersFound = match[1].match(/[A-H]/gi);
+                if (lettersFound) {
+                    lettersFound.forEach(l => incorrectChoicesSet.add(l.toUpperCase()));
+                }
+            }
+            if (incorrectChoicesSet.size > 0 && incorrectChoicesSet.size < list.length) {
+                const remaining = list.filter(a => !incorrectChoicesSet.has(a.letter));
+                if (remaining.length === 1) {
+                    remaining[0].isCorrect = true;
+                }
+            }
+        }
+    }
+
+    return list;
+}
+
+function extrairAlternativasParaFila() {
+    const detailed = extrairAlternativasDetalhadas();
+    if (detailed.length > 0) {
+        return [
+            { text: "Options:", node: null },
+            ...detailed.map(d => ({ text: `${d.letter}. ${d.text}`, node: null }))
+        ];
+    }
+
+    return [{ text: "Options not found.", node: null }];
 }
 
 // Localiza estritamente o cabeçalho do Educational Objective (evita capturar divs pai que englobam a página)

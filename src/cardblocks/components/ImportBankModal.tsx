@@ -13,29 +13,114 @@ export const ImportBankModal: React.FC<{
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // Helper para converter alternativas brutas em texto/linhas
+  // Helper inteligente para converter alternativas brutas em texto/linhas
   const parseRawChoices = (raw: string): QuestionAlternative[] => {
     if (!raw || typeof raw !== 'string') return [];
-    const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const rawLines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
     const alts: QuestionAlternative[] = [];
     const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
 
-    lines.forEach((line, idx) => {
-      let letter = letters[idx] || String.fromCharCode(65 + idx);
-      let text = line;
-      const match = line.match(/^([A-H])[\.\)]\s*(.*)$/i);
-      if (match) {
-        letter = match[1].toUpperCase();
-        text = match[2].trim();
-      }
-      alts.push({
-        id: crypto.randomUUID(),
-        letter,
-        text,
-        isCorrect: false,
-      });
+    // Filtra linhas que sejam apenas porcentagens isoladas como "(8%)" ou "8%"
+    const filteredLines = rawLines.filter(l => !/^\(?\d+%\)?$/.test(l));
+
+    // Verifica se as linhas estão intercaladas (Ex: linha 1 = "A.", linha 2 = "Texto", linha 3 = "B.", linha 4 = "Texto")
+    const isInterleaved = filteredLines.some((l, idx) => {
+      const next = filteredLines[idx + 1];
+      return /^[A-H][\.\)]?$/i.test(l) && next && !/^[A-H][\.\)]?$/i.test(next);
     });
+
+    if (isInterleaved) {
+      let currentLetter = '';
+      let currentText = '';
+
+      for (let i = 0; i < filteredLines.length; i++) {
+        const line = filteredLines[i];
+        const letterMatch = line.match(/^([A-H])[\.\)]?$/i);
+        if (letterMatch) {
+          if (currentLetter && currentText) {
+            alts.push({
+              id: crypto.randomUUID(),
+              letter: currentLetter,
+              text: currentText.replace(/\s*\(\d+%\)\s*$/, '').trim(),
+              isCorrect: false,
+            });
+          }
+          currentLetter = letterMatch[1].toUpperCase();
+          currentText = '';
+        } else {
+          currentText = currentText ? `${currentText} ${line}` : line;
+        }
+      }
+      if (currentLetter && currentText) {
+        alts.push({
+          id: crypto.randomUUID(),
+          letter: currentLetter,
+          text: currentText.replace(/\s*\(\d+%\)\s*$/, '').trim(),
+          isCorrect: false,
+        });
+      }
+    }
+
+    // Se não era intercalado, processa linha por linha normal
+    if (alts.length === 0) {
+      filteredLines.forEach((line, idx) => {
+        let letter = letters[idx] || String.fromCharCode(65 + idx);
+        let text = line;
+        const match = line.match(/^([A-H])[\.\)]\s*(.*)$/i);
+        if (match) {
+          letter = match[1].toUpperCase();
+          text = match[2].trim();
+        }
+        text = text.replace(/\s*\(\d+%\)\s*$/, '').trim();
+
+        if (text) {
+          alts.push({
+            id: crypto.randomUUID(),
+            letter,
+            text,
+            isCorrect: false,
+          });
+        }
+      });
+    }
+
     return alts;
+  };
+
+  const deduceCorrectChoice = (alternatives: QuestionAlternative[], explanation: string): QuestionAlternative[] => {
+    if (alternatives.some(a => a.isCorrect) || !explanation) return alternatives;
+
+    const matchAnswer = explanation.match(/(?:(?:the\s+)?correct\s+(?:answer|choice|option)|correta\s+[ée])\s*(?:is\s*)?\(?([A-H])\)?/i);
+    if (matchAnswer) {
+      const correctLetter = matchAnswer[1].toUpperCase();
+      return alternatives.map(a => ({
+        ...a,
+        isCorrect: a.letter.toUpperCase() === correctLetter,
+      }));
+    }
+
+    const incorrectChoicesSet = new Set<string>();
+    const choiceRegex = /\((?:Choices?|Options?)\s+([A-H](?:\s*(?:and|or|,)\s*[A-H])*)\)/gi;
+    let match;
+    while ((match = choiceRegex.exec(explanation)) !== null) {
+      const lettersFound = match[1].match(/[A-H]/gi);
+      if (lettersFound) {
+        lettersFound.forEach(l => incorrectChoicesSet.add(l.toUpperCase()));
+      }
+    }
+
+    if (incorrectChoicesSet.size > 0 && incorrectChoicesSet.size < alternatives.length) {
+      const unlisted = alternatives.filter(a => !incorrectChoicesSet.has(a.letter.toUpperCase()));
+      if (unlisted.length === 1) {
+        const correctLetter = unlisted[0].letter.toUpperCase();
+        return alternatives.map(a => ({
+          ...a,
+          isCorrect: a.letter.toUpperCase() === correctLetter,
+        }));
+      }
+    }
+
+    return alternatives;
   };
 
   const handleImport = () => {
@@ -131,16 +216,7 @@ export const ImportBankModal: React.FC<{
 
         const explanation = item.explanation || '';
         // Deduz resposta correta caso não marcada
-        if (!alternatives.some(a => a.isCorrect) && explanation) {
-          const matchAnswer = explanation.match(/(?:correct\s+(?:answer|choice|option)|correta\s+[ée])\s*(?:is\s*)?\(?([A-H])\)?/i);
-          if (matchAnswer) {
-            const correctLetter = matchAnswer[1].toUpperCase();
-            alternatives = alternatives.map(a => ({
-              ...a,
-              isCorrect: a.letter.toUpperCase() === correctLetter,
-            }));
-          }
-        }
+        alternatives = deduceCorrectChoice(alternatives, explanation);
 
         const qid = String(item.qid || item.questionId || item.id || `Q-${Date.now()}-${i + 1}`);
 
