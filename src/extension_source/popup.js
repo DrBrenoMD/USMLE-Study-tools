@@ -31,7 +31,39 @@ if (document.getElementById('tab-btn-keys')) document.getElementById('tab-btn-ke
 const btnOpenHub = document.getElementById('btn-open-flashcards-hub');
 if (btnOpenHub) {
     btnOpenHub.addEventListener('click', () => {
-        chrome.tabs.create({ url: 'https://usmle-study-tools.vercel.app/flashcards' });
+        chrome.storage.local.get(['last_connected_app_url'], (res) => {
+            const baseUrl = res.last_connected_app_url ? new URL(res.last_connected_app_url).origin : 'https://usmle-study-tools.vercel.app';
+            chrome.tabs.create({ url: baseUrl + '/flashcards' });
+        });
+    });
+}
+
+const btnOpenQuestionsHub = document.getElementById('btn-open-questions-hub');
+if (btnOpenQuestionsHub) {
+    btnOpenQuestionsHub.addEventListener('click', () => {
+        chrome.storage.local.get(['last_connected_app_url'], (res) => {
+            const baseUrl = res.last_connected_app_url ? new URL(res.last_connected_app_url).origin : 'https://usmle-study-tools.vercel.app';
+            chrome.tabs.create({ url: baseUrl + '/questions' });
+        });
+    });
+}
+
+// Configuração do Banco de Destino e Auto-Sync
+const inputTargetQBank = document.getElementById('target-qbank-name');
+const checkAutoSync = document.getElementById('auto-sync-all-questions');
+
+if (inputTargetQBank && checkAutoSync) {
+    chrome.storage.local.get(['target_qbank_name', 'auto_sync_all_questions'], (res) => {
+        if (res.target_qbank_name) inputTargetQBank.value = res.target_qbank_name;
+        if (res.auto_sync_all_questions !== undefined) checkAutoSync.checked = Boolean(res.auto_sync_all_questions);
+    });
+
+    inputTargetQBank.addEventListener('input', () => {
+        chrome.storage.local.set({ target_qbank_name: inputTargetQBank.value.trim() || 'UWorld Step 1' });
+    });
+
+    checkAutoSync.addEventListener('change', () => {
+        chrome.storage.local.set({ auto_sync_all_questions: checkAutoSync.checked });
     });
 }
 

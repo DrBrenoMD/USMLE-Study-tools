@@ -54,17 +54,28 @@ export interface ReviewLog {
 
 export interface QuestionAlternative {
   id: string;
+  letter?: string;
   text: string;
   isCorrect?: boolean;
   explanation?: string;
-  letter?: string;
+}
+
+export interface QuestionAttempt {
+  timestamp: number;
+  selectedChoiceId?: string;
+  isCorrect: boolean;
+  resolutionTimeSeconds: number;
+  reviewTimeSeconds: number;
 }
 
 export interface Question {
   id: string;
+  qid: string;
   bankId: string;
   text: string;
+  stem?: string;
   subject?: string;
+  system?: string;
   area?: string;
   subArea?: string;
   specialty?: string;
@@ -74,7 +85,20 @@ export interface Question {
   flag?: string;
   alternatives: QuestionAlternative[];
   explanation?: string;
+  educationalObjective?: string;
+  images?: string[];
+  links?: string[];
+  status?: 'unused' | 'correct' | 'incorrect';
+  selectedChoiceId?: string;
+  correctChoiceId?: string;
+  resolutionTimeSeconds?: number;
+  reviewTimeSeconds?: number;
+  attempts?: QuestionAttempt[];
+  lastAnsweredAt?: number;
+  userNotes?: string;
+  isFlagged?: boolean;
   createdAt?: number;
+  updatedAt?: number;
 }
 
 export interface QuestionBank {
@@ -223,6 +247,18 @@ export interface StoreState {
   createQuestion: (q: Omit<Question, 'id' | 'createdAt'>) => string;
   updateQuestion: (id: string, updates: Partial<Question>) => void;
   deleteQuestion: (id: string) => void;
+  upsertQuestionFromQBank: (q: Partial<Question> & { qid: string; bankId?: string }) => string;
+  recordQuestionAnswer: (
+    questionId: string,
+    isCorrect: boolean,
+    selectedChoiceId: string,
+    resolutionTimeSeconds: number,
+    reviewTimeSeconds: number
+  ) => void;
+  resetQuestionStats: (questionId: string) => void;
+  resetBankStats: (bankId: string) => void;
+  updateQuestionNotes: (questionId: string, notes: string) => void;
+  toggleQuestionFlag: (questionId: string) => void;
 
   // Notebook Actions
   createNotebook: (name: string, questionIds: string[], description?: string, timeLimitPerQuestion?: number, mode?: 'exam' | 'tutor') => string;
@@ -666,6 +702,173 @@ export const useStore = create<StoreState>()(
         deleteQuestion: (id) => {
           set(state => ({
             questions: state.questions.filter(q => q.id !== id)
+          }));
+        },
+
+        upsertQuestionFromQBank: (qData) => {
+          const state = get();
+          // Garante banco de questões alvo
+          let targetBankId = qData.bankId;
+          if (!targetBankId || !state.questionBanks.some(b => b.id === targetBankId)) {
+            if (state.questionBanks.length > 0) {
+              targetBankId = state.questionBanks[0].id;
+            } else {
+              targetBankId = 'bank-' + Math.random().toString(36).substring(2, 9);
+              state.questionBanks.push({
+                id: targetBankId,
+                name: 'UWorld USMLE Step 1',
+                description: 'Banco padrão importado automaticamente',
+                createdAt: Date.now()
+              });
+            }
+          }
+
+          const cleanQid = (qData.qid || '').trim();
+          if (!cleanQid) return '';
+
+          // Busca questão existente pelo QID (identificador único dentro do banco ou global)
+          const existingIdx = state.questions.findIndex(q => 
+            (q.qid && q.qid.toString().trim() === cleanQid && q.bankId === targetBankId) ||
+            (q.qid && q.qid.toString().trim() === cleanQid)
+          );
+
+          const stemText = qData.stem || qData.text || '';
+
+          if (existingIdx !== -1) {
+            const current = state.questions[existingIdx];
+            const updated: Question = {
+              ...current,
+              // Preserva identificadores e estatísticas de resolução prévia
+              bankId: targetBankId,
+              text: stemText || current.text,
+              stem: stemText || current.stem || current.text,
+              // Atualiza conteúdo enriquecido apenas se fornecido
+              alternatives: qData.alternatives && qData.alternatives.length > 0 ? qData.alternatives : current.alternatives,
+              explanation: qData.explanation || current.explanation,
+              educationalObjective: qData.educationalObjective || current.educationalObjective,
+              subject: qData.subject || current.subject,
+              system: qData.system || current.system,
+              images: qData.images && qData.images.length > 0 ? qData.images : current.images,
+              links: qData.links && qData.links.length > 0 ? qData.links : current.links,
+              tags: qData.tags && qData.tags.length > 0 ? Array.from(new Set([...(current.tags || []), ...qData.tags])) : current.tags,
+              updatedAt: Date.now(),
+            };
+
+            const newQuestions = [...state.questions];
+            newQuestions[existingIdx] = updated;
+            set({ questions: newQuestions, questionBanks: [...state.questionBanks] });
+            return current.id;
+          } else {
+            const newId = 'q-' + Math.random().toString(36).substring(2, 9);
+            const newQ: Question = {
+              id: newId,
+              qid: cleanQid,
+              bankId: targetBankId,
+              text: stemText,
+              stem: stemText,
+              alternatives: qData.alternatives || [],
+              explanation: qData.explanation || '',
+              educationalObjective: qData.educationalObjective || '',
+              subject: qData.subject || '',
+              system: qData.system || '',
+              images: qData.images || [],
+              links: qData.links || [],
+              tags: qData.tags || [],
+              status: 'unused',
+              attempts: [],
+              resolutionTimeSeconds: 0,
+              reviewTimeSeconds: 0,
+              createdAt: Date.now(),
+              updatedAt: Date.now(),
+            };
+
+            set(s => ({
+              questions: [newQ, ...s.questions],
+              questionBanks: [...state.questionBanks]
+            }));
+            return newId;
+          }
+        },
+
+        recordQuestionAnswer: (questionId, isCorrect, selectedChoiceId, resolutionTimeSeconds, reviewTimeSeconds) => {
+          set(state => ({
+            questions: state.questions.map(q => {
+              if (q.id !== questionId && q.qid !== questionId) return q;
+
+              const attempts = q.attempts || [];
+              const newAttempt: QuestionAttempt = {
+                timestamp: Date.now(),
+                selectedChoiceId,
+                isCorrect,
+                resolutionTimeSeconds: Math.max(1, Math.round(resolutionTimeSeconds || 0)),
+                reviewTimeSeconds: Math.max(0, Math.round(reviewTimeSeconds || 0)),
+              };
+
+              return {
+                ...q,
+                status: isCorrect ? 'correct' : 'incorrect',
+                selectedChoiceId,
+                resolutionTimeSeconds: (q.resolutionTimeSeconds || 0) + newAttempt.resolutionTimeSeconds,
+                reviewTimeSeconds: (q.reviewTimeSeconds || 0) + newAttempt.reviewTimeSeconds,
+                attempts: [...attempts, newAttempt],
+                lastAnsweredAt: Date.now(),
+                updatedAt: Date.now(),
+              };
+            })
+          }));
+        },
+
+        resetQuestionStats: (questionId) => {
+          set(state => ({
+            questions: state.questions.map(q => {
+              if (q.id !== questionId && q.qid !== questionId) return q;
+              return {
+                ...q,
+                status: 'unused',
+                selectedChoiceId: undefined,
+                resolutionTimeSeconds: 0,
+                reviewTimeSeconds: 0,
+                attempts: [],
+                lastAnsweredAt: undefined,
+                updatedAt: Date.now(),
+              };
+            })
+          }));
+        },
+
+        resetBankStats: (bankId) => {
+          set(state => ({
+            questions: state.questions.map(q => {
+              if (q.bankId !== bankId) return q;
+              return {
+                ...q,
+                status: 'unused',
+                selectedChoiceId: undefined,
+                resolutionTimeSeconds: 0,
+                reviewTimeSeconds: 0,
+                attempts: [],
+                lastAnsweredAt: undefined,
+                updatedAt: Date.now(),
+              };
+            })
+          }));
+        },
+
+        updateQuestionNotes: (questionId, notes) => {
+          set(state => ({
+            questions: state.questions.map(q => {
+              if (q.id !== questionId && q.qid !== questionId) return q;
+              return { ...q, userNotes: notes, updatedAt: Date.now() };
+            })
+          }));
+        },
+
+        toggleQuestionFlag: (questionId) => {
+          set(state => ({
+            questions: state.questions.map(q => {
+              if (q.id !== questionId && q.qid !== questionId) return q;
+              return { ...q, isFlagged: !q.isFlagged, updatedAt: Date.now() };
+            })
           }));
         },
 

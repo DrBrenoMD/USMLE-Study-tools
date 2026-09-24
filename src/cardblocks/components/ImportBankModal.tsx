@@ -55,6 +55,7 @@ export const ImportBankModal: React.FC<{
 
         createQuestion({
           bankId: targetBankId,
+          qid: String(item.qid || item.id || `Q-${importedCount + 1}`),
           subject: item.subject || '',
           specialty: item.specialty || '',
           area: item.area || '',

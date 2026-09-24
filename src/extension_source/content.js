@@ -561,7 +561,7 @@ function despacharDadosParaFlashcards(cardData) {
 }
 
 // Auto-importação durante a navegação pelas questões:
-// Envia para o editor, mas apenas será salvo se o usuário preencher frente e verso.
+// Cada questão pela qual o usuário passar é importada para o repositório de questões do banco selecionado
 function autoImportarQuestaoSeNavegou() {
     if (!isPaginaResolucaoQBank()) return;
     const currentQId = extrairIdQuestaoAtual();
@@ -569,7 +569,33 @@ function autoImportarQuestaoSeNavegou() {
 
     lastImportedQId = currentQId;
     const cardData = extrairDadosCompletosQuestao();
-    despacharDadosParaFlashcards(cardData);
+
+    // Obtém o banco de destino configurado pelo usuário no popup
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.get(['target_qbank_name', 'auto_sync_all_questions'], (res) => {
+            const targetBank = res.target_qbank_name || 'UWorld Step 1';
+            cardData.bankName = targetBank;
+            cardData.targetBankName = targetBank;
+
+            // 1. Despacha para o repositório de Questões
+            try {
+                const qbSync = new BroadcastChannel('usmle_qbank_sync');
+                qbSync.postMessage({
+                    type: 'QBANK_QUESTION_SYNC',
+                    question: cardData,
+                    bankName: targetBank,
+                    qid: currentQId,
+                    timestamp: Date.now()
+                });
+                setTimeout(() => qbSync.close(), 1200);
+            } catch(e) {}
+
+            // 2. Despacha para o editor de Flashcards (sem salvar card vazio)
+            despacharDadosParaFlashcards(cardData);
+        });
+    } else {
+        despacharDadosParaFlashcards(cardData);
+    }
 }
 
 function criarFlashcardUI() {
@@ -791,9 +817,12 @@ setInterval(() => {
         const qId = extrairIdQuestaoAtual();
         if (qId && qId !== lastImportedQId) {
             autoImportarQuestaoSeNavegou();
+            if (typeof atualizarStatusCardQuestaoAtual === 'function') {
+                atualizarStatusCardQuestaoAtual();
+            }
         }
     }
-}, 1500);
+}, 800);
 
 window.addEventListener('DOMContentLoaded', () => {
     criarBarraUI();
@@ -1240,9 +1269,22 @@ document.addEventListener('click', (e) => {
                 if (typeof atualizarStatusCardQuestaoAtual === 'function') {
                     atualizarStatusCardQuestaoAtual();
                 }
+                if (typeof autoImportarQuestaoSeNavegou === 'function') {
+                    autoImportarQuestaoSeNavegou();
+                }
             }, 600);
         }
     }
+
+    // Detecção universal de navegação não-sequencial por barra lateral / lista de questões
+    setTimeout(() => {
+        if (typeof autoImportarQuestaoSeNavegou === 'function') {
+            autoImportarQuestaoSeNavegou();
+        }
+        if (typeof atualizarStatusCardQuestaoAtual === 'function') {
+            atualizarStatusCardQuestaoAtual();
+        }
+    }, 700);
 
     // 2. Auto-Read
     if (configAtual.autoRead) {

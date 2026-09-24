@@ -11,6 +11,7 @@ import PacerPage from "./pages/Pacer";
 import NBMECalculator from "./pages/NBMECalculator";
 import ScorePredictor from "./pages/ScorePredictor";
 import FlashcardsUnifiedHub from "./pages/FlashcardsUnifiedHub";
+import QuestionsHub from "./pages/QuestionsHub";
 import ExtensionDownload from "./pages/ExtensionDownload";
 import { TopBarTimer } from "./components/TopBarTimer";
 import { ChevronLeft, Palette, Menu } from "lucide-react";
@@ -98,6 +99,9 @@ function AppContent() {
           <Route path="/predictor" element={<ScorePredictor />} />
           <Route path="/flashcards/*" element={<FlashcardsUnifiedHub />} />
           <Route path="/flashcards" element={<FlashcardsUnifiedHub />} />
+          <Route path="/questions/*" element={<QuestionsHub />} />
+          <Route path="/questions" element={<QuestionsHub />} />
+          <Route path="/questoes" element={<QuestionsHub />} />
           <Route path="/extensao" element={<ExtensionDownload />} />
         </Routes>
       </div>

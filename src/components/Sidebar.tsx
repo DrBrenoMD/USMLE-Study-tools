@@ -33,6 +33,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     { name: 'Calculadora NBME', path: '/calculator', icon: Calculator },
     { name: 'Score Predictor', path: '/predictor', icon: LineChart },
     { name: 'Flashcards', path: '/flashcards', icon: Layers },
+    { name: 'Banco de Questões', path: '/questions', icon: BookOpen },
   ];
 
   return (

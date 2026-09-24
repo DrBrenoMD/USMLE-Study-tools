@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Flashcard, useStore } from '../store/useStore';
 import { RichEditor } from './RichEditor';
 import { renderCardText } from '../lib/utils';
-import { Eye, EyeOff, Tag as TagIcon, Flag, X, ChevronDown, ChevronUp, Image as ImageIcon, Trash2 } from 'lucide-react';
+import { Eye, EyeOff, Tag as TagIcon, Flag, X, ChevronDown, ChevronUp, Image as ImageIcon, Trash2, BookOpen, ExternalLink } from 'lucide-react';
 
 export const CardEditor: React.FC<{ 
   card: Flashcard;
   onUpdate?: (id: string, f: string, b: string, d?: string, tags?: string[], flag?: string) => void;
 }> = ({ card, onUpdate }) => {
-  const { updateCard } = useStore();
+  const { updateCard, questions } = useStore();
+  const navigate = useNavigate();
   const [showPreview, setShowPreview] = useState(false);
   const [f, setF] = useState(card.front);
   const [b, setB] = useState(card.back);
@@ -26,6 +28,8 @@ export const CardEditor: React.FC<{
   const [educationalObjective, setEducationalObjective] = useState(card.educationalObjective || '');
   const [questionImages, setQuestionImages] = useState<string[]>(card.questionImages || []);
   const [newImageUrl, setNewImageUrl] = useState('');
+
+  const matchingQuestion = questions.find(q => q.qid === (questionId || card.questionId));
 
   const FLAGS = [
     { value: '', label: 'None', color: 'bg-gray-300 dark:bg-gray-600' },
@@ -259,10 +263,28 @@ export const CardEditor: React.FC<{
                 </span>
               )}
             </span>
-            <span className="flex items-center gap-1 text-xs text-gray-400">
-              <span>{isQBankOpen ? 'Ocultar' : 'Expandir'}</span>
-              {isQBankOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            </span>
+            <div className="flex items-center gap-2">
+              {questionId && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const bId = matchingQuestion?.bankId || '';
+                    navigate(`/questions?bankId=${bId}&qid=${encodeURIComponent(questionId)}`);
+                  }}
+                  className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 shadow-xs transition-colors"
+                  title="Abrir esta questão no Banco de Questões"
+                >
+                  <BookOpen className="w-3 h-3" />
+                  <span>Ir até a questão</span>
+                  <ExternalLink className="w-2.5 h-2.5" />
+                </button>
+              )}
+              <span className="flex items-center gap-1 text-xs text-gray-400">
+                <span>{isQBankOpen ? 'Ocultar' : 'Expandir'}</span>
+                {isQBankOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </span>
+            </div>
           </button>
 
           {isQBankOpen && (

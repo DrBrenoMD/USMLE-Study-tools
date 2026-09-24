@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Home as DecksHome } from '../cardblocks/pages/Home';
 import { DeckView } from '../cardblocks/pages/DeckView';
 import { StudySession } from '../cardblocks/pages/StudySession';
@@ -23,12 +23,14 @@ import {
   Activity,
   Play,
   X,
+  BookOpen,
 } from 'lucide-react';
 
 export type FlashcardPage = Page;
 
 export default function FlashcardsUnifiedHub() {
   const location = useLocation();
+  const navigate = useNavigate();
 
   // Modal states & imported data
   const [incomingImportData, setIncomingImportData] = useState<any>(null);
@@ -179,6 +181,15 @@ export default function FlashcardsUnifiedHub() {
             >
               <Search className="w-3.5 h-3.5 shrink-0" />
               <span>Navegador</span>
+            </button>
+
+            <button
+              onClick={() => navigate('/questions')}
+              className="px-3 py-1.5 rounded-xl text-xs font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-all flex items-center gap-1.5 shrink-0"
+              title="Banco de Questões USMLE"
+            >
+              <BookOpen className="w-3.5 h-3.5 shrink-0 text-blue-500" />
+              <span>Banco de Questões</span>
             </button>
           </nav>
 

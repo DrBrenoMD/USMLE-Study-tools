@@ -16,6 +16,7 @@ export const QuestionEditor: React.FC<{
   const [text, setText] = useState(existing?.text || '');
   const [subject, setSubject] = useState(existing?.subject || '');
   const [topic, setTopic] = useState(existing?.topic || '');
+  const [qid, setQid] = useState(existing?.qid || '');
   const [explanation, setExplanation] = useState(existing?.explanation || '');
   const [alternatives, setAlternatives] = useState<QuestionAlternative[]>(
     existing?.alternatives || [
@@ -55,6 +56,7 @@ export const QuestionEditor: React.FC<{
     if (existing) {
       updateQuestion(existing.id, {
         bankId: targetBankId,
+        qid: qid.trim() || existing.qid || `Q-${Date.now().toString(36)}`,
         text,
         subject,
         topic,
@@ -64,6 +66,7 @@ export const QuestionEditor: React.FC<{
     } else {
       createQuestion({
         bankId: targetBankId,
+        qid: qid.trim() || `Q-${Date.now().toString(36)}`,
         text,
         subject,
         topic,

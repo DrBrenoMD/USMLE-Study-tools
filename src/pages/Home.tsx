@@ -1,4 +1,4 @@
-import { ArrowRight, BookOpen, CalendarDays, LineChart, Activity, Calculator, Chrome } from "lucide-react";
+import { ArrowRight, BookOpen, CalendarDays, LineChart, Activity, Calculator, Chrome, Layers, Database } from "lucide-react";
 import { Link } from "react-router-dom";
 import { MouseInteractiveBackground } from "../components/MouseInteractiveBackground";
 import { EXTENSION_VERSION } from "../extension_source/extensionFiles";
@@ -16,6 +16,20 @@ const MENU_ITEMS = [
     description: "Treine seu pace de questões contra o relógio.",
     icon: Activity,
     href: "/pacer",
+    active: true,
+  },
+  {
+    title: "Banco de Questões",
+    description: "Sessões de treino Tutored/Timed com métricas por Subject e System.",
+    icon: Database,
+    href: "/questions",
+    active: true,
+  },
+  {
+    title: "Flashcards",
+    description: "Revisão espaçada de baralhos e cartões associados às questões.",
+    icon: Layers,
+    href: "/flashcards",
     active: true,
   },
   {
@@ -37,13 +51,6 @@ const MENU_ITEMS = [
     description: "Previsão de score baseada no seu histórico de simulados.",
     icon: LineChart,
     href: "/predictor",
-    active: true,
-  },
-  {
-    title: "Flashcards",
-    description: "Revisão espaçada dos principais tópicos.",
-    icon: BookOpen,
-    href: "/flashcards",
     active: true,
   },
 ];
