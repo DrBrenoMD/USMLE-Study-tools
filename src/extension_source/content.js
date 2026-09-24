@@ -1302,16 +1302,51 @@ async function falarFeedback(texto) {
     window.speechSynthesis.speak(msg);
 }
 
-// --- Funções de Extração Inteligente por Blocos ---
+// --- Funções de Extração Inteligente por Blocos e Tabelas ---
+function limparEFormatarTabelaHtml(tableEl) {
+    if (!tableEl) return '';
+    const clone = tableEl.cloneNode(true);
+    clone.querySelectorAll('script, style, button, [role="button"]').forEach(el => el.remove());
+    clone.querySelectorAll('img').forEach(img => {
+        const src = img.getAttribute('src');
+        if (src) {
+            try { img.src = new URL(src, window.location.href).href; } catch(e){}
+        }
+        img.removeAttribute('style');
+        img.className = 'max-h-64 max-w-full rounded-lg my-2 object-contain';
+    });
+    clone.className = 'qbank-imported-table border-collapse w-full my-3 text-xs sm:text-sm border border-gray-300 dark:border-gray-700';
+    clone.querySelectorAll('th, td').forEach(cell => {
+        cell.className = 'border border-gray-300 dark:border-gray-700 p-2 text-left';
+    });
+    clone.querySelectorAll('th').forEach(th => {
+        th.className += ' font-bold bg-gray-100 dark:bg-gray-800';
+    });
+    return clone.outerHTML;
+}
+
 function getBlocosDeTexto(container) {
     const itens = [];
     if (!container) return itens;
-    const blocos = container.querySelectorAll('p, li, td, th, h1, h2, h3, h4, h5, h6');
+
+    const tables = container.querySelectorAll('table');
+    if (tables.length > 0) {
+        tables.forEach(tbl => {
+            const tableHtml = limparEFormatarTabelaHtml(tbl);
+            if (tableHtml) itens.push({ text: tableHtml, node: tbl });
+        });
+    }
+
+    const blocos = container.querySelectorAll('p, li, h1, h2, h3, h4, h5, h6');
     blocos.forEach(b => {
-        const hasBlockChildren = Array.from(b.children).some(child => ['P', 'LI', 'TD', 'TH', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(child.tagName));
-        if (!hasBlockChildren && b.innerText.trim().length > 0) itens.push({ text: b.innerText, node: b });
+        if (b.closest('table')) return;
+        const hasBlockChildren = Array.from(b.children).some(child => ['P', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(child.tagName));
+        if (!hasBlockChildren && b.innerText.trim().length > 0) itens.push({ text: b.innerHTML.trim() || b.innerText, node: b });
     });
-    if(itens.length === 0 && container.innerText.trim().length > 0) itens.push({ text: container.innerText, node: container });
+
+    if (itens.length === 0 && container.innerText.trim().length > 0) {
+        itens.push({ text: container.innerHTML.trim() || container.innerText, node: container });
+    }
     return itens;
 }
 
@@ -1334,6 +1369,19 @@ function extrairEnunciadoParaFila() {
         try {
             const el = document.querySelector(sel);
             if (el && el.innerText && el.innerText.trim().length > 25) {
+                const clone = el.cloneNode(true);
+                clone.querySelectorAll('.markBtnContainer, button, [class*="Clear highlights"]').forEach(c => c.remove());
+                const tables = clone.querySelectorAll('table');
+                if (tables.length > 0) {
+                    let fullHtml = '';
+                    Array.from(clone.children).forEach(ch => {
+                        if (ch.tagName === 'TABLE') fullHtml += '\n\n' + limparEFormatarTabelaHtml(ch) + '\n\n';
+                        else if (ch.innerText.trim()) fullHtml += '\n\n' + ch.innerHTML.trim();
+                    });
+                    if (fullHtml.trim().length > 20) {
+                        return [{ text: fullHtml.trim(), node: el }];
+                    }
+                }
                 const blocos = getBlocosDeTexto(el);
                 if (blocos.length > 0) return blocos;
             }
@@ -1345,13 +1393,12 @@ function extrairEnunciadoParaFila() {
     const blocosStem = [];
     for (let el of elements) {
         const txt = (el.innerText || '').trim();
-        // Filtra enunciados com comprimento clínico e ignora botões de controle
         if (txt.length > 40 && !txt.includes('Clear highlights') && !txt.includes('Mark Question') && !txt.includes('Item ') && !txt.includes('Question Id:')) {
             const hasChoiceHeader = /(?:Options|Alternativas|Educational objective)/i.test(txt);
-            if (!hasChoiceHeader && !el.querySelector('table, tr, input[type="radio"]')) {
+            if (!hasChoiceHeader && !el.querySelector('table.choices, tr, input[type="radio"]')) {
                 const jaAdicionado = blocosStem.some(b => b.node && (b.node.contains(el) || el.contains(b.node)));
                 if (!jaAdicionado) {
-                    blocosStem.push({ text: txt, node: el });
+                    blocosStem.push({ text: el.innerHTML.trim() || txt, node: el });
                 }
             }
         }
@@ -1365,8 +1412,6 @@ function extrairAlternativasDetalhadas() {
     const list = [];
     
     // 0. Procura banner superior de resultado da questão (role="alert")
-    // Em questões incorretas: exibe "Incorrect" e "Correct answer" com a letra exata (ex: "F")
-    // Em questões corretas: exibe "Correct"
     let explicitCorrectFromBanner = '';
     let isQuestionMarkedCorrectOnPage = false;
     let isQuestionMarkedIncorrectOnPage = false;
@@ -1384,9 +1429,21 @@ function extrairAlternativasDetalhadas() {
     });
 
     // 1. Tabela de alternativas do Q-Bank
+    const parentTable = document.querySelector('table tbody, table.choices, table:has(tr .lucide-check), table:has(tr [role="radio"])');
+    let tableHeaders = [];
+    if (parentTable) {
+        const headerRow = parentTable.querySelector('thead tr, tr:first-child:has(th), tr:first-child:has(td.font-bold)');
+        if (headerRow) {
+            const ths = Array.from(headerRow.querySelectorAll('th, td')).map(t => (t.innerText || '').trim());
+            const filteredThs = ths.filter(t => t && !/^[A-H][\.\)]?$/i.test(t) && !/^\(?\d+%\)?$/.test(t));
+            if (filteredThs.length > 1) {
+                tableHeaders = filteredThs;
+            }
+        }
+    }
+
     const linhas = Array.from(document.querySelectorAll('table tbody tr, table.choices tr, tr[class*="flex items-start"], .choice-row, [class*="alternative"]'));
     
-    // Filtra apenas linhas que realmente parecem alternativas (com A., B., C. ou radio)
     const validRows = linhas.filter(tr => {
         const txt = (tr.innerText || '').trim();
         return /^[A-H][\.\)]|^\s*[A-H]\s*[\.\)]/m.test(txt) || tr.querySelector('[role="radio"], input[type="radio"], .lucide-check, .lucide-x');
@@ -1403,21 +1460,52 @@ function extrairAlternativasDetalhadas() {
                 letter = letterMatch[1].toUpperCase();
             }
 
-            // B. Detectar texto da alternativa (sem a letra e sem porcentagens como (8%))
+            // B. Detectar texto e colunas da alternativa
             let text = '';
-            // Tenta pegar da 2ª coluna / td se existir
-            const secondTd = tr.querySelector('td:nth-child(2), td.w-full, [class*="w-full"]');
-            if (secondTd) {
-                const clone = secondTd.cloneNode(true);
+            
+            const allTds = Array.from(tr.querySelectorAll('td, [class*="w-full"]'));
+            const contentCells = [];
+            allTds.forEach((cell, cellIdx) => {
+                const cellTxt = (cell.innerText || '').trim();
+                const isRadioOrLetter = cell.querySelector('[role="radio"], input[type="radio"]') || (/^[A-H][\.\)]?$/i.test(cellTxt) && cellIdx === 0);
+                const isPercentage = /^\(?\d+%\)?$/.test(cellTxt);
+                if (!isRadioOrLetter && !isPercentage && cellTxt.length > 0) {
+                    contentCells.push(cell);
+                }
+            });
+
+            // Se tem imagens na alternativa
+            const imgEl = tr.querySelector('img');
+            let imgHtml = '';
+            if (imgEl && imgEl.src) {
+                try {
+                    const absSrc = new URL(imgEl.getAttribute('src') || imgEl.src, window.location.href).href;
+                    imgHtml = `<img src="${absSrc}" alt="Alternative image" class="max-h-48 max-w-full rounded-lg my-1 inline-block" />`;
+                } catch(e) {}
+            }
+
+            if (contentCells.length > 1 && tableHeaders.length === contentCells.length) {
+                const parts = contentCells.map((c, i) => {
+                    const h = tableHeaders[i] || `Col ${i+1}`;
+                    const val = (c.innerText || '').trim();
+                    return `${h}: ${val}`;
+                });
+                text = parts.join('  |  ');
+            } else if (contentCells.length > 1) {
+                const parts = contentCells.map(c => (c.innerText || '').trim());
+                text = parts.join('  |  ');
+            } else if (contentCells.length === 1) {
+                const clone = contentCells[0].cloneNode(true);
                 clone.querySelectorAll('span').forEach(s => {
-                    if (/^\s*\(\d+%\)\s*$/.test(s.innerText || '')) {
-                        s.remove();
-                    }
+                    if (/^\s*\(\d+%\)\s*$/.test(s.innerText || '')) s.remove();
                 });
                 text = (clone.innerText || clone.textContent || '').replace(/\s*\(\d+%\)\s*$/, '').trim();
             }
 
-            // Fallback para texto da linha inteira
+            if (imgHtml) {
+                text = text ? `${text}\n${imgHtml}` : imgHtml;
+            }
+
             if (!text) {
                 text = rowText
                     .replace(/^[A-H][\.\)]\s*/im, '')
@@ -1429,18 +1517,15 @@ function extrairAlternativasDetalhadas() {
             // C. Detectar se é a alternativa correta
             let isCorrect = false;
 
-            // 1. Se o banner informou a letra exata (ex: "Correct answer F")
             if (explicitCorrectFromBanner && letter === explicitCorrectFromBanner) {
                 isCorrect = true;
             }
 
-            // 2. Ícone de checkmark SVG verde no primeiro td / linha
             if (!isCorrect) {
                 const checkSvg = tr.querySelector('svg.lucide-check, svg[class*="text-green"], svg[class*="fill-green"], svg[class*="text-emerald"], path[d*="M20 6 9 17l-5-5"], path[d*="M10.97 4.97"]');
                 if (checkSvg) isCorrect = true;
             }
 
-            // 3. Classes de cor verde ou correta no tr / td
             if (!isCorrect) {
                 const hasGreenClass = Array.from(tr.querySelectorAll('*')).some(el => {
                     const cls = (el.className || '').toString();
@@ -1451,7 +1536,6 @@ function extrairAlternativasDetalhadas() {
                 }
             }
 
-            // 4. Se a questão foi marcada como "Correct" na página e esta linha possui radio button marcado
             if (!isCorrect && isQuestionMarkedCorrectOnPage && !isQuestionMarkedIncorrectOnPage) {
                 const isSelectedRadio = tr.querySelector('[role="radio"][aria-checked="true"], input[type="radio"]:checked, [class*="bg-[#004976]"], [class*="bg-blue"]');
                 if (isSelectedRadio) {
@@ -1459,7 +1543,6 @@ function extrairAlternativasDetalhadas() {
                 }
             }
 
-            // 5. Texto com checkmark explícito
             if (!isCorrect && (rowText.includes('✓') || rowText.includes('✔'))) {
                 isCorrect = true;
             }
@@ -1509,15 +1592,12 @@ function extrairAlternativasDetalhadas() {
     // Se nenhuma foi marcada como correta ainda, analisa a explicação
     if (list.length > 0 && !list.some(a => a.isCorrect)) {
         const bodyText = document.body ? document.body.innerText : '';
-        // 1. Procura frase explícita: "Choice C is correct" ou "(Choice C) is correct" ou "The correct answer is C"
         const explicitMatch = bodyText.match(/(?:The\s+correct\s+(?:answer|choice|option)\s+is|correct\s+answer\s*[:\s]+)\s*\(?([A-H])\)?/i);
         if (explicitMatch && explicitMatch[1]) {
             const corr = explicitMatch[1].toUpperCase();
             const target = list.find(a => a.letter === corr);
             if (target) target.isCorrect = true;
         } else {
-            // 2. No USMLE (UWorld), as alternativas INCORRETAS são listadas como "(Choice A)", "(Choices A and B)", "(Choice D)", "(Choice E)"
-            // A alternativa que NÃO aparece na lista de Choices incorretas da explicação é a CORRETA!
             const incorrectChoicesSet = new Set();
             const choiceRegex = /\((?:Choices?|Options?)\s+([A-H](?:\s*(?:and|or|,)\s*[A-H])*)\)/gi;
             let match;
@@ -1551,7 +1631,7 @@ function extrairAlternativasParaFila() {
     return [{ text: "Options not found.", node: null }];
 }
 
-// Localiza estritamente o cabeçalho do Educational Objective (evita capturar divs pai que englobam a página)
+// Localiza estritamente o cabeçalho do Educational Objective
 function encontrarCabecalhoObjetivo() {
     const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6, strong, b, [class*="header"]'));
     const directHeading = headings.find(h => {
@@ -1568,7 +1648,6 @@ function encontrarCabecalhoObjetivo() {
 }
 
 function obterContainerExplicacao() {
-    // 1. Procura pela aba "Explanation"
     const expTab = Array.from(document.querySelectorAll('span, li, button, h2, h3')).find(el => 
         /^\s*Explanation\s*$/i.test((el.textContent || '').trim())
     );
@@ -1577,7 +1656,6 @@ function obterContainerExplicacao() {
         if (section) return section;
     }
 
-    // 2. Container pai do cabeçalho do objetivo
     const objHeader = encontrarCabecalhoObjetivo();
     if (objHeader && objHeader.parentElement) {
         return objHeader.parentElement.closest('div.mt-8, div[class*="pt-5"], main') || objHeader.parentElement;
@@ -1591,37 +1669,30 @@ function extrairExplicacaoParaFila() {
     const expContainer = obterContainerExplicacao();
     const itens = [];
 
-    // Todos os parágrafos dentro do container de explicação
-    const allP = Array.from(expContainer.querySelectorAll('p'));
+    // Se houver tabelas dentro da explicação
+    const tables = expContainer.querySelectorAll('table');
+    tables.forEach(tbl => {
+        if (objHeader && (objHeader.compareDocumentPosition(tbl) & Node.DOCUMENT_POSITION_FOLLOWING)) return;
+        const tableHtml = limparEFormatarTabelaHtml(tbl);
+        if (tableHtml) {
+            itens.push({ text: tableHtml, node: tbl });
+        }
+    });
+
+    const allP = Array.from(expContainer.querySelectorAll('p, ul, ol'));
     for (let p of allP) {
         if (objHeader && (objHeader === p || objHeader.contains(p))) continue;
+        if (objHeader && (objHeader.compareDocumentPosition(p) & Node.DOCUMENT_POSITION_FOLLOWING)) continue;
+        if (p.closest('table')) continue;
 
-        // Se o parágrafo vem DEPOIS do objHeader, ele pertence ao Educational Objective!
-        if (objHeader && (objHeader.compareDocumentPosition(p) & Node.DOCUMENT_POSITION_FOLLOWING)) {
-            continue;
-        }
-
-        // Ignora metadados de Subject / System
         if (p.closest('[class*="border-y"]') || /(?:Subject|System|Q\s*ID)\s*:/i.test(p.innerText || '')) {
             continue;
         }
 
         const txt = (p.innerText || '').trim();
         if (txt.length > 5 && !/(?:Clear highlights|Mark Question)/i.test(txt)) {
-            itens.push({ text: txt, node: p });
+            itens.push({ text: p.innerHTML.trim() || txt, node: p });
         }
-    }
-
-    // Fallback: se allP não achou nada, pega blocos de texto antes do objHeader
-    if (itens.length === 0 && objHeader) {
-        let prev = objHeader.previousElementSibling;
-        const prevNodes = [];
-        while (prev) {
-            const txt = (prev.innerText || '').trim();
-            if (txt.length > 5) prevNodes.unshift({ text: txt, node: prev });
-            prev = prev.previousElementSibling;
-        }
-        if (prevNodes.length > 0) return prevNodes;
     }
 
     return itens.length > 0 ? itens : [{ text: "Explanation not found.", node: null }];
@@ -1632,32 +1703,27 @@ function extrairObjetivoParaFila() {
     if (!objHeader) return [{ text: "Educational objective not found.", node: null }];
 
     const itens = [];
-
-    // 1. Pega os irmãos diretos que vêm depois do objHeader
     let next = objHeader.nextElementSibling;
     while (next) {
-        // Se encontrou a barra de metadados Subject / System / Q ID, para imediatamente!
         if (next.querySelector('[class*="border-y"]') || /(?:Subject|System|Q\s*ID)\s*:/i.test(next.innerText || '')) {
             break;
         }
         const txt = (next.innerText || '').trim();
         if (txt.length > 5) {
-            itens.push({ text: txt, node: next });
+            itens.push({ text: next.innerHTML.trim() || txt, node: next });
         }
         next = next.nextElementSibling;
     }
 
-    // 2. Se os irmãos diretos não trouxeram nada, varre parágrafos com compareDocumentPosition
     if (itens.length === 0) {
         const expContainer = obterContainerExplicacao();
         const allP = Array.from(expContainer.querySelectorAll('p'));
         for (let p of allP) {
             if (objHeader === p || objHeader.contains(p)) continue;
-            // Se vem DEPOIS do objHeader
             if (objHeader.compareDocumentPosition(p) & Node.DOCUMENT_POSITION_FOLLOWING) {
                 if (p.closest('[class*="border-y"]') || /(?:Subject|System|Q\s*ID)/i.test(p.innerText || '')) break;
                 const txt = (p.innerText || '').trim();
-                if (txt.length > 5) itens.push({ text: txt, node: p });
+                if (txt.length > 5) itens.push({ text: p.innerHTML.trim() || txt, node: p });
             }
         }
     }

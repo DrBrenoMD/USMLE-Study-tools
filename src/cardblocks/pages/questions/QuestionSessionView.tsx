@@ -5,6 +5,7 @@ import { useTimerStore } from '../../../store/useTimerStore';
 import { AssociatedCardsModal } from '../../../components/AssociatedCardsModal';
 import { LabValuesModal } from '../../../components/LabValuesModal';
 import { StudyCalculatorModal } from '../../../components/StudyCalculatorModal';
+import { RichContentRenderer } from '../../components/RichContentRenderer';
 import {
   ChevronLeft,
   ChevronRight,
@@ -28,7 +29,10 @@ import {
   AlertTriangle,
   Send,
   Eye,
-  ArrowRight
+  ArrowRight,
+  Flame,
+  Eraser,
+  Trophy
 } from 'lucide-react';
 
 interface QuestionSessionViewProps {
@@ -68,16 +72,37 @@ export const QuestionSessionView: React.FC<QuestionSessionViewProps> = ({
   const [activeNotes, setActiveNotes] = useState(false);
   const [noteContent, setNoteContent] = useState('');
 
-  // Modais de ferramentas
+  // Destaques / Highlights por questão
+  const [highlights, setHighlights] = useState<Record<string, string[]>>(() => {
+    try {
+      const saved = localStorage.getItem('cardblocks_q_highlights');
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) {
+      return {};
+    }
+  });
+  const [isHighlightMode, setIsHighlightMode] = useState(false);
+  const [selectedTextToHighlight, setSelectedTextToHighlight] = useState<string>('');
+
+  // Modais de ferramentas & Conclusão de bloco
   const [isLabModalOpen, setIsLabModalOpen] = useState(false);
   const [isCalcModalOpen, setIsCalcModalOpen] = useState(false);
   const [isCardsModalOpen, setIsCardsModalOpen] = useState(false);
   const [lightboxImg, setLightboxImg] = useState<string | null>(null);
+  const [showEndBlockModal, setShowEndBlockModal] = useState(false);
 
   // Timers
   const [resolutionTimer, setResolutionTimer] = useState<number>(0);
   const [reviewTimer, setReviewTimer] = useState<number>(0);
+  const [totalSessionSeconds, setTotalSessionSeconds] = useState<number>(0);
   const timerIntervalRef = useRef<any>(null);
+
+  // Salva destaques no localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('cardblocks_q_highlights', JSON.stringify(highlights));
+    } catch (e) {}
+  }, [highlights]);
 
   // Sincroniza notas quando muda questão
   useEffect(() => {
@@ -96,10 +121,11 @@ export const QuestionSessionView: React.FC<QuestionSessionViewProps> = ({
     }
   }, [currentIndex, currentQ?.id]);
 
-  // Contagem de tempo (resolução vs revisão)
+  // Contagem de tempo (resolução vs revisão e tempo total da sessão)
   useEffect(() => {
     clearInterval(timerIntervalRef.current);
     timerIntervalRef.current = setInterval(() => {
+      setTotalSessionSeconds(s => s + 1);
       if (!currentQ) return;
       const isSubmitted = submittedQuestions[currentQ.id] || currentQ.status === 'correct' || currentQ.status === 'incorrect';
       if (isSubmitted) {
@@ -112,6 +138,61 @@ export const QuestionSessionView: React.FC<QuestionSessionViewProps> = ({
     return () => clearInterval(timerIntervalRef.current);
   }, [currentQ?.id, submittedQuestions]);
 
+  // Captura seleção de texto para highlight
+  const handleMouseUpTextSelection = () => {
+    const selection = window.getSelection();
+    if (selection && selection.toString().trim().length > 1) {
+      const text = selection.toString().trim();
+      setSelectedTextToHighlight(text);
+      if (isHighlightMode && currentQ) {
+        handleAddHighlight(text);
+        selection.removeAllRanges();
+      }
+    } else {
+      setSelectedTextToHighlight('');
+    }
+  };
+
+  const handleAddHighlight = (textToAdd: string) => {
+    if (!currentQ || !textToAdd) return;
+    setHighlights(prev => {
+      const qHighlights = prev[currentQ.id] || [];
+      if (qHighlights.includes(textToAdd)) return prev;
+      return {
+        ...prev,
+        [currentQ.id]: [...qHighlights, textToAdd]
+      };
+    });
+    setSelectedTextToHighlight('');
+  };
+
+  const handleClearHighlights = () => {
+    if (!currentQ) return;
+    setHighlights(prev => {
+      const updated = { ...prev };
+      delete updated[currentQ.id];
+      return updated;
+    });
+  };
+
+  // Aplica highlights no texto / HTML
+  const applyHighlightsToContent = (rawText: string = ''): string => {
+    if (!currentQ || !rawText) return rawText;
+    const qHighlights = highlights[currentQ.id] || [];
+    if (qHighlights.length === 0) return rawText;
+
+    let result = rawText;
+    qHighlights.forEach(hText => {
+      if (!hText || hText.length < 2) return;
+      try {
+        const escaped = hText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(`(${escaped})`, 'gi');
+        result = result.replace(regex, '<mark class="bg-amber-200 dark:bg-amber-500/40 text-gray-900 dark:text-gray-100 rounded-xs px-0.5 font-medium">$1</mark>');
+      } catch(e) {}
+    });
+    return result;
+  };
+
   if (!currentQ) {
     return (
       <div className="p-12 text-center bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl max-w-lg mx-auto space-y-4">
@@ -119,10 +200,10 @@ export const QuestionSessionView: React.FC<QuestionSessionViewProps> = ({
         <h3 className="text-lg font-bold text-gray-900 dark:text-white">Sessão Concluída!</h3>
         <p className="text-xs text-gray-500">Todas as questões selecionadas foram processadas.</p>
         <button
-          onClick={onExitSession}
-          className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-500"
+          onClick={() => setShowEndBlockModal(true)}
+          className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-500 cursor-pointer"
         >
-          Voltar ao Início
+          Finalizar Bloco
         </button>
       </div>
     );
@@ -143,9 +224,12 @@ export const QuestionSessionView: React.FC<QuestionSessionViewProps> = ({
   const currentSelectedChoice = selectedChoices[currentQ.id] || currentQ.selectedChoiceId || '';
   const currentStruck = struckChoices[currentQ.id] || new Set();
 
-  // Toggle risco em alternativa
-  const toggleStrikeChoice = (choiceId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  // Toggle risco em alternativa (via botão ou clique com botão direito)
+  const toggleStrikeChoice = (choiceId: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     setStruckChoices(prev => {
       const set = new Set(prev[currentQ.id] || []);
       if (set.has(choiceId)) set.delete(choiceId);
@@ -154,23 +238,19 @@ export const QuestionSessionView: React.FC<QuestionSessionViewProps> = ({
     });
   };
 
-  // Enviar Resposta
+  // Enviar Resposta (Atualiza store da questão SEM lançar no Heatmap individualmente)
   const handleSubmitAnswer = () => {
     if (!currentSelectedChoice) return;
 
-    // Detecta se a alternativa escolhida é a correta
     const selectedAlt = currentQ.alternatives.find(a => a.id === currentSelectedChoice);
     const correctAlt = currentQ.alternatives.find(a => a.isCorrect);
 
-    // Se nenhuma alternativa veio explicitamente como isCorrect (ex: primeira importação sem gabarito revelado),
-    // tenta comparar com explanation ou assume a primeira letra correta
     let isCorrect = false;
     if (correctAlt) {
       isCorrect = selectedAlt?.id === correctAlt.id;
     } else if (currentQ.correctChoiceId) {
       isCorrect = selectedAlt?.id === currentQ.correctChoiceId;
     } else {
-      // Fallback: se explanation menciona 'Correct answer is B' etc.
       const match = (currentQ.explanation || '').match(/correct\s+(?:answer|choice|option)\s+is\s+([A-H])/i);
       if (match && selectedAlt?.letter) {
         isCorrect = selectedAlt.letter.toUpperCase() === match[1].toUpperCase();
@@ -181,7 +261,7 @@ export const QuestionSessionView: React.FC<QuestionSessionViewProps> = ({
 
     const timeResolution = Math.max(1, resolutionTimer);
 
-    // Registra no store de questões
+    // Registra pontuação individual no store de questões
     recordQuestionAnswer(
       currentQ.id,
       isCorrect,
@@ -189,28 +269,6 @@ export const QuestionSessionView: React.FC<QuestionSessionViewProps> = ({
       timeResolution,
       0
     );
-
-    // Integração com timerStore (StudyTracking) e Heatmap
-    try {
-      addNetTime(timeResolution);
-    } catch (e) {}
-
-    // Integração com StudyTracking logs e Heatmap
-    try {
-      const todayStr = new Date().toISOString().split('T')[0];
-      const existingLogsStr = localStorage.getItem('usmle_study_logs_v4');
-      let logs = existingLogsStr ? JSON.parse(existingLogsStr) : [];
-      logs.push({
-        id: 'log-' + Date.now(),
-        date: todayStr,
-        resourceId: 'res-qbank-1',
-        amount: 1,
-        minutesSpent: Math.max(1, Math.round(timeResolution / 60)),
-        notes: `Questão QID: #${currentQ.qid} - ${isCorrect ? 'Acerto' : 'Erro'}`
-      });
-      localStorage.setItem('usmle_study_logs_v4', JSON.stringify(logs));
-      window.dispatchEvent(new Event('usmle_logs_updated'));
-    } catch (e) {}
 
     setSubmittedQuestions(prev => ({ ...prev, [currentQ.id]: true }));
   };
@@ -221,20 +279,60 @@ export const QuestionSessionView: React.FC<QuestionSessionViewProps> = ({
     setActiveNotes(false);
   };
 
+  // Finalização do Bloco & Registro Consolidado no Heatmap
+  const handleConfirmRegisterHeatmap = () => {
+    try {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const existingLogsStr = localStorage.getItem('usmle_study_logs_v4');
+      let logs = existingLogsStr ? JSON.parse(existingLogsStr) : [];
+      
+      const answeredCount = Object.keys(submittedQuestions).length || sessionQuestions.length;
+      const correctCount = sessionQuestions.filter(q => q.status === 'correct').length;
+      const blockMins = Math.max(1, Math.round(totalSessionSeconds / 60));
+      const accuracyPct = answeredCount > 0 ? Math.round((correctCount / answeredCount) * 100) : 0;
+
+      logs.push({
+        id: 'log-' + Date.now(),
+        date: todayStr,
+        resourceId: 'res-qbank-1',
+        amount: answeredCount,
+        minutesSpent: blockMins,
+        notes: `Bloco Q-Bank: ${correctCount}/${answeredCount} acertos (${accuracyPct}%) - ${blockMins} min`
+      });
+
+      localStorage.setItem('usmle_study_logs_v4', JSON.stringify(logs));
+      addNetTime(totalSessionSeconds);
+      window.dispatchEvent(new Event('usmle_logs_updated'));
+    } catch (e) {}
+
+    setShowEndBlockModal(false);
+    onExitSession();
+  };
+
+  const handleFinishWithoutRegister = () => {
+    setShowEndBlockModal(false);
+    onExitSession();
+  };
+
   // Pacer bar logic
   const pacerTarget = config.pacerTargetSeconds || 72;
   const pacerPercent = Math.min(100, (resolutionTimer / pacerTarget) * 100);
   const isPacerOver = resolutionTimer > pacerTarget;
 
+  // Estatísticas calculadas do bloco
+  const totalAnswered = Object.keys(submittedQuestions).length;
+  const totalCorrect = sessionQuestions.filter(q => q.status === 'correct').length;
+  const currentAccuracy = totalAnswered > 0 ? Math.round((totalCorrect / totalAnswered) * 100) : 0;
+
   return (
-    <div className="max-w-6xl mx-auto space-y-4 pb-20 animate-fade-in">
+    <div className="max-w-6xl mx-auto space-y-4 pb-20 animate-fade-in" onMouseUp={handleMouseUpTextSelection}>
       {/* Top Session Bar */}
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-4 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         {/* Left: Info & Mode */}
         <div className="flex items-center gap-3">
           <button
-            onClick={onExitSession}
-            className="p-1.5 rounded-lg text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            onClick={() => setShowEndBlockModal(true)}
+            className="p-1.5 rounded-lg text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer"
             title="Encerrar / Sair do Bloco"
           >
             <ChevronLeft className="w-5 h-5" />
@@ -259,155 +357,136 @@ export const QuestionSessionView: React.FC<QuestionSessionViewProps> = ({
           </div>
         </div>
 
-        {/* Center: Timers & Pacer */}
-        <div className="flex items-center gap-4">
-          {/* Question Resolution Timer */}
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gray-50 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700">
-            <Clock className="w-4 h-4 text-gray-400" />
-            <div className="text-xs font-mono font-bold text-gray-800 dark:text-gray-200">
-              {Math.floor(resolutionTimer / 60)}:{(resolutionTimer % 60).toString().padStart(2, '0')}
-            </div>
-            {isSubmitted && reviewTimer > 0 && (
-              <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono ml-1 font-bold">
-                (Rev: {Math.floor(reviewTimer / 60)}:{(reviewTimer % 60).toString().padStart(2, '0')})
-              </div>
-            )}
-          </div>
+        {/* Center: Tools & Highlights */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Highlight Mode Toggle */}
+          <button
+            onClick={() => setIsHighlightMode(!isHighlightMode)}
+            className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border transition-all cursor-pointer ${
+              isHighlightMode
+                ? 'bg-amber-100 dark:bg-amber-900/40 border-amber-400 text-amber-900 dark:text-amber-200 ring-2 ring-amber-400/20'
+                : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100'
+            }`}
+            title="Ativar modo marca-texto (destaca automaticamente o texto selecionado)"
+          >
+            <Highlighter className="w-3.5 h-3.5 text-amber-500" />
+            <span>{isHighlightMode ? 'Marca-Texto Ativo' : 'Marca-Texto'}</span>
+          </button>
 
-          {/* Pacer Indicator */}
-          {config.pacerEnabled && (
-            <div className="flex flex-col w-28">
-              <div className="flex items-center justify-between text-[10px] font-bold">
-                <span className="text-gray-400">Pacer ({pacerTarget}s)</span>
-                <span className={isPacerOver ? 'text-rose-500 font-mono' : 'text-emerald-500 font-mono'}>
-                  {resolutionTimer}s
-                </span>
-              </div>
-              <div className="w-full h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden mt-0.5">
-                <div
-                  className={`h-full transition-all duration-300 ${
-                    isPacerOver ? 'bg-rose-500' : pacerPercent > 75 ? 'bg-amber-500' : 'bg-emerald-500'
-                  }`}
-                  style={{ width: `${pacerPercent}%` }}
-                />
-              </div>
-            </div>
+          {/* Clear Highlights button */}
+          {highlights[currentQ.id]?.length > 0 && (
+            <button
+              onClick={handleClearHighlights}
+              className="p-1.5 text-xs text-gray-400 hover:text-rose-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors cursor-pointer"
+              title="Limpar destaques desta questão"
+            >
+              <Eraser className="w-3.5 h-3.5" />
+            </button>
           )}
-        </div>
 
-        {/* Right: Study Tools Buttons */}
-        <div className="flex items-center gap-1.5">
           {/* Lab Values */}
           <button
             onClick={() => setIsLabModalOpen(true)}
-            className="p-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex items-center gap-1 text-xs font-semibold"
-            title="Valores Normais de Laboratório"
+            className="px-2.5 py-1.5 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-xl text-xs font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1.5 transition-colors cursor-pointer"
           >
-            <FlaskConical className="w-4 h-4 text-blue-500" />
-            <span className="hidden sm:inline">Lab Values</span>
+            <FlaskConical className="w-3.5 h-3.5 text-emerald-500" />
+            <span>Lab Values</span>
           </button>
 
           {/* Calculator */}
           <button
             onClick={() => setIsCalcModalOpen(true)}
-            className="p-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex items-center gap-1 text-xs font-semibold"
-            title="Calculadora Clínica"
+            className="px-2.5 py-1.5 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-xl text-xs font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1.5 transition-colors cursor-pointer"
           >
-            <Calculator className="w-4 h-4 text-emerald-500" />
-            <span className="hidden sm:inline">Calc</span>
+            <Calculator className="w-3.5 h-3.5 text-purple-500" />
+            <span>Calculadora</span>
           </button>
 
-          {/* Notes */}
-          <button
-            onClick={() => setActiveNotes(!activeNotes)}
-            className={`p-2 rounded-xl transition-colors flex items-center gap-1 text-xs font-semibold ${
-              currentQ.userNotes || activeNotes
-                ? 'bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300'
-                : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
-            }`}
-            title="Anotações da Questão"
-          >
-            <StickyNote className="w-4 h-4 text-amber-500" />
-            <span className="hidden sm:inline">Notas</span>
-          </button>
-
-          {/* Flag */}
+          {/* Flag Question */}
           <button
             onClick={() => toggleQuestionFlag(currentQ.id)}
-            className={`p-2 rounded-xl transition-colors ${
+            className={`p-1.5 rounded-xl border transition-colors cursor-pointer ${
               currentQ.isFlagged
-                ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400'
-                : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
+                ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 text-amber-600'
+                : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-400 hover:text-gray-600'
             }`}
-            title="Marcar / Flag Questão"
+            title="Marcar questão para revisão"
           >
-            <Flag className={`w-4 h-4 ${currentQ.isFlagged ? 'fill-current' : ''}`} />
+            <Flag className="w-4 h-4" />
+          </button>
+
+          {/* Notes Toggle */}
+          <button
+            onClick={() => setActiveNotes(!activeNotes)}
+            className={`p-1.5 rounded-xl border transition-colors cursor-pointer ${
+              activeNotes || currentQ.userNotes
+                ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-300 text-blue-600'
+                : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-400 hover:text-gray-600'
+            }`}
+            title="Anotações da questão"
+          >
+            <StickyNote className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Right: Timers & Finish */}
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 text-xs font-mono">
+            <div className="flex items-center gap-1 text-gray-600 dark:text-gray-400" title="Tempo na questão atual">
+              <Clock className="w-3.5 h-3.5 text-blue-500" />
+              <span>
+                {Math.floor(resolutionTimer / 60)}:{(resolutionTimer % 60).toString().padStart(2, '0')}
+              </span>
+            </div>
+
+            <div className="text-gray-400" title="Tempo total do bloco">
+              Total: {Math.floor(totalSessionSeconds / 60)}:{(totalSessionSeconds % 60).toString().padStart(2, '0')}
+            </div>
+          </div>
+
+          <button
+            onClick={() => setShowEndBlockModal(true)}
+            className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+          >
+            Encerrar Bloco
           </button>
         </div>
       </div>
 
-      {/* Grid de Navegação de Questões (Permite navegar não-sequencialmente) */}
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-3 shadow-xs">
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
-          {sessionQuestions.map((q, idx) => {
-            const isCurrent = idx === currentIndex;
-            const qSubmitted = submittedQuestions[q.id] || q.status === 'correct' || q.status === 'incorrect';
-            const isCorrect = q.status === 'correct';
-            const isIncorrect = q.status === 'incorrect';
-
-            return (
-              <button
-                key={q.id}
-                onClick={() => setCurrentIndex(idx)}
-                className={`w-8 h-8 rounded-lg text-xs font-bold shrink-0 flex items-center justify-center transition-all relative ${
-                  isCurrent
-                    ? 'ring-2 ring-blue-600 ring-offset-2 dark:ring-offset-gray-900 z-10'
-                    : ''
-                } ${
-                  qSubmitted && config.mode === 'tutored'
-                    ? isCorrect
-                      ? 'bg-emerald-500 text-white'
-                      : 'bg-rose-500 text-white'
-                    : qSubmitted
-                    ? 'bg-blue-600 text-white'
-                    : selectedChoices[q.id]
-                    ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 border border-blue-300'
-                    : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-                }`}
-              >
-                <span>{idx + 1}</span>
-                {q.isFlagged && (
-                  <div className="w-2 h-2 rounded-full bg-amber-400 absolute -top-0.5 -right-0.5" />
-                )}
-              </button>
-            );
-          })}
+      {/* Floating Highlight Button when text is selected */}
+      {selectedTextToHighlight && !isHighlightMode && (
+        <div
+          className="fixed bottom-20 right-8 z-40 bg-amber-500 text-white px-4 py-2 rounded-xl shadow-xl flex items-center gap-2 animate-bounce cursor-pointer font-bold text-xs hover:bg-amber-600 transition-colors"
+          onClick={() => handleAddHighlight(selectedTextToHighlight)}
+        >
+          <Highlighter className="w-4 h-4" />
+          <span>Destacar texto selecionado</span>
         </div>
-      </div>
+      )}
 
-      {/* Bloco de Anotações Retrátil */}
+      {/* Painel de Anotações */}
       {activeNotes && (
-        <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-2xl p-4 animate-scale-up space-y-2">
+        <div className="bg-yellow-50/70 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-900/40 rounded-2xl p-4 shadow-xs space-y-2 animate-fade-in">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-amber-800 dark:text-amber-200 flex items-center gap-1.5">
-              <StickyNote className="w-4 h-4 text-amber-600" />
-              Anotações Pessoais para esta Questão
+            <span className="text-xs font-bold text-yellow-800 dark:text-yellow-300 flex items-center gap-1.5">
+              <StickyNote className="w-3.5 h-3.5" />
+              Anotações desta Questão
             </span>
-            <button onClick={() => setActiveNotes(false)} className="text-gray-400 hover:text-gray-600">
+            <button onClick={() => setActiveNotes(false)} className="text-gray-400 hover:text-gray-600 cursor-pointer">
               <X className="w-4 h-4" />
             </button>
           </div>
           <textarea
-            rows={3}
-            placeholder="Digite aqui dicas, mnemônicos ou lembretes desta questão..."
             value={noteContent}
             onChange={(e) => setNoteContent(e.target.value)}
-            className="w-full p-2.5 bg-white dark:bg-gray-900 border border-amber-200 dark:border-amber-800 rounded-xl text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+            placeholder="Digite suas anotações clínicas sobre esta questão..."
+            rows={3}
+            className="w-full text-xs p-3 rounded-xl border border-yellow-200 dark:border-yellow-900 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-yellow-400 resize-none"
           />
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end">
             <button
               onClick={handleSaveNote}
-              className="px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-bold hover:bg-amber-500"
+              className="px-3 py-1 bg-yellow-500 hover:bg-yellow-600 text-white font-bold text-xs rounded-lg shadow-xs transition-colors cursor-pointer"
             >
               Salvar Anotação
             </button>
@@ -417,9 +496,9 @@ export const QuestionSessionView: React.FC<QuestionSessionViewProps> = ({
 
       {/* Área Principal da Questão */}
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 md:p-8 shadow-xs space-y-6">
-        {/* Enunciado (Stem) */}
-        <div className="prose dark:prose-invert max-w-none text-sm md:text-base leading-relaxed text-gray-900 dark:text-gray-100 font-normal">
-          <p className="whitespace-pre-wrap">{currentQ.stem || currentQ.text}</p>
+        {/* Enunciado (Stem) com suporte a tabelas e imagens */}
+        <div className="text-sm md:text-base leading-relaxed text-gray-900 dark:text-gray-100 font-normal">
+          <RichContentRenderer content={applyHighlightsToContent(currentQ.stem || currentQ.text)} />
         </div>
 
         {/* Imagens Clínicas */}
@@ -446,8 +525,11 @@ export const QuestionSessionView: React.FC<QuestionSessionViewProps> = ({
 
         {/* Alternativas de Resposta */}
         <div className="space-y-2.5 pt-4 border-t border-gray-100 dark:border-gray-800">
-          <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
-            Alternativas de Resposta:
+          <div className="flex items-center justify-between text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
+            <span>Alternativas de Resposta:</span>
+            <span className="text-[11px] lowercase font-normal text-gray-400 hidden sm:inline">
+              (clique com botão direito para eliminar alternativa)
+            </span>
           </div>
 
           {currentQ.alternatives.map((alt, idx) => {
@@ -455,7 +537,6 @@ export const QuestionSessionView: React.FC<QuestionSessionViewProps> = ({
             const isSelected = currentSelectedChoice === alt.id;
             const isStruck = currentStruck.has(alt.id);
 
-            // Cores no feedback após envio
             let choiceStyle = 'border-gray-200 dark:border-gray-800 hover:border-blue-400 bg-white dark:bg-gray-900';
             let badgeStyle = 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300';
 
@@ -482,7 +563,12 @@ export const QuestionSessionView: React.FC<QuestionSessionViewProps> = ({
                     setSelectedChoices(prev => ({ ...prev, [currentQ.id]: alt.id }));
                   }
                 }}
-                className={`p-3.5 rounded-xl border flex items-start gap-3 transition-all cursor-pointer relative group ${choiceStyle} ${
+                onContextMenu={(e) => {
+                  if (!isSubmitted) {
+                    toggleStrikeChoice(alt.id, e);
+                  }
+                }}
+                className={`p-3.5 rounded-xl border flex items-start gap-3 transition-all cursor-pointer relative group select-none ${choiceStyle} ${
                   isStruck ? 'opacity-40 line-through' : ''
                 }`}
               >
@@ -493,9 +579,9 @@ export const QuestionSessionView: React.FC<QuestionSessionViewProps> = ({
                   {letter}
                 </div>
 
-                {/* Texto da Alternativa */}
+                {/* Texto da Alternativa (com suporte a tabelas e imagens) */}
                 <div className="flex-1 text-xs sm:text-sm font-medium leading-snug">
-                  {alt.text}
+                  <RichContentRenderer content={alt.text} />
                 </div>
 
                 {/* Botão de Tachar/Riscar Alternativa */}
@@ -503,10 +589,10 @@ export const QuestionSessionView: React.FC<QuestionSessionViewProps> = ({
                   <button
                     type="button"
                     onClick={(e) => toggleStrikeChoice(alt.id, e)}
-                    className={`p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-gray-200 dark:hover:bg-gray-700 ${
+                    className={`p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer ${
                       isStruck ? 'opacity-100 text-rose-500' : 'text-gray-400'
                     }`}
-                    title="Tachar / Eliminar Alternativa"
+                    title="Tachar / Eliminar Alternativa (ou clique com botão direito)"
                   >
                     <Strikethrough className="w-3.5 h-3.5" />
                   </button>
@@ -549,26 +635,26 @@ export const QuestionSessionView: React.FC<QuestionSessionViewProps> = ({
                   <Sparkles className="w-4 h-4 text-blue-600" />
                   <span>Educational Objective</span>
                 </div>
-                <div className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-gray-100 leading-relaxed whitespace-pre-wrap">
-                  {currentQ.educationalObjective}
+                <div className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-gray-100 leading-relaxed">
+                  <RichContentRenderer content={applyHighlightsToContent(currentQ.educationalObjective)} />
                 </div>
               </div>
             )}
 
-            {/* Explicação Detalhada */}
+            {/* Explicação Detalhada com Tabelas e Imagens */}
             {currentQ.explanation && (
               <div className="p-5 rounded-xl bg-gray-50/80 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-800 space-y-2">
                 <div className="flex items-center gap-2 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
                   <BookOpen className="w-4 h-4 text-emerald-600" />
                   <span>Explicação Detalhada</span>
                 </div>
-                <div className="prose dark:prose-invert max-w-none text-xs sm:text-sm leading-relaxed text-gray-800 dark:text-gray-200 whitespace-pre-wrap">
-                  {currentQ.explanation}
+                <div className="text-xs sm:text-sm leading-relaxed text-gray-800 dark:text-gray-200">
+                  <RichContentRenderer content={applyHighlightsToContent(currentQ.explanation)} />
                 </div>
               </div>
             )}
 
-            {/* Ligação Bidirecional com Flashcards & Reset da Questão */}
+            {/* Ligação com Flashcards */}
             <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-800 flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="flex items-center gap-2">
                 {matchingCards.length > 0 ? (
@@ -615,7 +701,7 @@ export const QuestionSessionView: React.FC<QuestionSessionViewProps> = ({
                     });
                   }
                 }}
-                className="text-xs font-semibold text-gray-500 hover:text-amber-600 dark:hover:text-amber-400 flex items-center gap-1.5 transition-colors"
+                className="text-xs font-semibold text-gray-500 hover:text-amber-600 dark:hover:text-amber-400 flex items-center gap-1.5 transition-colors cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>Resetar status desta questão</span>
@@ -625,12 +711,12 @@ export const QuestionSessionView: React.FC<QuestionSessionViewProps> = ({
         )}
       </div>
 
-      {/* Bottom Navigation Buttons (Anterior / Próxima) */}
+      {/* Bottom Navigation Buttons (Anterior / Próxima / Finalizar) */}
       <div className="flex items-center justify-between pt-2">
         <button
           onClick={() => setCurrentIndex(prev => Math.max(0, prev - 1))}
           disabled={currentIndex === 0}
-          className="px-4 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold flex items-center gap-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          className="px-4 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold flex items-center gap-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
         >
           <ChevronLeft className="w-4 h-4" />
           <span>Anterior</span>
@@ -650,7 +736,7 @@ export const QuestionSessionView: React.FC<QuestionSessionViewProps> = ({
           </button>
         ) : (
           <button
-            onClick={onExitSession}
+            onClick={() => setShowEndBlockModal(true)}
             className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
           >
             <CheckCircle2 className="w-4 h-4" />
@@ -658,6 +744,88 @@ export const QuestionSessionView: React.FC<QuestionSessionViewProps> = ({
           </button>
         )}
       </div>
+
+      {/* Modal de Conclusão do Bloco & Registro no Heatmap */}
+      {showEndBlockModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-6 animate-scale-in">
+            <div className="text-center space-y-2">
+              <div className="w-14 h-14 bg-gradient-to-tr from-amber-500 to-orange-500 text-white rounded-2xl flex items-center justify-center mx-auto shadow-lg shadow-orange-500/30">
+                <Trophy className="w-7 h-7" />
+              </div>
+              <h3 className="text-xl font-black text-gray-900 dark:text-white">
+                Bloco de Questões Concluído!
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Resumo da sua sessão de treinamento clínico:
+              </p>
+            </div>
+
+            {/* Cards de Métricas */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="p-3 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/40 text-center">
+                <div className="text-xs text-blue-600 dark:text-blue-400 font-semibold">Respondidas</div>
+                <div className="text-lg font-black text-blue-950 dark:text-blue-100 mt-0.5">
+                  {totalAnswered} / {sessionQuestions.length}
+                </div>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-900/40 text-center">
+                <div className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold">Acertos</div>
+                <div className="text-lg font-black text-emerald-950 dark:text-emerald-100 mt-0.5">
+                  {currentAccuracy}%
+                </div>
+                <div className="text-[10px] text-emerald-600/80 font-bold">({totalCorrect} corretas)</div>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-purple-50 dark:bg-purple-950/40 border border-purple-100 dark:border-purple-900/40 text-center">
+                <div className="text-xs text-purple-600 dark:text-purple-400 font-semibold">Tempo Total</div>
+                <div className="text-lg font-black text-purple-950 dark:text-purple-100 mt-0.5">
+                  {Math.max(1, Math.round(totalSessionSeconds / 60))}m
+                </div>
+                <div className="text-[10px] text-purple-600/80 font-bold">
+                  {Math.floor(totalSessionSeconds / 60)}:{(totalSessionSeconds % 60).toString().padStart(2, '0')}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 text-center space-y-1">
+              <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-amber-800 dark:text-amber-300">
+                <Flame className="w-4 h-4 text-orange-500 fill-orange-500" />
+                <span>Registrar no Heatmap de Estudos?</span>
+              </div>
+              <p className="text-[11px] text-amber-700 dark:text-amber-400 leading-snug">
+                Deseja computar este bloco consolidado no seu gráfico diário de estudos e tempo líquido?
+              </p>
+            </div>
+
+            {/* Ações */}
+            <div className="space-y-2.5">
+              <button
+                onClick={handleConfirmRegisterHeatmap}
+                className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-lg shadow-orange-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer"
+              >
+                <Flame className="w-4 h-4 fill-white" />
+                <span>Sim, Registrar Bloco no Heatmap</span>
+              </button>
+
+              <button
+                onClick={handleFinishWithoutRegister}
+                className="w-full py-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+              >
+                Concluir sem Registrar Atividade
+              </button>
+
+              <button
+                onClick={() => setShowEndBlockModal(false)}
+                className="w-full text-center text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 py-1 transition-colors cursor-pointer"
+              >
+                Continuar revisando questões deste bloco
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modais de Ferramentas */}
       <LabValuesModal

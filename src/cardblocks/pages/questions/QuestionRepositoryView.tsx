@@ -19,6 +19,7 @@ import {
 import { AssociatedCardsModal } from '../../../components/AssociatedCardsModal';
 import { ImportBankModal } from '../../components/ImportBankModal';
 import { QBankDiagnosticModal } from '../../components/QBankDiagnosticModal';
+import { RichContentRenderer } from '../../components/RichContentRenderer';
 
 interface QuestionRepositoryViewProps {
   bankId: string;
@@ -277,16 +278,16 @@ export const QuestionRepositoryView: React.FC<QuestionRepositoryViewProps> = ({
                 </div>
 
                 {/* Enunciado Prévio */}
-                <p className="text-xs sm:text-sm text-gray-800 dark:text-gray-200 line-clamp-2">
-                  {q.stem || q.text}
-                </p>
+                <div className="text-xs sm:text-sm text-gray-800 dark:text-gray-200 line-clamp-2">
+                  <RichContentRenderer content={q.stem || q.text} />
+                </div>
 
                 {/* Detalhes Expandidos */}
                 {isExpanded && (
                   <div className="pt-3 border-t border-gray-100 dark:border-gray-800 space-y-3 text-xs">
                     {/* Stem completo */}
-                    <div className="p-3 bg-gray-50 dark:bg-gray-800/40 rounded-xl whitespace-pre-wrap">
-                      {q.stem || q.text}
+                    <div className="p-3 bg-gray-50 dark:bg-gray-800/40 rounded-xl">
+                      <RichContentRenderer content={q.stem || q.text} />
                     </div>
 
                     {/* Alternativas */}
@@ -296,14 +297,19 @@ export const QuestionRepositoryView: React.FC<QuestionRepositoryViewProps> = ({
                         {q.alternatives.map((alt, i) => (
                           <div
                             key={alt.id}
-                            className={`p-2 rounded-lg border text-xs flex items-center justify-between ${
+                            className={`p-2 rounded-lg border text-xs flex items-start justify-between gap-2 ${
                               alt.isCorrect
                                 ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 text-emerald-800 dark:text-emerald-200 font-bold'
                                 : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800'
                             }`}
                           >
-                            <span><b>{alt.letter || String.fromCharCode(65 + i)}.</b> {alt.text}</span>
-                            {alt.isCorrect && <span className="text-[10px] text-emerald-600 font-extrabold uppercase">Correta</span>}
+                            <div className="flex items-start gap-1.5 flex-1">
+                              <span className="font-bold shrink-0">{alt.letter || String.fromCharCode(65 + i)}.</span>
+                              <div className="flex-1">
+                                <RichContentRenderer content={alt.text} />
+                              </div>
+                            </div>
+                            {alt.isCorrect && <span className="text-[10px] text-emerald-600 font-extrabold uppercase shrink-0">Correta</span>}
                           </div>
                         ))}
                       </div>
@@ -312,15 +318,16 @@ export const QuestionRepositoryView: React.FC<QuestionRepositoryViewProps> = ({
                     {/* Educational Objective */}
                     {q.educationalObjective && (
                       <div className="p-2.5 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 text-blue-900 dark:text-blue-100">
-                        <b>Educational Objective:</b> {q.educationalObjective}
+                        <div className="font-bold mb-1">Educational Objective:</div>
+                        <RichContentRenderer content={q.educationalObjective} />
                       </div>
                     )}
 
                     {/* Explicação */}
                     {q.explanation && (
-                      <div className="p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg text-gray-700 dark:text-gray-300 max-h-40 overflow-y-auto whitespace-pre-wrap">
-                        <b>Explicação:</b><br />
-                        {q.explanation}
+                      <div className="p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg text-gray-700 dark:text-gray-300 max-h-64 overflow-y-auto">
+                        <div className="font-bold mb-1">Explicação:</div>
+                        <RichContentRenderer content={q.explanation} />
                       </div>
                     )}
 
