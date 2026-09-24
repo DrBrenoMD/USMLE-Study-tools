@@ -17,6 +17,52 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
+  // Cross-Tab / Cross-Origin Q-Bank Question Import Sync Queue
+  let importedQuestionsQueue: any[] = [];
+
+  app.post("/api/import-question", (req, res) => {
+    try {
+      const qData = req.body;
+      if (!qData || (!qData.qid && !qData.questionId)) {
+        return res.status(400).json({ error: "Invalid question data. QID is required." });
+      }
+      const qid = (qData.qid || qData.questionId).toString();
+      const existingIdx = importedQuestionsQueue.findIndex(
+        (q) => (q.qid || q.questionId || '').toString() === qid
+      );
+
+      if (existingIdx !== -1) {
+        importedQuestionsQueue[existingIdx] = {
+          ...importedQuestionsQueue[existingIdx],
+          ...qData,
+          timestamp: Date.now(),
+        };
+      } else {
+        importedQuestionsQueue.push({
+          ...qData,
+          timestamp: Date.now(),
+        });
+      }
+
+      if (importedQuestionsQueue.length > 500) {
+        importedQuestionsQueue = importedQuestionsQueue.slice(-500);
+      }
+
+      res.json({ success: true, count: importedQuestionsQueue.length });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/imported-questions", (_req, res) => {
+    res.json({ questions: importedQuestionsQueue });
+  });
+
+  app.delete("/api/imported-questions", (_req, res) => {
+    importedQuestionsQueue = [];
+    res.json({ success: true });
+  });
+
   // AI Study Material Generation
   app.post("/api/generate-study-material", async (req, res) => {
     try {

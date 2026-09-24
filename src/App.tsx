@@ -19,10 +19,14 @@ import { Sidebar } from "./components/Sidebar";
 import { ThemeSelector, themes } from "./components/ThemeSelector";
 import { AuthProvider } from "./contexts/AuthContext";
 import { UserAuthWidget } from "./components/UserAuthWidget";
+import { useQBankSync } from "./hooks/useQBankSync";
 
 function AppContent() {
   const location = useLocation();
   const isHome = location.pathname === "/";
+  
+  // Sincronização global contínua de questões e flashcards da extensão
+  useQBankSync();
   
   const [activeTheme, setActiveTheme] = useState(() => {
     const saved = localStorage.getItem('app-theme-id');

@@ -16,8 +16,10 @@ import {
   Settings,
   Sparkles,
   ArrowRight,
-  Database
+  Database,
+  Upload
 } from 'lucide-react';
+import { ImportBankModal } from '../../components/ImportBankModal';
 
 interface BankSelectionViewProps {
   onSelectBank: (bankId: string) => void;
@@ -32,6 +34,7 @@ export const BankSelectionView: React.FC<BankSelectionViewProps> = ({
 }) => {
   const { questionBanks, questions, createQuestionBank, deleteQuestionBank, resetBankStats } = useStore();
   const [isCreating, setIsCreating] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const [bankName, setBankName] = useState('');
   const [bankDesc, setBankDesc] = useState('');
   const [search, setSearch] = useState('');
@@ -108,7 +111,14 @@ export const BankSelectionView: React.FC<BankSelectionViewProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
+          <button
+            onClick={() => setIsImporting(true)}
+            className="px-3.5 py-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 cursor-pointer"
+          >
+            <Upload className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+            <span>Importar Questões</span>
+          </button>
           <button
             onClick={() => setIsCreating(true)}
             className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs sm:text-sm font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-2 cursor-pointer"
@@ -118,6 +128,11 @@ export const BankSelectionView: React.FC<BankSelectionViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Modal de Importação de Questões */}
+      {isImporting && (
+        <ImportBankModal onClose={() => setIsImporting(false)} />
+      )}
 
       {/* Modal de Criação */}
       {isCreating && (

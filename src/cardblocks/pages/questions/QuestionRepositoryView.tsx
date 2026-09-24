@@ -12,9 +12,11 @@ import {
   RotateCcw,
   Trash2,
   Eye,
-  Plus
+  Plus,
+  Upload
 } from 'lucide-react';
 import { AssociatedCardsModal } from '../../../components/AssociatedCardsModal';
+import { ImportBankModal } from '../../components/ImportBankModal';
 
 interface QuestionRepositoryViewProps {
   bankId: string;
@@ -35,6 +37,7 @@ export const QuestionRepositoryView: React.FC<QuestionRepositoryViewProps> = ({
   }, [questions, bank]);
 
   const [search, setSearch] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
   const [selectedSubject, setSelectedSubject] = useState<string>('all');
   const [selectedSystem, setSelectedSystem] = useState<string>('all');
   const [activeModalQid, setActiveModalQid] = useState<string | null>(null);
@@ -99,7 +102,24 @@ export const QuestionRepositoryView: React.FC<QuestionRepositoryViewProps> = ({
             </p>
           </div>
         </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsImporting(true)}
+            className="px-3.5 py-2 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            <span>Importar Questões</span>
+          </button>
+        </div>
       </div>
+
+      {/* Modal de Importação */}
+      {isImporting && (
+        <ImportBankModal 
+          defaultBankId={bank?.id} 
+          onClose={() => setIsImporting(false)} 
+        />
+      )}
 
       {/* Filtros e Busca */}
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-4 shadow-xs flex flex-col md:flex-row items-center gap-3">

@@ -1,9 +1,88 @@
 // =========================================================================
-// Background Service Worker - Assistente Q-Bank & Pacer v1.9
-// Gerencia a reutilização inteligente de abas abertas da aplicação de Flashcards
+// Background Service Worker - Assistente Q-Bank & Pacer v2.0
+// Gerencia a sincronização automática de questões e reutilização de abas
 // =========================================================================
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  // 1. Sincronização e Importação de Questões
+  if (request.type === 'DISPATCH_QUESTION_DATA') {
+    const questionData = request.questionData || {};
+    const bankName = request.bankName || 'UWorld Step 1';
+
+    // Salva no storage local da extensão
+    chrome.storage.local.set({
+      pending_question_import: questionData,
+      pending_question_timestamp: Date.now()
+    });
+
+    // Procura abas abertas da aplicação
+    chrome.tabs.query({}, (tabs) => {
+      const appTabs = tabs.filter(t => {
+        if (!t.url) return false;
+        const u = t.url.toLowerCase();
+        const title = (t.title || '').toLowerCase();
+        return (
+          u.includes('/questions') ||
+          u.includes('/questoes') ||
+          u.includes('/flashcards') ||
+          u.includes('localhost:') ||
+          u.includes('.run.app') ||
+          u.includes('.web.app') ||
+          u.includes('aistudio.google.com') ||
+          title.includes('study tools') ||
+          title.includes('banco de questões')
+        );
+      });
+
+      // Dispara injeção de script em todas as abas abertas do app
+      appTabs.forEach(tab => {
+        if (tab.id) {
+          try {
+            chrome.scripting.executeScript({
+              target: { tabId: tab.id },
+              func: (data, targetBank) => {
+                const payload = {
+                  type: 'QBANK_QUESTION_SYNC',
+                  question: data,
+                  bankName: targetBank,
+                  qid: data.questionId || data.qid,
+                  timestamp: Date.now()
+                };
+                window.postMessage(payload, '*');
+                window.dispatchEvent(new CustomEvent('usmle_import_question', { detail: payload }));
+                try {
+                  const bc = new BroadcastChannel('usmle_qbank_sync');
+                  bc.postMessage(payload);
+                  setTimeout(() => bc.close(), 1000);
+                } catch(e) {}
+              },
+              args: [questionData, bankName]
+            }).catch(() => {});
+          } catch(e) {}
+        }
+      });
+
+      // Tenta enviar para o servidor backend da app caso haja URL salva
+      chrome.storage.local.get(['last_connected_app_url'], (store) => {
+        if (store.last_connected_app_url) {
+          try {
+            const origin = new URL(store.last_connected_app_url).origin;
+            fetch(`${origin}/api/import-question`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ...questionData, bankName })
+            }).catch(() => {});
+          } catch(e) {}
+        }
+      });
+
+      sendResponse({ success: true, count: appTabs.length });
+    });
+
+    return true;
+  }
+
+  // 2. Criação / Disparo de Flashcard
   if (request.type === 'DISPATCH_FLASHCARD_DATA') {
     const cardData = request.cardData || {};
 

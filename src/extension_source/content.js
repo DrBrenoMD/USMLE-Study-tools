@@ -571,30 +571,65 @@ function autoImportarQuestaoSeNavegou() {
     const cardData = extrairDadosCompletosQuestao();
 
     // Obtém o banco de destino configurado pelo usuário no popup
-    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-        chrome.storage.local.get(['target_qbank_name', 'auto_sync_all_questions'], (res) => {
-            const targetBank = res.target_qbank_name || 'UWorld Step 1';
-            cardData.bankName = targetBank;
-            cardData.targetBankName = targetBank;
+    const finishSync = (targetBank) => {
+        cardData.bankName = targetBank;
+        cardData.targetBankName = targetBank;
 
-            // 1. Despacha para o repositório de Questões
-            try {
-                const qbSync = new BroadcastChannel('usmle_qbank_sync');
-                qbSync.postMessage({
+        // 1. Storage local da extensão e página
+        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+            chrome.storage.local.set({
+                pending_question_import: cardData,
+                last_synced_question: cardData,
+                pending_question_timestamp: Date.now()
+            });
+        }
+        try {
+            localStorage.setItem('pending_question_import', JSON.stringify(cardData));
+            localStorage.setItem('last_synced_question', JSON.stringify(cardData));
+        } catch(e) {}
+
+        // 2. BroadcastChannel para comunicação direta com abas do app
+        try {
+            const qbSync = new BroadcastChannel('usmle_qbank_sync');
+            qbSync.postMessage({
+                type: 'QBANK_QUESTION_SYNC',
+                question: cardData,
+                bankName: targetBank,
+                qid: currentQId,
+                timestamp: Date.now()
+            });
+            setTimeout(() => qbSync.close(), 1500);
+        } catch(e) {}
+
+        // 3. Notificação via Background Worker (injeção em abas e proxy para API do app)
+        if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+            chrome.runtime.sendMessage({
+                type: 'DISPATCH_QUESTION_DATA',
+                questionData: cardData,
+                bankName: targetBank
+            }, () => {});
+        }
+
+        // 4. CustomEvent local se app estiver na mesma janela
+        try {
+            window.dispatchEvent(new CustomEvent('usmle_import_question', {
+                detail: {
                     type: 'QBANK_QUESTION_SYNC',
                     question: cardData,
                     bankName: targetBank,
-                    qid: currentQId,
-                    timestamp: Date.now()
-                });
-                setTimeout(() => qbSync.close(), 1200);
-            } catch(e) {}
+                    qid: currentQId
+                }
+            }));
+        } catch(e) {}
+    };
 
-            // 2. Despacha para o editor de Flashcards (sem salvar card vazio)
-            despacharDadosParaFlashcards(cardData);
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.get(['target_qbank_name', 'auto_sync_all_questions'], (res) => {
+            const targetBank = res.target_qbank_name || 'UWorld Step 1';
+            finishSync(targetBank);
         });
     } else {
-        despacharDadosParaFlashcards(cardData);
+        finishSync('UWorld Step 1');
     }
 }
 
