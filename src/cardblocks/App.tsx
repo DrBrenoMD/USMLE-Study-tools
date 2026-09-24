@@ -46,11 +46,74 @@ export default function App() {
   const [page, setPage] = useState<Page>({ type: 'home' });
   const { t } = useTranslation();
   const theme = useStore(state => state.settings?.theme || 'ocean');
+  const upsertQuestionFromQBank = useStore(state => state.upsertQuestionFromQBank);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     document.documentElement.style.colorScheme = ['light', 'paty', 'rose', 'sepia'].includes(theme) ? 'light' : 'dark';
   }, [theme]);
+
+  // Listener Global para Sincronização e Importação de Questões do Q-Bank
+  useEffect(() => {
+    const handleIncomingQuestion = (qData: any) => {
+      if (!qData || !qData.questionId) return;
+      const formatted = {
+        qid: qData.questionId,
+        stem: qData.questionStem || qData.text,
+        text: qData.questionStem || qData.text,
+        alternatives: qData.alternatives || [],
+        explanation: qData.explanation || '',
+        educationalObjective: qData.educationalObjective || '',
+        subject: qData.subject || '',
+        system: qData.system || '',
+        images: qData.questionImages || qData.images || [],
+        tags: qData.tags || [],
+      };
+      upsertQuestionFromQBank(formatted);
+    };
+
+    // 1. BroadcastChannel
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel('usmle_qbank_sync');
+      bc.onmessage = (event) => {
+        if (event.data?.type === 'QBANK_QUESTION_SYNC' && event.data.question) {
+          handleIncomingQuestion(event.data.question);
+        }
+      };
+    } catch (e) {}
+
+    // 2. CustomEvent
+    const handleCustomEvent = (e: any) => {
+      if (e.detail?.question) {
+        handleIncomingQuestion(e.detail.question);
+      }
+    };
+    window.addEventListener('usmle_import_question', handleCustomEvent);
+
+    // 3. PostMessage
+    const handleMessage = (e: MessageEvent) => {
+      if (e.data?.type === 'QBANK_QUESTION_SYNC' && e.data.question) {
+        handleIncomingQuestion(e.data.question);
+      }
+    };
+    window.addEventListener('message', handleMessage);
+
+    // 4. Verificação de pendentes no localStorage
+    try {
+      const pending = localStorage.getItem('pending_question_import');
+      if (pending) {
+        const parsed = JSON.parse(pending);
+        handleIncomingQuestion(parsed);
+      }
+    } catch (e) {}
+
+    return () => {
+      if (bc) bc.close();
+      window.removeEventListener('usmle_import_question', handleCustomEvent);
+      window.removeEventListener('message', handleMessage);
+    };
+  }, [upsertQuestionFromQBank]);
 
   // Handle errors
   const [error, setError] = useState<string | null>(null);

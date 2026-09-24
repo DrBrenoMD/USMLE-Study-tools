@@ -175,7 +175,7 @@ export const QuestionSessionView: React.FC<QuestionSessionViewProps> = ({
     });
   };
 
-  // Aplica highlights no texto / HTML
+  // Aplica highlights no texto / HTML evitando substituir dentro de tags HTML
   const applyHighlightsToContent = (rawText: string = ''): string => {
     if (!currentQ || !rawText) return rawText;
     const qHighlights = highlights[currentQ.id] || [];
@@ -186,8 +186,9 @@ export const QuestionSessionView: React.FC<QuestionSessionViewProps> = ({
       if (!hText || hText.length < 2) return;
       try {
         const escaped = hText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const regex = new RegExp(`(${escaped})`, 'gi');
-        result = result.replace(regex, '<mark class="bg-amber-200 dark:bg-amber-500/40 text-gray-900 dark:text-gray-100 rounded-xs px-0.5 font-medium">$1</mark>');
+        // Lookahead seguro para não substituir atributos ou nomes de tags HTML
+        const regex = new RegExp(`(${escaped})(?![^<]*>)`, 'gi');
+        result = result.replace(regex, '<mark class="bg-amber-200 dark:bg-amber-500/40 text-gray-900 dark:text-gray-100 rounded-xs px-1 py-0.5 font-medium border-b border-amber-400">$1</mark>');
       } catch(e) {}
     });
     return result;

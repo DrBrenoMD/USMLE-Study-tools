@@ -561,9 +561,26 @@ function mostrarToastFlutuante(msg, tipo = 'aviso') {
     }, 6000);
 }
 
-// Extração de imagens presentes na explicação ou em links no texto
+// Extração de imagens presentes no enunciado, nas alternativas, na explicação ou em links no texto
 function extrairTodasImagensQuestao() {
     const imagesSet = new Set();
+    
+    // 1. Imagens no Enunciado (Stem)
+    const stemEls = document.querySelectorAll('.question-stem, .q-stem, .stem, div[id*="qStem"], [class*="questionBody"], #questionBody, div[class*="question-content"], .max-w-5xl, article.question');
+    stemEls.forEach(container => {
+        container.querySelectorAll('img').forEach(img => {
+            const src = img.getAttribute('src') || img.getAttribute('data-src') || img.src;
+            if (src && !src.includes('data:image/svg') && !src.includes('favicon') && !src.includes('avatar') && !src.includes('logo')) {
+                try {
+                    imagesSet.add(new URL(src, window.location.href).href);
+                } catch(e) {
+                    imagesSet.add(src);
+                }
+            }
+        });
+    });
+
+    // 2. Todas as imagens da página com filtros médicos ou tamanho representativo
     const imgs = document.querySelectorAll('img');
     imgs.forEach(img => {
         const src = img.getAttribute('src') || img.getAttribute('data-src') || img.src;
@@ -576,9 +593,11 @@ function extrairTodasImagensQuestao() {
                                src.includes('amboss') ||
                                src.includes('Thumbnail') || 
                                img.alt?.includes('Thumbnail') ||
-                               img.closest('button[aria-label*="Enlarge"]') ||
+                               img.closest('button[aria-label*="Enlarge" i]') ||
                                img.closest('div[class*="aspect-square"]') ||
-                               (img.width > 60 || img.height > 60);
+                               img.closest('.choices-container, .answer-choices, table.choices, tr') ||
+                               img.closest('.explanation, article, main') ||
+                               (img.width > 50 || img.height > 50);
 
         if (isMedicalImage && !src.includes('favicon') && !src.includes('avatar') && !src.includes('logo')) {
             try {
@@ -590,7 +609,7 @@ function extrairTodasImagensQuestao() {
         }
     });
 
-    // Links <a> apontando para imagens ao longo do texto da explicação
+    // 3. Links <a> apontando para imagens ao longo do texto da explicação
     const links = document.querySelectorAll('a[href]');
     links.forEach(a => {
         const href = a.getAttribute('href');
@@ -1302,18 +1321,22 @@ async function falarFeedback(texto) {
     window.speechSynthesis.speak(msg);
 }
 
-// --- Funções de Extração Inteligente por Blocos e Tabelas ---
+// --- Funções de Extração Inteligente por Blocos, Imagens, Highlights e Tabelas ---
 function limparEFormatarTabelaHtml(tableEl) {
     if (!tableEl) return '';
     const clone = tableEl.cloneNode(true);
-    clone.querySelectorAll('script, style, button, [role="button"]').forEach(el => el.remove());
+    clone.querySelectorAll('script, style, button, [role="button"]').forEach(el => {
+        const img = el.querySelector('img');
+        if (img) el.replaceWith(img);
+        else el.remove();
+    });
     clone.querySelectorAll('img').forEach(img => {
-        const src = img.getAttribute('src');
+        const src = img.getAttribute('src') || img.getAttribute('data-src') || img.src;
         if (src) {
             try { img.src = new URL(src, window.location.href).href; } catch(e){}
         }
         img.removeAttribute('style');
-        img.className = 'max-h-64 max-w-full rounded-lg my-2 object-contain';
+        img.className = 'max-h-72 max-w-full rounded-lg my-2 object-contain mx-auto block';
     });
     clone.className = 'qbank-imported-table border-collapse w-full my-3 text-xs sm:text-sm border border-gray-300 dark:border-gray-700';
     clone.querySelectorAll('th, td').forEach(cell => {
@@ -1325,9 +1348,71 @@ function limparEFormatarTabelaHtml(tableEl) {
     return clone.outerHTML;
 }
 
+// Limpa e normaliza o HTML do enunciado preservando imagens, tabelas e trechos com highlight
+function limparEFormatarConteudoHtml(containerEl) {
+    if (!containerEl) return '';
+    const clone = containerEl.cloneNode(true);
+
+    // 1. Remove scripts, styles, toolbars de highlight que NÃO contêm imagens
+    clone.querySelectorAll('script, style, .markBtnContainer, [aria-label*="Clear highlights" i], [class*="Clear highlights" i]').forEach(el => el.remove());
+    
+    // 2. Trata botões / links de ampliar imagem (desembrulha a imagem para não perder na remoção)
+    clone.querySelectorAll('button, a, div[role="button"], [class*="cursor-pointer"]').forEach(btn => {
+        const img = btn.querySelector('img');
+        if (img) {
+            btn.replaceWith(img);
+        } else {
+            const btnText = (btn.innerText || '').trim().toLowerCase();
+            if (btnText.includes('clear highlights') || btnText.includes('mark question') || btnText.includes('exhibit')) {
+                btn.remove();
+            }
+        }
+    });
+
+    // 3. Converte todas as imagens para URLs absolutas e aplica estilização responsiva
+    clone.querySelectorAll('img').forEach(img => {
+        const src = img.getAttribute('src') || img.getAttribute('data-src') || img.src;
+        if (src) {
+            try {
+                img.src = new URL(src, window.location.href).href;
+            } catch(e) {}
+        }
+        img.removeAttribute('style');
+        img.className = 'max-h-96 max-w-full rounded-xl my-3 shadow-xs border border-gray-200 dark:border-gray-700 object-contain mx-auto block';
+    });
+
+    // 4. Converte e normaliza todas as variações de trechos com Highlight (<mark>, spans com classes ou inline styles)
+    const highlightElements = clone.querySelectorAll('mark, [class*="highlight" i], [class*="bg-yellow" i], [class*="bg-amber" i], [data-highlight], span[style*="background"]');
+    highlightElements.forEach(hlEl => {
+        hlEl.className = 'qbank-highlight bg-amber-200 dark:bg-amber-400/40 text-gray-900 dark:text-gray-100 px-1 py-0.5 rounded font-medium shadow-xs';
+        hlEl.style.backgroundColor = '#fef08a';
+        hlEl.style.color = '#111827';
+        hlEl.style.borderRadius = '3px';
+        hlEl.style.padding = '1px 3px';
+    });
+
+    // 5. Formata tabelas internas
+    clone.querySelectorAll('table').forEach(tbl => {
+        const tblHtml = limparEFormatarTabelaHtml(tbl);
+        if (tblHtml) {
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = tblHtml;
+            tbl.replaceWith(tempDiv.firstElementChild || tbl);
+        }
+    });
+
+    return clone.innerHTML.trim();
+}
+
 function getBlocosDeTexto(container) {
     const itens = [];
     if (!container) return itens;
+
+    const formattedFull = limparEFormatarConteudoHtml(container);
+    if (formattedFull && formattedFull.length > 0) {
+        itens.push({ text: formattedFull, node: container });
+        return itens;
+    }
 
     const tables = container.querySelectorAll('table');
     if (tables.length > 0) {
@@ -1368,22 +1453,11 @@ function extrairEnunciadoParaFila() {
     for (let sel of seletoresStem) {
         try {
             const el = document.querySelector(sel);
-            if (el && el.innerText && el.innerText.trim().length > 25) {
-                const clone = el.cloneNode(true);
-                clone.querySelectorAll('.markBtnContainer, button, [class*="Clear highlights"]').forEach(c => c.remove());
-                const tables = clone.querySelectorAll('table');
-                if (tables.length > 0) {
-                    let fullHtml = '';
-                    Array.from(clone.children).forEach(ch => {
-                        if (ch.tagName === 'TABLE') fullHtml += '\n\n' + limparEFormatarTabelaHtml(ch) + '\n\n';
-                        else if (ch.innerText.trim()) fullHtml += '\n\n' + ch.innerHTML.trim();
-                    });
-                    if (fullHtml.trim().length > 20) {
-                        return [{ text: fullHtml.trim(), node: el }];
-                    }
+            if (el && ((el.innerText && el.innerText.trim().length > 20) || el.querySelector('img, table'))) {
+                const formattedHtml = limparEFormatarConteudoHtml(el);
+                if (formattedHtml && formattedHtml.length > 15) {
+                    return [{ text: formattedHtml, node: el }];
                 }
-                const blocos = getBlocosDeTexto(el);
-                if (blocos.length > 0) return blocos;
             }
         } catch(e) {}
     }
@@ -1393,12 +1467,14 @@ function extrairEnunciadoParaFila() {
     const blocosStem = [];
     for (let el of elements) {
         const txt = (el.innerText || '').trim();
-        if (txt.length > 40 && !txt.includes('Clear highlights') && !txt.includes('Mark Question') && !txt.includes('Item ') && !txt.includes('Question Id:')) {
+        const hasImg = Boolean(el.querySelector('img'));
+        if ((txt.length > 40 || hasImg) && !txt.includes('Clear highlights') && !txt.includes('Mark Question') && !txt.includes('Item ') && !txt.includes('Question Id:')) {
             const hasChoiceHeader = /(?:Options|Alternativas|Educational objective)/i.test(txt);
             if (!hasChoiceHeader && !el.querySelector('table.choices, tr, input[type="radio"]')) {
                 const jaAdicionado = blocosStem.some(b => b.node && (b.node.contains(el) || el.contains(b.node)));
                 if (!jaAdicionado) {
-                    blocosStem.push({ text: el.innerHTML.trim() || txt, node: el });
+                    const formatted = limparEFormatarConteudoHtml(el);
+                    blocosStem.push({ text: formatted || txt, node: el });
                 }
             }
         }
