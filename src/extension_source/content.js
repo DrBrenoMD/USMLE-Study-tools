@@ -365,7 +365,7 @@ function extrairIdQuestaoAtual() {
     return qId;
 }
 
-// Extração dos novos campos: Subject e System
+// Extração dos novos campos: Subject e System com detecção de 'Click to Show'
 function extrairSubjectESystem() {
     let subject = '';
     let system = '';
@@ -378,14 +378,20 @@ function extrairSubjectESystem() {
         if (!subject && /^Subject$/i.test(txt)) {
             const next = el.nextElementSibling || (el.parentElement ? el.parentElement.querySelector('span:nth-child(2), button, [title], [class*="semibold"]') : null);
             if (next && next !== el) {
-                subject = (next.getAttribute('title') || next.innerText || next.textContent || '').trim();
+                const val = (next.getAttribute('title') || next.innerText || next.textContent || '').trim();
+                if (!/click\s*to\s*show/i.test(val)) {
+                    subject = val;
+                }
             }
         }
         
         if (!system && /^System$/i.test(txt)) {
             const next = el.nextElementSibling || (el.parentElement ? el.parentElement.querySelector('button, span:nth-child(2), [title], [class*="semibold"]') : null);
             if (next && next !== el) {
-                system = (next.getAttribute('title') || next.innerText || next.textContent || '').trim();
+                const val = (next.getAttribute('title') || next.innerText || next.textContent || '').trim();
+                if (!/click\s*to\s*show/i.test(val)) {
+                    system = val;
+                }
             }
         }
     }
@@ -393,25 +399,142 @@ function extrairSubjectESystem() {
     // 2. Fallbacks com seletores conhecidos
     if (!subject) {
         const subEl = document.querySelector('[data-subject], .subject-name, [class*="subject"]');
-        if (subEl) subject = subEl.getAttribute('title') || subEl.innerText.trim();
+        if (subEl) {
+            const val = subEl.getAttribute('title') || subEl.innerText.trim();
+            if (!/click\s*to\s*show/i.test(val)) subject = val;
+        }
     }
     if (!system) {
         const sysEl = document.querySelector('[data-system], .system-name, [class*="system"]');
-        if (sysEl) system = sysEl.getAttribute('title') || sysEl.innerText.trim();
+        if (sysEl) {
+            const val = sysEl.getAttribute('title') || sysEl.innerText.trim();
+            if (!/click\s*to\s*show/i.test(val)) system = val;
+        }
     }
 
     // 3. Fallback por regex no body text
     const bodyText = document.body ? document.body.innerText : '';
     if (!subject) {
         const matchSub = bodyText.match(/Subject\s*[\n\r:]+\s*([^\n\r<|]{2,60})/i);
-        if (matchSub && matchSub[1]) subject = matchSub[1].trim();
+        if (matchSub && matchSub[1] && !/click\s*to\s*show/i.test(matchSub[1])) {
+            subject = matchSub[1].trim();
+        }
     }
     if (!system) {
         const matchSys = bodyText.match(/System\s*[\n\r:]+\s*([^\n\r<|]{2,80})/i);
-        if (matchSys && matchSys[1]) system = matchSys[1].trim();
+        if (matchSys && matchSys[1] && !/click\s*to\s*show/i.test(matchSys[1])) {
+            system = matchSys[1].trim();
+        }
     }
 
     return { subject, system };
+}
+
+// Clica automaticamente em qualquer botão 'Click to Show' ou 'Show System' na tela
+function revelarCamposOcultos() {
+    let count = 0;
+    const clickables = Array.from(document.querySelectorAll('button, a, span[role="button"], div[role="button"], [class*="cursor-pointer"]'));
+    clickables.forEach(el => {
+        const txt = (el.innerText || el.textContent || '').trim();
+        const title = (el.getAttribute('title') || '').trim();
+        const aria = (el.getAttribute('aria-label') || '').trim();
+        if (
+            /click\s*to\s*show/i.test(txt) ||
+            /click\s*to\s*show/i.test(title) ||
+            /click\s*to\s*show/i.test(aria) ||
+            /show\s*system/i.test(txt) ||
+            /show\s*subject/i.test(txt) ||
+            /reveal\s*system/i.test(txt)
+        ) {
+            try {
+                el.click();
+                count++;
+            } catch(e) {}
+        }
+    });
+    return count;
+}
+
+// Validador estrito de integridade: Só permite importação se TODOS os dados estiverem disponíveis
+function validarDadosCompletosQuestao(cardData) {
+    const pendencias = [];
+    const status = {
+        qid: Boolean(cardData.questionId && cardData.questionId !== 'Q-0'),
+        stem: Boolean(cardData.questionStem && !cardData.questionStem.startsWith('Questão #') && cardData.questionStem.trim().length > 10 && cardData.questionStem !== 'Question text not found.' && cardData.questionStem !== 'Texto do enunciado não identificado.'),
+        choices: Boolean(cardData.questionChoices && cardData.questionChoices.trim().length > 0 && cardData.questionChoices !== 'Options:'),
+        explanation: Boolean(cardData.explanation && cardData.explanation !== 'Explanation not found.' && cardData.explanation.trim().length > 10),
+        objective: Boolean(cardData.educationalObjective && cardData.educationalObjective !== 'Educational objective not found.' && cardData.educationalObjective.trim().length > 10),
+        system: Boolean(cardData.system && cardData.system.trim().length > 1 && !/click\s*to\s*show/i.test(cardData.system)),
+        subject: Boolean(cardData.subject && cardData.subject.trim().length > 1 && !/click\s*to\s*show/i.test(cardData.subject))
+    };
+
+    if (!status.stem) pendencias.push('Enunciado não identificado');
+    if (!status.choices) pendencias.push('Alternativas não identificadas');
+    if (!status.explanation) pendencias.push('Explicação oculta (responda a questão para liberar)');
+    if (!status.objective) pendencias.push('Educational Objective oculto');
+    if (!status.system) pendencias.push('System oculto (clique em "Click to Show" no cabeçalho)');
+    if (!status.subject) pendencias.push('Subject não identificado');
+
+    return {
+        completo: pendencias.length === 0,
+        pendencias,
+        status
+    };
+}
+
+// Toast flutuante na tela para informar o usuário imediatamente caso dados estejam incompletos
+function mostrarToastFlutuante(msg, tipo = 'aviso') {
+    let toast = document.getElementById('qbankly-toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'qbankly-toast';
+        toast.style.cssText = `
+            position: fixed !important;
+            bottom: 24px !important;
+            left: 50% !important;
+            transform: translateX(-50%) translateY(100px) !important;
+            z-index: 2147483647 !important;
+            padding: 12px 20px !important;
+            border-radius: 12px !important;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+            font-size: 13px !important;
+            font-weight: 600 !important;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5) !important;
+            transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease !important;
+            opacity: 0 !important;
+            pointer-events: auto !important;
+            max-width: 90vw !important;
+            text-align: center !important;
+            display: flex !important;
+            align-items: center !important;
+            gap: 10px !important;
+        `;
+        document.body.appendChild(toast);
+    }
+
+    if (tipo === 'aviso' || tipo === 'erro') {
+        toast.style.background = '#7f1d1d';
+        toast.style.color = '#fecaca';
+        toast.style.border = '1px solid #dc2626';
+    } else if (tipo === 'sucesso') {
+        toast.style.background = '#064e3b';
+        toast.style.color = '#a7f3d0';
+        toast.style.border = '1px solid #059669';
+    } else {
+        toast.style.background = '#1e293b';
+        toast.style.color = '#e2e8f0';
+        toast.style.border = '1px solid #475569';
+    }
+
+    toast.innerHTML = msg;
+    toast.style.transform = 'translateX(-50%) translateY(0)';
+    toast.style.opacity = '1';
+
+    if (window._qbanklyToastTimer) clearTimeout(window._qbanklyToastTimer);
+    window._qbanklyToastTimer = setTimeout(() => {
+        toast.style.transform = 'translateX(-50%) translateY(100px)';
+        toast.style.opacity = '0';
+    }, 6000);
 }
 
 // Extração de imagens presentes na explicação ou em links no texto
@@ -515,6 +638,14 @@ function extrairDadosCompletosQuestao() {
 
 // Despacha os dados aproveitando abas já abertas com conexão ultra confiável
 function despacharDadosParaFlashcards(cardData) {
+    const val = validarDadosCompletosQuestao(cardData);
+    if (!val.completo) {
+        const pendenciasMsg = val.pendencias.join('<br>• ');
+        mostrarToastFlutuante(`⚠️ <b>Dados Incompletos para Flashcard:</b><br><div style="text-align:left;font-size:11px;margin-top:4px;">• ${pendenciasMsg}</div><div style="font-size:10px;margin-top:4px;opacity:0.85;">Responda a questão e revele o System ("Click to Show") antes de gerar.</div>`, 'aviso');
+        mostrarFeedbackDrawer(`⚠️ Dados incompletos: ${val.pendencias[0]}`);
+        return false;
+    }
+
     mostrarFeedbackDrawer('⚡ Sincronizando com o editor de Flashcards...');
 
     // Salva no storage local da extensão
@@ -558,17 +689,28 @@ function despacharDadosParaFlashcards(cardData) {
             mostrarFeedbackDrawer('✅ Flashcard sincronizado com a janela aberta!');
         } catch(e) {}
     }
+
+    mostrarToastFlutuante(`✅ <b>Flashcard pronto!</b> Dados da questão #${currentQNumberExt} exportados.`, 'sucesso');
+    return true;
 }
 
 // Auto-importação durante a navegação pelas questões:
-// Cada questão pela qual o usuário passar é importada para o repositório de questões do banco selecionado
+// Cada questão pela qual o usuário passar só é importada se TODOS os dados estiverem disponíveis
 function autoImportarQuestaoSeNavegou() {
     if (!isPaginaResolucaoQBank()) return;
     const currentQId = extrairIdQuestaoAtual();
-    if (!currentQId || currentQId === lastImportedQId) return;
+    if (!currentQId) return;
 
-    lastImportedQId = currentQId;
     const cardData = extrairDadosCompletosQuestao();
+    const val = validarDadosCompletosQuestao(cardData);
+
+    // Regra estrita: Se dados estiverem incompletos, não importa e alerta o usuário
+    if (!val.completo) {
+        return;
+    }
+
+    if (currentQId === lastImportedQId) return;
+    lastImportedQId = currentQId;
 
     // Obtém o banco de destino configurado pelo usuário no popup
     const finishSync = (targetBank) => {
@@ -621,6 +763,8 @@ function autoImportarQuestaoSeNavegou() {
                 }
             }));
         } catch(e) {}
+
+        mostrarFeedbackDrawer(`✅ Questão #${currentQNumberExt} (QID: ${currentQId}) importada com sucesso!`);
     };
 
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
@@ -758,12 +902,28 @@ function atualizarStatusCardQuestaoAtual() {
         const cardsMap = res.saved_question_cards || {};
         const cardExistente = cardsMap[qId];
 
+        const cardData = extrairDadosCompletosQuestao();
+        const val = validarDadosCompletosQuestao(cardData);
+
         const subSys = extrairSubjectESystem();
-        const detectedFieldsHtml = `
-            <div style="margin-top: 8px; margin-bottom: 8px; padding: 8px 10px; background: rgba(15,23,42,0.8); border-radius: 8px; border: 1px solid #334155; font-size: 10px; line-height: 1.5; color: #94a3b8;">
-                <div><b style="color: #cbd5e1;">Subject:</b> <span style="color: #60a5fa;">${subSys.subject || 'Detectando...'}</span></div>
-                <div><b style="color: #cbd5e1;">System:</b> <span style="color: #60a5fa;">${subSys.system || 'Detectando...'}</span></div>
-                <div><b style="color: #cbd5e1;">Q ID:</b> <span style="color: #34d399;">${qId}</span></div>
+        
+        // Checklist visual de integridade
+        const checklistHtml = `
+            <div style="margin-top: 8px; margin-bottom: 8px; padding: 10px; background: rgba(15,23,42,0.9); border-radius: 8px; border: 1px solid #334155; font-size: 11px; line-height: 1.6; color: #94a3b8;">
+                <div style="font-weight: 700; color: #cbd5e1; font-size: 10px; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px; display: flex; justify-content: space-between; align-items: center;">
+                    <span>Diagnóstico de Campos:</span>
+                    <span style="font-size: 9px; padding: 2px 6px; border-radius: 4px; font-weight: bold; background: ${val.completo ? 'rgba(16,185,129,0.2); color: #34d399;' : 'rgba(239,68,68,0.2); color: #f87171;'}">
+                        ${val.completo ? 'Pronto para Importar' : 'Campos Ocultos'}
+                    </span>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px;">
+                    <div><span style="color: ${val.status.stem ? '#34d399' : '#f87171'}">${val.status.stem ? '✓' : '✗'}</span> Enunciado</div>
+                    <div><span style="color: ${val.status.choices ? '#34d399' : '#f87171'}">${val.status.choices ? '✓' : '✗'}</span> Alternativas</div>
+                    <div><span style="color: ${val.status.explanation ? '#34d399' : '#f87171'}">${val.status.explanation ? '✓' : '✗'}</span> Explicação</div>
+                    <div><span style="color: ${val.status.objective ? '#34d399' : '#f87171'}">${val.status.objective ? '✓' : '✗'}</span> Objective</div>
+                    <div><span style="color: ${val.status.subject ? '#34d399' : '#f87171'}">${val.status.subject ? '✓' : '✗'}</span> Subject: <b style="color:#60a5fa">${subSys.subject || '---'}</b></div>
+                    <div><span style="color: ${val.status.system ? '#34d399' : '#f87171'}">${val.status.system ? '✓' : '✗'}</span> System: <b style="color:#60a5fa">${subSys.system || 'Oculto'}</b></div>
+                </div>
             </div>
         `;
 
@@ -775,7 +935,7 @@ function atualizarStatusCardQuestaoAtual() {
                         ● Flashcard Salvo
                     </span>
                 </div>
-                ${detectedFieldsHtml}
+                ${checklistHtml}
                 <div style="font-size: 11px; color: #cbd5e1; background: #0f172a; padding: 8px; border-radius: 8px; border: 1px solid #1e293b; margin-bottom: 10px; max-height: 80px; overflow: hidden; text-overflow: ellipsis;">
                     <b>Frente:</b> ${(cardExistente.front || '').replace(/<[^>]+>/g, '').substring(0, 100)}...
                 </div>
@@ -791,17 +951,37 @@ function atualizarStatusCardQuestaoAtual() {
                         Sem Flashcard
                     </span>
                 </div>
-                ${detectedFieldsHtml}
-                <p style="font-size: 11px; color: #94a3b8; line-height: 1.4; margin: 0 0 10px 0;">
-                    Nenhum flashcard criado ainda para esta questão.
-                </p>
-                <button id="btn-gerar-card" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: none; background: linear-gradient(135deg, #2563eb, #4f46e5); color: #fff; font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 4px 12px rgba(37,99,235,0.3);">
-                    ⚡ Criar Flashcard da Questão
-                </button>
-                <div style="margin-top: 8px; font-size: 10px; color: #fbbf24; background: rgba(251,191,36,0.1); padding: 6px 8px; border-radius: 6px; border: 1px solid rgba(251,191,36,0.2);">
-                    ℹ️ <b>Proteção Automática:</b> O flashcard só será salvo se você preencher frente e verso manualmente. Ao navegar, rascunhos incompletos são descartados.
+                ${checklistHtml}
+
+                ${!val.completo ? `
+                    <div style="margin-bottom: 10px; padding: 8px 10px; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); border-radius: 8px; font-size: 10px; color: #fca5a5; line-height: 1.4;">
+                        ⚠️ <b>Aviso:</b> Responda a questão e clique em "Click to Show" para liberar todos os dados antes de importar.
+                    </div>
+                ` : ''}
+
+                <div style="display: flex; gap: 6px; margin-bottom: 8px;">
+                    ${!val.status.system ? `
+                        <button id="btn-revelar-campos" style="flex: 1; padding: 8px 10px; border-radius: 8px; border: 1px solid #475569; background: #1e293b; color: #38bdf8; font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;">
+                            🔍 Revelar 'Click to Show'
+                        </button>
+                    ` : ''}
+                    <button id="btn-gerar-card" style="flex: 1; padding: 10px 12px; border-radius: 8px; border: none; background: ${val.completo ? 'linear-gradient(135deg, #2563eb, #4f46e5)' : '#334155'}; color: ${val.completo ? '#fff' : '#94a3b8'}; font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 4px 12px rgba(37,99,235,0.3);">
+                        ⚡ Criar Flashcard
+                    </button>
                 </div>
             `;
+        }
+
+        const btnRevelar = document.getElementById('btn-revelar-campos');
+        if (btnRevelar) {
+            btnRevelar.addEventListener('click', () => {
+                const count = revelarCamposOcultos();
+                mostrarFeedbackDrawer(`🔍 Botões 'Click to Show' acionados (${count}). Atualizando...`);
+                setTimeout(() => {
+                    atualizarStatusCardQuestaoAtual();
+                    autoImportarQuestaoSeNavegou();
+                }, 400);
+            });
         }
 
         const btnGerar = document.getElementById('btn-gerar-card');
@@ -813,6 +993,25 @@ function atualizarStatusCardQuestaoAtual() {
 
 function executarGeracaoFlashcard() {
     const cardData = extrairDadosCompletosQuestao();
+    const val = validarDadosCompletosQuestao(cardData);
+    if (!val.completo) {
+        revelarCamposOcultos();
+        setTimeout(() => {
+            const reData = extrairDadosCompletosQuestao();
+            const reVal = validarDadosCompletosQuestao(reData);
+            if (!reVal.completo) {
+                const msg = reVal.pendencias.join('<br>• ');
+                mostrarToastFlutuante(`⚠️ <b>Dados Incompletos:</b><br><div style="text-align:left;font-size:11px;margin-top:4px;">• ${msg}</div><div style="font-size:10px;margin-top:4px;opacity:0.85;">Responda a questão e clique em "Click to Show" para liberar.</div>`, 'aviso');
+                mostrarFeedbackDrawer(`⚠️ Dados incompletos: ${reVal.pendencias[0]}`);
+                atualizarStatusCardQuestaoAtual();
+            } else {
+                despacharDadosParaFlashcards(reData);
+                autoImportarQuestaoSeNavegou();
+                atualizarStatusCardQuestaoAtual();
+            }
+        }, 300);
+        return;
+    }
     despacharDadosParaFlashcards(cardData);
 }
 

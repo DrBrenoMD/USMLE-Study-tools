@@ -13,10 +13,12 @@ import {
   Trash2,
   Eye,
   Plus,
-  Upload
+  Upload,
+  Activity
 } from 'lucide-react';
 import { AssociatedCardsModal } from '../../../components/AssociatedCardsModal';
 import { ImportBankModal } from '../../components/ImportBankModal';
+import { QBankDiagnosticModal } from '../../components/QBankDiagnosticModal';
 
 interface QuestionRepositoryViewProps {
   bankId: string;
@@ -38,6 +40,7 @@ export const QuestionRepositoryView: React.FC<QuestionRepositoryViewProps> = ({
 
   const [search, setSearch] = useState('');
   const [isImporting, setIsImporting] = useState(false);
+  const [isDiagnosticOpen, setIsDiagnosticOpen] = useState(false);
   const [selectedSubject, setSelectedSubject] = useState<string>('all');
   const [selectedSystem, setSelectedSystem] = useState<string>('all');
   const [activeModalQid, setActiveModalQid] = useState<string | null>(null);
@@ -104,6 +107,14 @@ export const QuestionRepositoryView: React.FC<QuestionRepositoryViewProps> = ({
         </div>
         <div className="flex items-center gap-2">
           <button
+            onClick={() => setIsDiagnosticOpen(true)}
+            className="px-3 py-2 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/50 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+            title="Diagnóstico de sincronização com a extensão"
+          >
+            <Activity className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+            <span>Diagnóstico</span>
+          </button>
+          <button
             onClick={() => setIsImporting(true)}
             className="px-3.5 py-2 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
           >
@@ -112,6 +123,11 @@ export const QuestionRepositoryView: React.FC<QuestionRepositoryViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Modal de Diagnóstico */}
+      {isDiagnosticOpen && (
+        <QBankDiagnosticModal onClose={() => setIsDiagnosticOpen(false)} />
+      )}
 
       {/* Modal de Importação */}
       {isImporting && (

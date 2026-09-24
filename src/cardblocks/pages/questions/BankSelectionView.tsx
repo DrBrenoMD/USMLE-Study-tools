@@ -17,9 +17,11 @@ import {
   Sparkles,
   ArrowRight,
   Database,
-  Upload
+  Upload,
+  Activity
 } from 'lucide-react';
 import { ImportBankModal } from '../../components/ImportBankModal';
+import { QBankDiagnosticModal } from '../../components/QBankDiagnosticModal';
 
 interface BankSelectionViewProps {
   onSelectBank: (bankId: string) => void;
@@ -35,6 +37,7 @@ export const BankSelectionView: React.FC<BankSelectionViewProps> = ({
   const { questionBanks, questions, createQuestionBank, deleteQuestionBank, resetBankStats } = useStore();
   const [isCreating, setIsCreating] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [isDiagnosticOpen, setIsDiagnosticOpen] = useState(false);
   const [bankName, setBankName] = useState('');
   const [bankDesc, setBankDesc] = useState('');
   const [search, setSearch] = useState('');
@@ -113,6 +116,14 @@ export const BankSelectionView: React.FC<BankSelectionViewProps> = ({
 
         <div className="flex items-center gap-2.5">
           <button
+            onClick={() => setIsDiagnosticOpen(true)}
+            className="px-3 py-2.5 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/50 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center gap-1.5 cursor-pointer"
+            title="Verificar por que questões não estão sincronizando ou diagnosticar a extensão"
+          >
+            <Activity className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+            <span>Diagnóstico</span>
+          </button>
+          <button
             onClick={() => setIsImporting(true)}
             className="px-3.5 py-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 cursor-pointer"
           >
@@ -128,6 +139,11 @@ export const BankSelectionView: React.FC<BankSelectionViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Modal de Diagnóstico de Sincronização */}
+      {isDiagnosticOpen && (
+        <QBankDiagnosticModal onClose={() => setIsDiagnosticOpen(false)} />
+      )}
 
       {/* Modal de Importação de Questões */}
       {isImporting && (
