@@ -86,6 +86,14 @@ interface TimerStore {
   submitPacerQuestion: () => void;
   nextPacerQuestion: () => void;
   prevPacerQuestion: () => void;
+  syncPacerQuestion: (params: {
+    targetQuestion?: number | null;
+    targetPhase?: 'solve' | 'review' | null;
+    isNext?: boolean;
+    isSubmit?: boolean;
+    isPrev?: boolean;
+    totalQuestions?: number | null;
+  }) => 'submit' | 'next' | 'prev' | 'sync' | 'none';
   stashPacerSession: () => void;
   finishPacerSession: () => void;
   closePacerSummary: () => void;
@@ -360,36 +368,133 @@ export const useTimerStore = create<TimerStore>()(
       }),
       
       prevPacerQuestion: () => set((state) => {
-        if (state.pacerQBankMode === 'tutored') {
-          // Se estava revisando a questão atual, voltar à resolução da mesma questão
-          if (state.pacerTutoredPhase === 'review') {
-            return {
-              pacerTutoredPhase: 'solve',
-              pacerCurrentReviewTime: 0
-            };
-          }
-          // Se estava na resolução, volta para a questão anterior
-          if (state.pacerCompletedQuestionsTime.length === 0) return {};
-          const prevQuestions = [...state.pacerCompletedQuestionsTime];
-          const prevReviews = [...state.pacerCompletedReviewTimes];
-          const lastSolve = prevQuestions.pop() || 0;
-          const lastReview = prevReviews.pop() || 0;
-          return {
-            pacerCompletedQuestionsTime: prevQuestions,
-            pacerCompletedReviewTimes: prevReviews,
-            pacerCurrentQuestionTime: lastSolve,
-            pacerCurrentReviewTime: lastReview,
-            pacerTutoredPhase: lastReview > 0 ? 'review' : 'solve'
-          };
-        }
         if (state.pacerCompletedQuestionsTime.length === 0) return {};
-        const previousTimes = [...state.pacerCompletedQuestionsTime];
-        const lastTime = previousTimes.pop() || 0;
+        const prevQuestions = [...state.pacerCompletedQuestionsTime];
+        const prevReviews = [...state.pacerCompletedReviewTimes];
+        const lastSolve = prevQuestions.pop() || 0;
+        const lastReview = prevReviews.pop() || 0;
         return {
-          pacerCompletedQuestionsTime: previousTimes,
-          pacerCurrentQuestionTime: lastTime
+          pacerCompletedQuestionsTime: prevQuestions,
+          pacerCompletedReviewTimes: prevReviews,
+          pacerCurrentQuestionTime: lastSolve,
+          pacerCurrentReviewTime: lastReview,
+          pacerTutoredPhase: lastReview > 0 ? 'review' : 'solve'
         };
       }),
+
+      syncPacerQuestion: (params) => {
+        let actionType: 'submit' | 'next' | 'prev' | 'sync' | 'none' = 'none';
+        set((state) => {
+          const currentQ = state.pacerCompletedQuestionsTime.length + 1;
+          const { targetQuestion, targetPhase, isNext, isSubmit, isPrev } = params;
+
+          // 1. Ação explícita de SUBMIT na questão atual
+          if (isSubmit || (targetPhase === 'review' && (targetQuestion === undefined || targetQuestion === null || targetQuestion === currentQ) && state.pacerTutoredPhase === 'solve')) {
+            if (state.pacerQBankMode === 'tutored' && state.pacerTutoredPhase === 'solve') {
+              actionType = 'submit';
+              return {
+                pacerTutoredPhase: 'review',
+                pacerCurrentReviewTime: 0
+              };
+            }
+          }
+
+          // 2. Ação explícita de PREV ou targetQuestion menor por 1
+          if (isPrev || (targetQuestion !== undefined && targetQuestion !== null && targetQuestion === currentQ - 1)) {
+            if (state.pacerCompletedQuestionsTime.length > 0) {
+              actionType = 'prev';
+              const prevQuestions = [...state.pacerCompletedQuestionsTime];
+              const prevReviews = [...state.pacerCompletedReviewTimes];
+              const lastSolve = prevQuestions.pop() || 0;
+              const lastReview = prevReviews.pop() || 0;
+
+              const resolvedPhase: 'solve' | 'review' = targetPhase || (lastReview > 0 ? 'review' : 'solve');
+
+              return {
+                pacerCompletedQuestionsTime: prevQuestions,
+                pacerCompletedReviewTimes: prevReviews,
+                pacerCurrentQuestionTime: lastSolve,
+                pacerCurrentReviewTime: lastReview,
+                pacerTutoredPhase: resolvedPhase
+              };
+            }
+            return {};
+          }
+
+          // 3. Ação explícita de NEXT ou targetQuestion maior por 1 (avanço normal)
+          if (isNext || (targetQuestion !== undefined && targetQuestion !== null && targetQuestion === currentQ + 1)) {
+            actionType = 'next';
+            if (state.pacerQBankMode === 'tutored') {
+              const isReviewed = state.pacerTutoredPhase === 'review';
+              return {
+                pacerCompletedQuestionsTime: [...state.pacerCompletedQuestionsTime, state.pacerCurrentQuestionTime],
+                pacerCompletedReviewTimes: [...state.pacerCompletedReviewTimes, isReviewed ? state.pacerCurrentReviewTime : 0],
+                pacerCurrentQuestionTime: 0,
+                pacerCurrentReviewTime: 0,
+                pacerTutoredPhase: targetPhase || 'solve'
+              };
+            }
+            return {
+              pacerCompletedQuestionsTime: [...state.pacerCompletedQuestionsTime, state.pacerCurrentQuestionTime],
+              pacerCurrentQuestionTime: 0
+            };
+          }
+
+          // 4. Salto arbitrário de questão (ex: via lista/grid de questões do Q-Bank)
+          if (targetQuestion !== undefined && targetQuestion !== null && targetQuestion > 0) {
+            if (targetQuestion > currentQ) {
+              actionType = 'next';
+              const isReviewed = state.pacerTutoredPhase === 'review';
+              const completedQ = [...state.pacerCompletedQuestionsTime, state.pacerCurrentQuestionTime];
+              const completedR = [...state.pacerCompletedReviewTimes, isReviewed ? state.pacerCurrentReviewTime : 0];
+              
+              // Questões puladas sem resolução
+              const skippedCount = targetQuestion - (currentQ + 1);
+              for (let i = 0; i < skippedCount; i++) {
+                completedQ.push(0);
+                completedR.push(0);
+              }
+
+              return {
+                pacerCompletedQuestionsTime: completedQ,
+                pacerCompletedReviewTimes: completedR,
+                pacerCurrentQuestionTime: 0,
+                pacerCurrentReviewTime: 0,
+                pacerTutoredPhase: targetPhase || 'solve'
+              };
+            } else if (targetQuestion < currentQ) {
+              actionType = 'prev';
+              const targetIndex = targetQuestion - 1;
+              const prevQuestions = state.pacerCompletedQuestionsTime.slice(0, targetIndex);
+              const prevReviews = state.pacerCompletedReviewTimes.slice(0, targetIndex);
+              const lastSolve = state.pacerCompletedQuestionsTime[targetIndex] || 0;
+              const lastReview = state.pacerCompletedReviewTimes[targetIndex] || 0;
+
+              const resolvedPhase: 'solve' | 'review' = targetPhase || (lastReview > 0 ? 'review' : 'solve');
+
+              return {
+                pacerCompletedQuestionsTime: prevQuestions,
+                pacerCompletedReviewTimes: prevReviews,
+                pacerCurrentQuestionTime: lastSolve,
+                pacerCurrentReviewTime: lastReview,
+                pacerTutoredPhase: resolvedPhase
+              };
+            } else if (targetQuestion === currentQ) {
+              // Mesma questão, mas a fase mudou (ex: explicação apareceu no DOM)
+              if (targetPhase && targetPhase !== state.pacerTutoredPhase) {
+                actionType = targetPhase === 'review' ? 'submit' : 'sync';
+                return {
+                  pacerTutoredPhase: targetPhase,
+                  pacerCurrentReviewTime: targetPhase === 'review' ? (state.pacerCurrentReviewTime || 0) : 0
+                };
+              }
+            }
+          }
+
+          return {};
+        });
+        return actionType;
+      },
 
       stashPacerSession: () => set((state) => {
         const time = state.pacerCompletedQuestionsTime.reduce((a,b)=>a+b, 0) + state.pacerCurrentQuestionTime

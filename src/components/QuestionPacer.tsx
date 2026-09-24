@@ -27,6 +27,7 @@ export function QuestionPacer({ className }: { className?: string }) {
     nextPacerQuestion,
     prevPacerQuestion,
     submitPacerQuestion,
+    syncPacerQuestion,
     stopPacer,
     finishPacerSession,
     resetPacerAccumulatedTime,
@@ -309,10 +310,7 @@ export function QuestionPacer({ className }: { className?: string }) {
   };
 
   const handlePrev = () => {
-    if (isTutoredMode && tutoredPhase === 'review') {
-      prevPacerQuestion();
-      playBeep(520, 0.15, 'prevQuestion');
-    } else if (totalQuestionsDone > 0) {
+    if (totalQuestionsDone > 0) {
       prevPacerQuestion();
       playBeep(520, 0.15, 'prevQuestion');
     }
@@ -348,50 +346,83 @@ export function QuestionPacer({ className }: { className?: string }) {
   const handleSubmitRef = useRef(handleSubmitReview);
   handleSubmitRef.current = handleSubmitReview;
 
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      let shouldNext = false;
-      let shouldSubmit = false;
-      let shouldPrev = false;
+  const handleStartRef = useRef(handleStart);
+  handleStartRef.current = handleStart;
 
-      if (event.data?.type === 'PACER_NEXT') {
-         shouldNext = true;
-      } else if (event.data?.type === 'PACER_PREV') {
-         shouldPrev = true;
-      } else if (event.data?.type === 'PACER_SUBMIT') {
-         shouldSubmit = true;
-      } else if (event.data?.type === 'PACER_BTN_CLICK') {
-         const { isNext, isSubmit, isPrev } = event.data;
-         
-         if (qbankMode === 'tutored') {
-            if (isSubmit) shouldSubmit = true;
-            if (isNext) shouldNext = true;
-            if (isPrev) shouldPrev = true;
-         } else {
-            const trigger = triggerButton || 'next';
-            if (trigger === 'next' && isNext) shouldNext = true;
-            if (trigger === 'submit' && isSubmit) shouldNext = true;
-            if (trigger === 'both' && (isNext || isSubmit)) shouldNext = true;
-            if (isPrev) shouldPrev = true;
-         }
-      } else if (event.data?.type === 'PACER_PAUSE_TOGGLE') {
+  const lastProcessedActionIdRef = useRef<string>('');
+  const lastAdvanceTimeRef = useRef<number>(0);
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent | { data: any }) => {
+      const data = event.data;
+      if (!data) return;
+
+      if (data.type === 'PACER_PAUSE_TOGGLE') {
          setTimerState(timerState === 'running' ? 'paused' : 'running');
+         return;
       }
 
-      if (phase !== 'rest' && isActive) {
-        if (qbankMode === 'tutored') {
-          if (shouldSubmit) {
-            if (tutoredPhase === 'solve') {
-              handleSubmitRef.current();
-            }
-          } else if (shouldNext) {
-            handleNextRef.current();
-          } else if (shouldPrev) {
-            handlePrevRef.current();
-          }
-        } else {
-          if (shouldNext) handleNextRef.current();
-          if (shouldPrev) handlePrevRef.current();
+      const isPacerEvent = 
+        data.type === 'PACER_NEXT' ||
+        data.type === 'PACER_PREV' ||
+        data.type === 'PACER_SUBMIT' ||
+        data.type === 'PACER_BTN_CLICK' ||
+        data.type === 'PACER_SYNC_STATE';
+
+      if (!isPacerEvent) return;
+
+      // Desduplicação estrita: se a mesma ação já foi recebida ou se disparada a menos de 300ms, descarta
+      const actionId = data.actionId || data.id || (data.ts ? `${data.type}-${data.ts}` : '');
+      const now = Date.now();
+
+      if (actionId && lastProcessedActionIdRef.current === actionId) {
+        return;
+      }
+      if (now - lastAdvanceTimeRef.current < 300) {
+        return;
+      }
+
+      lastProcessedActionIdRef.current = actionId;
+      lastAdvanceTimeRef.current = now;
+
+      // Sincroniza total de questões caso o Q-Bank tenha informado
+      if (data.totalQuestions && typeof data.totalQuestions === 'number' && data.totalQuestions > 0) {
+        if (data.totalQuestions !== totalQuestions) {
+          setTotalQuestions(data.totalQuestions);
+        }
+      }
+
+      // Se o pacer não estiver ativo ainda, auto-inicia
+      if (!isActive) {
+        handleStartRef.current();
+      }
+
+      let shouldNext = Boolean(data.isNext || data.type === 'PACER_NEXT');
+      let shouldSubmit = Boolean(data.isSubmit || data.type === 'PACER_SUBMIT');
+      let shouldPrev = Boolean(data.isPrev || data.type === 'PACER_PREV');
+
+      if (qbankMode !== 'tutored' && data.type === 'PACER_BTN_CLICK') {
+        const trigger = triggerButton || 'both';
+        shouldNext = (trigger === 'next' && data.isNext) || (trigger === 'submit' && data.isSubmit) || (trigger === 'both' && (data.isNext || data.isSubmit));
+        shouldSubmit = false;
+      }
+
+      if (phase !== 'rest') {
+        const actionType = syncPacerQuestion({
+          targetQuestion: data.questionIndex,
+          targetPhase: data.phase,
+          isNext: shouldNext,
+          isSubmit: shouldSubmit,
+          isPrev: shouldPrev,
+          totalQuestions: data.totalQuestions
+        });
+
+        if (actionType === 'submit') {
+          playBeep(660, 0.25, 'submitQuestion');
+        } else if (actionType === 'next') {
+          playBeep(880, 0.2, 'nextQuestion');
+        } else if (actionType === 'prev') {
+          playBeep(520, 0.15, 'prevQuestion');
         }
       }
     };
@@ -400,16 +431,34 @@ export function QuestionPacer({ className }: { className?: string }) {
       if (e.key === 'pacer_action' && e.newValue) {
         try {
           const payload = JSON.parse(e.newValue);
-          handleMessage({ data: payload } as MessageEvent);
+          handleMessage({ data: payload });
         } catch {}
       }
     };
 
+    const handleCustomEvent = (e: any) => {
+      if (e.detail) {
+        handleMessage({ data: e.detail });
+      }
+    };
+
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel('usmle_pacer_sync');
+      bc.onmessage = (e) => {
+        if (e.data) handleMessage({ data: e.data });
+      };
+    } catch(e) {}
+
     window.addEventListener('message', handleMessage);
     window.addEventListener('storage', handleStorage);
+    window.addEventListener('pacer_action', handleCustomEvent as EventListener);
+
     return () => {
       window.removeEventListener('message', handleMessage);
       window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('pacer_action', handleCustomEvent as EventListener);
+      if (bc) bc.close();
     };
   }, [phase, isActive, timerState, qbankMode, triggerButton, tutoredPhase]);
 
@@ -865,64 +914,6 @@ export function QuestionPacer({ className }: { className?: string }) {
                 </div>
               </h3>
 
-              {/* BANNER DE FASE (MODO TUTORED) */}
-              {isTutoredMode && (
-                <div className={`p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all ${
-                  tutoredPhase === 'solve'
-                    ? 'bg-blue-50/70 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800/60'
-                    : 'bg-purple-50/70 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800/60'
-                }`}>
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black ${
-                      tutoredPhase === 'solve'
-                        ? 'bg-blue-600 text-white shadow-sm'
-                        : 'bg-purple-600 text-white shadow-sm'
-                    }`}>
-                      {tutoredPhase === 'solve' ? <Activity className="w-5 h-5" /> : <BookOpen className="w-5 h-5" />}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className={`text-sm font-extrabold uppercase tracking-wide ${
-                          tutoredPhase === 'solve' ? 'text-blue-900 dark:text-blue-200' : 'text-purple-900 dark:text-purple-200'
-                        }`}>
-                          {tutoredPhase === 'solve' ? 'Fase 1: Resolução da Questão' : 'Fase 2: Revisão da Explicação'}
-                        </span>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700">
-                          {tutoredPhase === 'solve' ? `Alvo: ${formatTime(targetSolveSec)}` : `Alvo: ${formatTime(targetReviewSec)}`}
-                        </span>
-                      </div>
-                      <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
-                        {tutoredPhase === 'solve'
-                          ? 'Resolva no Q-Bank. Ao clicar em Submit, a contagem de revisão iniciará automaticamente.'
-                          : 'Lendo gabarito e comentários no Q-Bank. Ao clicar em Next, avançará para a próxima questão.'}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 self-end sm:self-auto">
-                    {tutoredPhase === 'solve' ? (
-                      <button
-                        onClick={handleSubmitReview}
-                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95"
-                        title="Simular clique de Submit no Q-Bank para iniciar revisão"
-                      >
-                        <Check className="w-4 h-4" />
-                        Submit & Iniciar Revisão
-                      </button>
-                    ) : (
-                      <button
-                        onClick={handleNext}
-                        className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95"
-                        title="Simular clique de Next no Q-Bank para concluir questão"
-                      >
-                        <FastForward className="w-4 h-4" />
-                        Next (Próxima Questão)
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-
               {/* CARDS DE TEMPO DO PACER */}
               {isTutoredMode ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch mb-2">
@@ -1216,14 +1207,15 @@ export function QuestionPacer({ className }: { className?: string }) {
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     onClick={handlePrev}
-                    disabled={phase === 'rest' || (totalQuestionsDone === 0 && (!isTutoredMode || tutoredPhase === 'solve'))}
+                    disabled={phase === 'rest' || totalQuestionsDone === 0}
                     className={`px-4 py-2.5 rounded-xl font-bold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer ${
-                      phase === 'rest' || (totalQuestionsDone === 0 && (!isTutoredMode || tutoredPhase === 'solve'))
+                      phase === 'rest' || totalQuestionsDone === 0
                         ? 'bg-gray-200 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed'
                         : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
                     }`}
+                    title="Navegar para a questão anterior"
                   >
-                    {isTutoredMode && tutoredPhase === 'review' ? 'Voltar à Resolução' : 'Anterior'}
+                    Anterior
                   </button>
                   
                   <button
@@ -1256,7 +1248,7 @@ export function QuestionPacer({ className }: { className?: string }) {
                           onClick={handleNext}
                           disabled={phase === 'rest'}
                           className="px-3.5 py-2.5 rounded-xl font-medium text-xs text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 border border-gray-200 dark:border-gray-700 transition-colors cursor-pointer"
-                          title="Avançar diretamente para a próxima questão sem marcar tempo de revisão (pular questão)"
+                          title="Avançar diretamente para a próxima questão sem marcar tempo de revisão (pular questão sem resolver)"
                         >
                           Pular (Next s/ Submit)
                         </button>
@@ -1271,13 +1263,23 @@ export function QuestionPacer({ className }: { className?: string }) {
                         </button>
                       </>
                     ) : (
-                      <button
-                        onClick={handleNext}
-                        disabled={phase === 'rest'}
-                        className="px-7 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold flex items-center gap-2 shadow-sm transition-all cursor-pointer active:scale-95"
-                      >
-                        {totalQuestionsDone + 1 >= totalQuestions ? 'Finalizar Lista' : 'Próxima Questão'} <FastForward className="w-4 h-4" />
-                      </button>
+                      <>
+                        <button
+                          onClick={() => setPacerState({ pacerTutoredPhase: 'solve' })}
+                          disabled={phase === 'rest'}
+                          className="px-3.5 py-2.5 rounded-xl font-medium text-xs text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/40 border border-purple-200 dark:border-purple-800 transition-colors cursor-pointer"
+                          title="Voltar o cronômetro para o modo de resolução desta mesma questão"
+                        >
+                          Voltar p/ Resolução
+                        </button>
+                        <button
+                          onClick={handleNext}
+                          disabled={phase === 'rest'}
+                          className="px-7 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold flex items-center gap-2 shadow-sm transition-all cursor-pointer active:scale-95"
+                        >
+                          {totalQuestionsDone + 1 >= totalQuestions ? 'Finalizar Lista' : 'Próxima Questão'} <FastForward className="w-4 h-4" />
+                        </button>
+                      </>
                     )
                   ) : (
                     <button
