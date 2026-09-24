@@ -27,7 +27,19 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
         }
         // Se este script estiver rodando na aba onde o Pacer está aberto, ele repassa o evento para a página
         if (changes.pacer_action && changes.pacer_action.newValue) {
-            window.postMessage(changes.pacer_action.newValue, "*");
+            const act = changes.pacer_action.newValue;
+            window.postMessage(act, "*");
+            try {
+                window.dispatchEvent(new CustomEvent('pacer_action', { detail: act }));
+            } catch(e) {}
+            try {
+                localStorage.setItem('pacer_action', JSON.stringify(act));
+            } catch(e) {}
+            try {
+                const bc = new BroadcastChannel('usmle_pacer_sync');
+                bc.postMessage(act);
+                setTimeout(() => bc.close(), 1000);
+            } catch(e) {}
         }
     }
 });
@@ -37,7 +49,7 @@ let pacerLastTrigger = 0;
 
 function notificarPacer(isNext, isSubmit, isPrev) {
     const now = Date.now();
-    if (now - pacerLastTrigger > 800) {
+    if (now - pacerLastTrigger > 500) {
         pacerLastTrigger = now;
         const payload = {
             type: "PACER_BTN_CLICK",
@@ -49,28 +61,54 @@ function notificarPacer(isNext, isSubmit, isPrev) {
 
         // 1. Canal direto via janela aberta (se o Pacer foi aberto via site / popup window)
         if (pacerWindow && !pacerWindow.closed) {
-            pacerWindow.postMessage(payload, "*");
+            try { pacerWindow.postMessage(payload, "*"); } catch(e) {}
         }
 
-        // 2. Canal Universal via Storage (para o Pacer aberto no site em outra aba)
-        chrome.storage.local.set({ pacer_action: payload });
+        // 2. Canal Universal via Storage da Extensão
+        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+            chrome.storage.local.set({ pacer_action: payload });
+        }
 
-        // 3. Atualizar Pacer embutido da Extensão em segundo plano!
+        // 3. Notificar Background Worker para injetar e repassar a todas as abas abertas da aplicação
+        if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+            chrome.runtime.sendMessage({
+                type: 'DISPATCH_PACER_ACTION',
+                action: payload
+            }, () => {});
+        }
+
+        // 4. BroadcastChannel para comunicação de baixa latência caso na mesma origem
+        try {
+            const bc = new BroadcastChannel('usmle_pacer_sync');
+            bc.postMessage(payload);
+            setTimeout(() => bc.close(), 1000);
+        } catch(e) {}
+
+        // 5. Comunicação local com a página (se Pacer estiver na mesma aba/janela)
+        try {
+            window.postMessage(payload, "*");
+            window.dispatchEvent(new CustomEvent('pacer_action', { detail: payload }));
+            localStorage.setItem('pacer_action', JSON.stringify(payload));
+        } catch(e) {}
+
+        // 6. Atualizar Pacer embutido da Extensão em segundo plano!
         atualizarPacerEmbutido(isNext, isSubmit, isPrev);
     }
 }
 
 function atualizarPacerEmbutido(isNext, isSubmit, isPrev) {
+    if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) return;
     chrome.storage.local.get(['pacer_state'], function(res) {
         let pState = res.pacer_state;
         if (!pState || !pState.isActive || pState.isPaused) return;
 
+        const trig = pState.triggerMode || 'both';
         let shouldAdvance = false;
         let shouldGoBack = false;
 
-        if (pState.triggerMode === 'next' && isNext) shouldAdvance = true;
-        else if (pState.triggerMode === 'submit' && isSubmit) shouldAdvance = true;
-        else if (pState.triggerMode === 'both' && (isNext || isSubmit)) shouldAdvance = true;
+        if (trig === 'next' && isNext) shouldAdvance = true;
+        else if (trig === 'submit' && isSubmit) shouldAdvance = true;
+        else if (trig === 'both' && (isNext || isSubmit)) shouldAdvance = true;
 
         if (isPrev) shouldGoBack = true;
 
@@ -1150,6 +1188,11 @@ setInterval(() => {
         const qId = extrairIdQuestaoAtual();
         if (qId && qId !== lastImportedQId) {
             agendarImportacaoRapida();
+            // Se a questão mudou e o Pacer não foi acionado nos últimos 1200ms, avança o Pacer
+            const now = Date.now();
+            if (now - pacerLastTrigger > 1200) {
+                notificarPacer(true, false, false);
+            }
         }
     }
 }, 500);
@@ -1161,6 +1204,10 @@ try {
         const qId = extrairIdQuestaoAtual();
         if (qId && qId !== lastImportedQId) {
             agendarImportacaoRapida();
+            const now = Date.now();
+            if (now - pacerLastTrigger > 1200) {
+                notificarPacer(true, false, false);
+            }
         }
     });
 
@@ -1185,7 +1232,7 @@ try {
 document.addEventListener('click', (e) => {
     const target = e.target;
     if (!target) return;
-    const isNavElement = target.closest('button[title*="Next"], button[title*="Previous"], button, a, li[tabindex], [class*="cursor-pointer"]');
+    const isNavElement = target.closest('button[title*="Next" i], button[title*="Previous" i], button[aria-label*="Next" i], button[aria-label*="Previous" i], button, a, li[tabindex], [class*="cursor-pointer"]');
     if (isNavElement && isPaginaResolucaoQBank()) {
         agendarImportacaoRapida();
     }
@@ -1193,7 +1240,27 @@ document.addEventListener('click', (e) => {
 
 document.addEventListener('keydown', (e) => {
     if (!isPaginaResolucaoQBank()) return;
-    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'Enter' || e.key === 'n' || e.key === 'p' || e.altKey) {
+    
+    // Ignora quando digitando em inputs, textareas ou contenteditable
+    const tag = (e.target?.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || e.target?.isContentEditable) return;
+
+    if (e.key === 'ArrowRight' || (e.altKey && (e.key === 'n' || e.key === 'N'))) {
+        notificarPacer(true, false, false);
+        agendarImportacaoRapida();
+    } else if (e.key === 'ArrowLeft' || (e.altKey && (e.key === 'p' || e.key === 'P'))) {
+        notificarPacer(false, false, true);
+        agendarImportacaoRapida();
+    } else if (e.key === 'Enter' || (e.altKey && (e.key === 's' || e.key === 'S'))) {
+        notificarPacer(false, true, false);
+        agendarImportacaoRapida();
+    } else if (e.key === 'n' || e.key === 'p') {
+        if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+            if (e.key === 'n') notificarPacer(true, false, false);
+            if (e.key === 'p') notificarPacer(false, false, true);
+            agendarImportacaoRapida();
+        }
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.altKey) {
         agendarImportacaoRapida();
     }
 }, true);
@@ -1993,10 +2060,19 @@ document.addEventListener('click', (e) => {
         const text = (btn.textContent || "").toLowerCase();
         const cls = (btn.getAttribute("class") || "").toLowerCase();
         const val = (btn.getAttribute("value") || "").toLowerCase();
+        const ariaLabel = (btn.getAttribute("aria-label") || "").toLowerCase();
+        const ariaDesc = (btn.getAttribute("aria-description") || "").toLowerCase();
+        const testId = (btn.getAttribute("data-testid") || btn.getAttribute("data-cy") || "").toLowerCase();
+        const dataAction = (btn.getAttribute("data-action") || "").toLowerCase();
+        const btnId = (btn.getAttribute("id") || "").toLowerCase();
+        const svgTitle = (btn.querySelector("title")?.textContent || "").toLowerCase();
+        const svgAria = (btn.querySelector("svg")?.getAttribute("aria-label") || "").toLowerCase();
 
-        const isNext = title.includes("next") || text.includes("next") || cls.includes("next") || title.includes("próximo") || text.includes("próximo") || val.includes("next");
-        const isSubmit = title.includes("submit") || text.includes("submit") || cls.includes("submit") || text.includes("enviar") || val.includes("submit");
-        const isPrev = title.includes("prev") || text.includes("prev") || cls.includes("prev") || title.includes("anterior") || text.includes("anterior") || val.includes("prev");
+        const combined = `${title} ${text} ${cls} ${val} ${ariaLabel} ${ariaDesc} ${testId} ${dataAction} ${btnId} ${svgTitle} ${svgAria}`;
+
+        const isNext = combined.includes("next") || combined.includes("próxim") || combined.includes("proxim") || combined.includes("forward");
+        const isSubmit = combined.includes("submit") || combined.includes("enviar") || combined.includes("confirm") || combined.includes("responder") || combined.includes("check answer");
+        const isPrev = combined.includes("prev") || combined.includes("anterior") || combined.includes("backward") || combined.includes("back");
 
         if (isNext || isSubmit || isPrev) {
             notificarPacer(isNext, isSubmit, isPrev);
@@ -2013,6 +2089,12 @@ document.addEventListener('click', (e) => {
         }
     }
 
+    // Navegação via clique direto na lista / grid de questões (ex: botão Q1, Q2, etc.)
+    const qNumberItem = e.target.closest('[data-question-index], [data-q-index], .question-number, .q-item, button[class*="question-nav"], [class*="item-number"]');
+    if (qNumberItem && isPaginaResolucaoQBank()) {
+        notificarPacer(true, false, false);
+    }
+
     // Detecção universal de navegação não-sequencial por barra lateral / lista de questões
     setTimeout(() => {
         if (typeof autoImportarQuestaoSeNavegou === 'function') {
@@ -2025,7 +2107,7 @@ document.addEventListener('click', (e) => {
 
     // 2. Auto-Read
     if (configAtual.autoRead) {
-        const btnNav = e.target.closest('button[title="Next"], button[title="Previous"]');
+        const btnNav = e.target.closest('button[title*="Next" i], button[title*="Previous" i], button[aria-label*="Next" i], button[aria-label*="Previous" i]');
         if (btnNav) { pararLeitura(); setTimeout(() => lerQuestaoCompleta(), 1500); }
     }
 }, true);

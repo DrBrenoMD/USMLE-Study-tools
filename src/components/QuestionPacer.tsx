@@ -348,34 +348,47 @@ export function QuestionPacer({ className }: { className?: string }) {
   const handleSubmitRef = useRef(handleSubmitReview);
   handleSubmitRef.current = handleSubmitReview;
 
+  const handleStartRef = useRef(handleStart);
+  handleStartRef.current = handleStart;
+
   useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
+    const handleMessage = (event: MessageEvent | { data: any }) => {
       let shouldNext = false;
       let shouldSubmit = false;
       let shouldPrev = false;
 
-      if (event.data?.type === 'PACER_NEXT') {
+      const data = event.data;
+      if (!data) return;
+
+      if (data.type === 'PACER_NEXT') {
          shouldNext = true;
-      } else if (event.data?.type === 'PACER_PREV') {
+      } else if (data.type === 'PACER_PREV') {
          shouldPrev = true;
-      } else if (event.data?.type === 'PACER_SUBMIT') {
+      } else if (data.type === 'PACER_SUBMIT') {
          shouldSubmit = true;
-      } else if (event.data?.type === 'PACER_BTN_CLICK') {
-         const { isNext, isSubmit, isPrev } = event.data;
+      } else if (data.type === 'PACER_BTN_CLICK') {
+         const { isNext, isSubmit, isPrev } = data;
          
          if (qbankMode === 'tutored') {
             if (isSubmit) shouldSubmit = true;
             if (isNext) shouldNext = true;
             if (isPrev) shouldPrev = true;
          } else {
-            const trigger = triggerButton || 'next';
+            const trigger = triggerButton || 'both';
             if (trigger === 'next' && isNext) shouldNext = true;
             if (trigger === 'submit' && isSubmit) shouldNext = true;
             if (trigger === 'both' && (isNext || isSubmit)) shouldNext = true;
             if (isPrev) shouldPrev = true;
          }
-      } else if (event.data?.type === 'PACER_PAUSE_TOGGLE') {
+      } else if (data.type === 'PACER_PAUSE_TOGGLE') {
          setTimerState(timerState === 'running' ? 'paused' : 'running');
+         return;
+      }
+
+      // Se o pacer não estiver ativo ainda, auto-inicia ao receber eventos de navegação da questão
+      if (!isActive && (shouldNext || shouldSubmit)) {
+         handleStartRef.current();
+         return;
       }
 
       if (phase !== 'rest' && isActive) {
@@ -400,16 +413,34 @@ export function QuestionPacer({ className }: { className?: string }) {
       if (e.key === 'pacer_action' && e.newValue) {
         try {
           const payload = JSON.parse(e.newValue);
-          handleMessage({ data: payload } as MessageEvent);
+          handleMessage({ data: payload });
         } catch {}
       }
     };
 
+    const handleCustomEvent = (e: any) => {
+      if (e.detail) {
+        handleMessage({ data: e.detail });
+      }
+    };
+
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel('usmle_pacer_sync');
+      bc.onmessage = (e) => {
+        if (e.data) handleMessage({ data: e.data });
+      };
+    } catch(e) {}
+
     window.addEventListener('message', handleMessage);
     window.addEventListener('storage', handleStorage);
+    window.addEventListener('pacer_action', handleCustomEvent as EventListener);
+
     return () => {
       window.removeEventListener('message', handleMessage);
       window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('pacer_action', handleCustomEvent as EventListener);
+      if (bc) bc.close();
     };
   }, [phase, isActive, timerState, qbankMode, triggerButton, tutoredPhase]);
 

@@ -4,6 +4,56 @@
 // =========================================================================
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  // 0. Sincronização do Question Pacer em tempo real com abas da aplicação
+  if (request.type === 'DISPATCH_PACER_ACTION') {
+    const actionPayload = request.action || {};
+    chrome.tabs.query({}, (tabs) => {
+      const appTabs = tabs.filter(t => {
+        if (!t.url) return false;
+        const u = t.url.toLowerCase();
+        const title = (t.title || '').toLowerCase();
+        return (
+          u.includes('/pacer') ||
+          u.includes('/questions') ||
+          u.includes('/questoes') ||
+          u.includes('/flashcards') ||
+          u.includes('localhost:') ||
+          u.includes('.run.app') ||
+          u.includes('.web.app') ||
+          u.includes('aistudio.google.com') ||
+          title.includes('pacer') ||
+          title.includes('study tools') ||
+          title.includes('banco de questões')
+        );
+      });
+
+      appTabs.forEach(tab => {
+        if (tab.id) {
+          try {
+            chrome.scripting.executeScript({
+              target: { tabId: tab.id },
+              func: (data) => {
+                window.postMessage(data, '*');
+                window.dispatchEvent(new CustomEvent('pacer_action', { detail: data }));
+                try {
+                  localStorage.setItem('pacer_action', JSON.stringify(data));
+                } catch(e) {}
+                try {
+                  const bc = new BroadcastChannel('usmle_pacer_sync');
+                  bc.postMessage(data);
+                  setTimeout(() => bc.close(), 1000);
+                } catch(e) {}
+              },
+              args: [actionPayload]
+            }).catch(() => {});
+          } catch(e) {}
+        }
+      });
+      sendResponse({ success: true, count: appTabs.length });
+    });
+    return true;
+  }
+
   // 1. Sincronização e Importação de Questões
   if (request.type === 'DISPATCH_QUESTION_DATA') {
     const questionData = request.questionData || {};
