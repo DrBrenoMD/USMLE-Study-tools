@@ -30,15 +30,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
             const act = changes.pacer_action.newValue;
             window.postMessage(act, "*");
             try {
-                window.dispatchEvent(new CustomEvent('pacer_action', { detail: act }));
-            } catch(e) {}
-            try {
                 localStorage.setItem('pacer_action', JSON.stringify(act));
-            } catch(e) {}
-            try {
-                const bc = new BroadcastChannel('usmle_pacer_sync');
-                bc.postMessage(act);
-                setTimeout(() => bc.close(), 1000);
             } catch(e) {}
         }
     }
@@ -46,52 +38,34 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 
 let pacerWindow = null;
 let pacerLastTrigger = 0;
+let lastPacerNotifiedQId = null;
 
 function notificarPacer(isNext, isSubmit, isPrev) {
     const now = Date.now();
-    if (now - pacerLastTrigger > 500) {
+    if (now - pacerLastTrigger > 600) {
         pacerLastTrigger = now;
+        const actionId = `pacer-${now}-${Math.random().toString(36).substring(2, 7)}`;
         const payload = {
             type: "PACER_BTN_CLICK",
+            actionId: actionId,
+            id: actionId,
             isNext: Boolean(isNext),
             isSubmit: Boolean(isSubmit),
             isPrev: Boolean(isPrev),
             ts: now
         };
 
-        // 1. Canal direto via janela aberta (se o Pacer foi aberto via site / popup window)
+        // 1. Canal direto via janela aberta
         if (pacerWindow && !pacerWindow.closed) {
             try { pacerWindow.postMessage(payload, "*"); } catch(e) {}
         }
 
-        // 2. Canal Universal via Storage da Extensão
+        // 2. Canal Universal via Storage da Extensão (repassa para abas do applet)
         if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
             chrome.storage.local.set({ pacer_action: payload });
         }
 
-        // 3. Notificar Background Worker para injetar e repassar a todas as abas abertas da aplicação
-        if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
-            chrome.runtime.sendMessage({
-                type: 'DISPATCH_PACER_ACTION',
-                action: payload
-            }, () => {});
-        }
-
-        // 4. BroadcastChannel para comunicação de baixa latência caso na mesma origem
-        try {
-            const bc = new BroadcastChannel('usmle_pacer_sync');
-            bc.postMessage(payload);
-            setTimeout(() => bc.close(), 1000);
-        } catch(e) {}
-
-        // 5. Comunicação local com a página (se Pacer estiver na mesma aba/janela)
-        try {
-            window.postMessage(payload, "*");
-            window.dispatchEvent(new CustomEvent('pacer_action', { detail: payload }));
-            localStorage.setItem('pacer_action', JSON.stringify(payload));
-        } catch(e) {}
-
-        // 6. Atualizar Pacer embutido da Extensão em segundo plano!
+        // 3. Atualizar Pacer embutido da Extensão em segundo plano
         atualizarPacerEmbutido(isNext, isSubmit, isPrev);
     }
 }
@@ -1188,9 +1162,11 @@ setInterval(() => {
         const qId = extrairIdQuestaoAtual();
         if (qId && qId !== lastImportedQId) {
             agendarImportacaoRapida();
-            // Se a questão mudou e o Pacer não foi acionado nos últimos 1200ms, avança o Pacer
+        }
+        if (qId && qId !== lastPacerNotifiedQId) {
+            lastPacerNotifiedQId = qId;
             const now = Date.now();
-            if (now - pacerLastTrigger > 1200) {
+            if (now - pacerLastTrigger > 1000) {
                 notificarPacer(true, false, false);
             }
         }
@@ -1204,8 +1180,11 @@ try {
         const qId = extrairIdQuestaoAtual();
         if (qId && qId !== lastImportedQId) {
             agendarImportacaoRapida();
+        }
+        if (qId && qId !== lastPacerNotifiedQId) {
+            lastPacerNotifiedQId = qId;
             const now = Date.now();
-            if (now - pacerLastTrigger > 1200) {
+            if (now - pacerLastTrigger > 1000) {
                 notificarPacer(true, false, false);
             }
         }

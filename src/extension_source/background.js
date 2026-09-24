@@ -34,15 +34,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               target: { tabId: tab.id },
               func: (data) => {
                 window.postMessage(data, '*');
-                window.dispatchEvent(new CustomEvent('pacer_action', { detail: data }));
-                try {
-                  localStorage.setItem('pacer_action', JSON.stringify(data));
-                } catch(e) {}
-                try {
-                  const bc = new BroadcastChannel('usmle_pacer_sync');
-                  bc.postMessage(data);
-                  setTimeout(() => bc.close(), 1000);
-                } catch(e) {}
               },
               args: [actionPayload]
             }).catch(() => {});
