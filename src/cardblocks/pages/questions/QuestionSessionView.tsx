@@ -32,12 +32,8 @@ import {
   ArrowRight,
   Flame,
   Eraser,
-  Trophy,
-  Activity,
-  Volume2,
-  VolumeX
+  Trophy
 } from 'lucide-react';
-import { audioManager } from '../../../services/audioManager';
 
 interface QuestionSessionViewProps {
   config: TestSessionConfig;
@@ -59,25 +55,7 @@ export const QuestionSessionView: React.FC<QuestionSessionViewProps> = ({
     toggleQuestionFlag,
   } = useStore();
 
-  const {
-    addNetTime,
-    pacerIsActive,
-    pacerTargetTimeSeconds,
-    pacerCurrentQuestionTime,
-    pacerCompletedQuestionsTime,
-    pacerSoundEnabled,
-    pacerSoundSettings,
-    setPacerState,
-    stopPacer,
-    submitPacerQuestion,
-    nextPacerQuestion,
-    prevPacerQuestion,
-    finishPacerSession,
-    setTimerState,
-    setPhase,
-  } = useTimerStore();
-
-  const [isPacerActiveSession, setIsPacerActiveSession] = useState<boolean>(config.pacerEnabled !== false);
+  const { addNetTime } = useTimerStore();
 
   // Conjunto de questões da sessão
   const sessionQuestions = config.selectedQuestionIds
@@ -143,28 +121,6 @@ export const QuestionSessionView: React.FC<QuestionSessionViewProps> = ({
     }
   }, [currentIndex, currentQ?.id]);
 
-  // Sincroniza Pacer da sessão com useTimerStore
-  useEffect(() => {
-    if (isPacerActiveSession) {
-      setPacerState({
-        pacerIsActive: true,
-        pacerTotalQuestions: sessionQuestions.length,
-        pacerTargetTimeSeconds: config.pacerTargetSeconds || 72,
-        pacerCurrentQuestionTime: 0,
-        pacerCurrentReviewTime: 0,
-        pacerCompletedQuestionsTime: [],
-        pacerCompletedReviewTimes: [],
-        pacerQBankMode: config.mode === 'tutored' ? 'tutored' : 'timed',
-        pacerTutoredPhase: 'solve',
-        pacerSoundEnabled: true,
-      });
-      setPhase('study');
-      setTimerState('running');
-    } else {
-      stopPacer();
-    }
-  }, [isPacerActiveSession, sessionQuestions.length]);
-
   // Contagem de tempo (resolução vs revisão e tempo total da sessão)
   useEffect(() => {
     clearInterval(timerIntervalRef.current);
@@ -175,22 +131,12 @@ export const QuestionSessionView: React.FC<QuestionSessionViewProps> = ({
       if (isSubmitted) {
         setReviewTimer(t => t + 1);
       } else {
-        setResolutionTimer(t => {
-          const next = t + 1;
-          // Alarme sonoro do Pacer quando alcança exatamente o tempo alvo estipulado
-          if (isPacerActiveSession && next === (config.pacerTargetSeconds || 72)) {
-            const soundSettings = useTimerStore.getState().pacerSoundSettings;
-            if (soundSettings?.master !== false && soundSettings?.solveAlarm !== false) {
-              audioManager.playSolveAlarm(soundSettings?.volume ?? 0.5);
-            }
-          }
-          return next;
-        });
+        setResolutionTimer(t => t + 1);
       }
     }, 1000);
 
     return () => clearInterval(timerIntervalRef.current);
-  }, [currentQ?.id, submittedQuestions, isPacerActiveSession, config.pacerTargetSeconds]);
+  }, [currentQ?.id, submittedQuestions]);
 
   // Captura seleção de texto para highlight
   const handleMouseUpTextSelection = () => {
@@ -325,73 +271,8 @@ export const QuestionSessionView: React.FC<QuestionSessionViewProps> = ({
       0
     );
 
-    if (isPacerActiveSession && config.mode === 'tutored') {
-      submitPacerQuestion();
-      const soundSettings = useTimerStore.getState().pacerSoundSettings;
-      if (soundSettings?.master !== false && soundSettings?.submitQuestion !== false) {
-        audioManager.playActionBeep('submit', soundSettings?.volume ?? 0.5);
-      }
-    }
-
     setSubmittedQuestions(prev => ({ ...prev, [currentQ.id]: true }));
   };
-
-  // Navegação de questões integrada ao Pacer
-  const handleNextQuestion = () => {
-    if (isPacerActiveSession) {
-      nextPacerQuestion();
-      const soundSettings = useTimerStore.getState().pacerSoundSettings;
-      if (soundSettings?.master !== false && soundSettings?.nextQuestion !== false) {
-        audioManager.playActionBeep('next', soundSettings?.volume ?? 0.5);
-      }
-    }
-    if (currentIndex < sessionQuestions.length - 1) {
-      setCurrentIndex(prev => prev + 1);
-    } else {
-      if (isPacerActiveSession) {
-        finishPacerSession();
-      }
-      setShowEndBlockModal(true);
-    }
-  };
-
-  const handlePrevQuestion = () => {
-    if (currentIndex > 0) {
-      if (isPacerActiveSession) {
-        prevPacerQuestion();
-        const soundSettings = useTimerStore.getState().pacerSoundSettings;
-        if (soundSettings?.master !== false && soundSettings?.prevQuestion !== false) {
-          audioManager.playActionBeep('prev', soundSettings?.volume ?? 0.5);
-        }
-      }
-      setCurrentIndex(prev => prev - 1);
-    }
-  };
-
-  // Atalhos de teclado para resolução rápida
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
-      if (tag === 'input' || tag === 'textarea' || (e.target as HTMLElement)?.isContentEditable) return;
-
-      if (e.key === 'ArrowRight' || (e.altKey && (e.key === 'n' || e.key === 'N'))) {
-        e.preventDefault();
-        handleNextQuestion();
-      } else if (e.key === 'ArrowLeft' || (e.altKey && (e.key === 'p' || e.key === 'P'))) {
-        e.preventDefault();
-        handlePrevQuestion();
-      } else if (e.key === 'Enter' && !isSubmitted && currentSelectedChoice) {
-        e.preventDefault();
-        handleSubmitAnswer();
-      } else if (e.key === 'Enter' && isSubmitted) {
-        e.preventDefault();
-        handleNextQuestion();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentIndex, isSubmitted, currentSelectedChoice, isPacerActiveSession, sessionQuestions.length]);
 
   // Salvar anotação
   const handleSaveNote = () => {
@@ -572,66 +453,6 @@ export const QuestionSessionView: React.FC<QuestionSessionViewProps> = ({
           </button>
         </div>
       </div>
-
-      {/* Question Pacer Strip Integrado */}
-      {isPacerActiveSession && (
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-3.5 shadow-xs space-y-2 animate-fade-in">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-2.5">
-              <div className={`p-1.5 rounded-lg flex items-center justify-center ${
-                isPacerOver 
-                  ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400' 
-                  : 'bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400'
-              }`}>
-                <Activity className={`w-4 h-4 ${isPacerOver ? 'animate-pulse' : ''}`} />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-extrabold text-xs text-gray-900 dark:text-white">
-                    Question Pacer:
-                  </span>
-                  <span className="font-mono text-xs font-bold text-gray-800 dark:text-gray-200">
-                    {resolutionTimer}s <span className="text-gray-400 font-normal">/ {pacerTarget}s</span>
-                  </span>
-                  <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md ${
-                    isPacerOver 
-                      ? 'bg-rose-100 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 animate-pulse font-extrabold' 
-                      : 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400'
-                  }`}>
-                    {isPacerOver ? `+${resolutionTimer - pacerTarget}s atrasado` : `-${pacerTarget - resolutionTimer}s no ritmo`}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] text-gray-500 font-medium">
-                Pacer Q{currentIndex + 1} de {sessionQuestions.length}
-              </span>
-              <button
-                onClick={() => setIsPacerActiveSession(false)}
-                className="text-[11px] px-2 py-0.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 cursor-pointer font-medium"
-                title="Desativar o Pacer para esta sessão"
-              >
-                Desativar Pacer
-              </button>
-            </div>
-          </div>
-
-          <div className="w-full bg-gray-100 dark:bg-gray-800 h-2 rounded-full overflow-hidden">
-            <div
-              className={`h-full transition-all duration-300 rounded-full ${
-                isPacerOver
-                  ? 'bg-rose-500 shadow-sm shadow-rose-500/50'
-                  : pacerPercent >= 80
-                    ? 'bg-amber-500'
-                    : 'bg-blue-600 dark:bg-blue-500'
-              }`}
-              style={{ width: `${Math.min(100, pacerPercent)}%` }}
-            />
-          </div>
-        </div>
-      )}
 
       {/* Floating Highlight Button when text is selected */}
       {selectedTextToHighlight && !isHighlightMode && (
@@ -894,7 +715,7 @@ export const QuestionSessionView: React.FC<QuestionSessionViewProps> = ({
       {/* Bottom Navigation Buttons (Anterior / Próxima / Finalizar) */}
       <div className="flex items-center justify-between pt-2">
         <button
-          onClick={handlePrevQuestion}
+          onClick={() => setCurrentIndex(prev => Math.max(0, prev - 1))}
           disabled={currentIndex === 0}
           className="px-4 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold flex items-center gap-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
         >
@@ -908,7 +729,7 @@ export const QuestionSessionView: React.FC<QuestionSessionViewProps> = ({
 
         {currentIndex < sessionQuestions.length - 1 ? (
           <button
-            onClick={handleNextQuestion}
+            onClick={() => setCurrentIndex(prev => prev + 1)}
             className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
           >
             <span>Próxima</span>
@@ -916,10 +737,7 @@ export const QuestionSessionView: React.FC<QuestionSessionViewProps> = ({
           </button>
         ) : (
           <button
-            onClick={() => {
-              if (isPacerActiveSession) finishPacerSession();
-              setShowEndBlockModal(true);
-            }}
+            onClick={() => setShowEndBlockModal(true)}
             className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
           >
             <CheckCircle2 className="w-4 h-4" />

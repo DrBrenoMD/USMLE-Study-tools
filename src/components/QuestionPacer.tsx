@@ -348,68 +348,34 @@ export function QuestionPacer({ className }: { className?: string }) {
   const handleSubmitRef = useRef(handleSubmitReview);
   handleSubmitRef.current = handleSubmitReview;
 
-  const handleStartRef = useRef(handleStart);
-  handleStartRef.current = handleStart;
-
-  const lastProcessedActionIdRef = useRef<string>('');
-  const lastAdvanceTimeRef = useRef<number>(0);
-
   useEffect(() => {
-    const handleMessage = (event: MessageEvent | { data: any }) => {
+    const handleMessage = (event: MessageEvent) => {
       let shouldNext = false;
       let shouldSubmit = false;
       let shouldPrev = false;
 
-      const data = event.data;
-      if (!data) return;
-
-      if (data.type === 'PACER_PAUSE_TOGGLE') {
-         setTimerState(timerState === 'running' ? 'paused' : 'running');
-         return;
-      }
-
-      if (data.type === 'PACER_NEXT') {
+      if (event.data?.type === 'PACER_NEXT') {
          shouldNext = true;
-      } else if (data.type === 'PACER_PREV') {
+      } else if (event.data?.type === 'PACER_PREV') {
          shouldPrev = true;
-      } else if (data.type === 'PACER_SUBMIT') {
+      } else if (event.data?.type === 'PACER_SUBMIT') {
          shouldSubmit = true;
-      } else if (data.type === 'PACER_BTN_CLICK') {
-         const { isNext, isSubmit, isPrev } = data;
+      } else if (event.data?.type === 'PACER_BTN_CLICK') {
+         const { isNext, isSubmit, isPrev } = event.data;
          
          if (qbankMode === 'tutored') {
             if (isSubmit) shouldSubmit = true;
             if (isNext) shouldNext = true;
             if (isPrev) shouldPrev = true;
          } else {
-            const trigger = triggerButton || 'both';
+            const trigger = triggerButton || 'next';
             if (trigger === 'next' && isNext) shouldNext = true;
             if (trigger === 'submit' && isSubmit) shouldNext = true;
             if (trigger === 'both' && (isNext || isSubmit)) shouldNext = true;
             if (isPrev) shouldPrev = true;
          }
-      }
-
-      if (!shouldNext && !shouldSubmit && !shouldPrev) return;
-
-      // Desduplicação estrita: se a mesma ação já foi recebida ou se disparada a menos de 500ms, descarta para evitar múltiplos saltos de questão
-      const actionId = data.actionId || data.id || (data.ts ? `${data.type}-${data.ts}` : '');
-      const now = Date.now();
-
-      if (actionId && lastProcessedActionIdRef.current === actionId) {
-        return;
-      }
-      if (now - lastAdvanceTimeRef.current < 500) {
-        return;
-      }
-
-      lastProcessedActionIdRef.current = actionId;
-      lastAdvanceTimeRef.current = now;
-
-      // Se o pacer não estiver ativo ainda, auto-inicia ao receber eventos de navegação da questão
-      if (!isActive && (shouldNext || shouldSubmit)) {
-         handleStartRef.current();
-         return;
+      } else if (event.data?.type === 'PACER_PAUSE_TOGGLE') {
+         setTimerState(timerState === 'running' ? 'paused' : 'running');
       }
 
       if (phase !== 'rest' && isActive) {
@@ -434,34 +400,16 @@ export function QuestionPacer({ className }: { className?: string }) {
       if (e.key === 'pacer_action' && e.newValue) {
         try {
           const payload = JSON.parse(e.newValue);
-          handleMessage({ data: payload });
+          handleMessage({ data: payload } as MessageEvent);
         } catch {}
       }
     };
 
-    const handleCustomEvent = (e: any) => {
-      if (e.detail) {
-        handleMessage({ data: e.detail });
-      }
-    };
-
-    let bc: BroadcastChannel | null = null;
-    try {
-      bc = new BroadcastChannel('usmle_pacer_sync');
-      bc.onmessage = (e) => {
-        if (e.data) handleMessage({ data: e.data });
-      };
-    } catch(e) {}
-
     window.addEventListener('message', handleMessage);
     window.addEventListener('storage', handleStorage);
-    window.addEventListener('pacer_action', handleCustomEvent as EventListener);
-
     return () => {
       window.removeEventListener('message', handleMessage);
       window.removeEventListener('storage', handleStorage);
-      window.removeEventListener('pacer_action', handleCustomEvent as EventListener);
-      if (bc) bc.close();
     };
   }, [phase, isActive, timerState, qbankMode, triggerButton, tutoredPhase]);
 
@@ -916,6 +864,64 @@ export function QuestionPacer({ className }: { className?: string }) {
                   Questão {totalQuestionsDone + 1} de {totalQuestions}
                 </div>
               </h3>
+
+              {/* BANNER DE FASE (MODO TUTORED) */}
+              {isTutoredMode && (
+                <div className={`p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all ${
+                  tutoredPhase === 'solve'
+                    ? 'bg-blue-50/70 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800/60'
+                    : 'bg-purple-50/70 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800/60'
+                }`}>
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black ${
+                      tutoredPhase === 'solve'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'bg-purple-600 text-white shadow-sm'
+                    }`}>
+                      {tutoredPhase === 'solve' ? <Activity className="w-5 h-5" /> : <BookOpen className="w-5 h-5" />}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-sm font-extrabold uppercase tracking-wide ${
+                          tutoredPhase === 'solve' ? 'text-blue-900 dark:text-blue-200' : 'text-purple-900 dark:text-purple-200'
+                        }`}>
+                          {tutoredPhase === 'solve' ? 'Fase 1: Resolução da Questão' : 'Fase 2: Revisão da Explicação'}
+                        </span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700">
+                          {tutoredPhase === 'solve' ? `Alvo: ${formatTime(targetSolveSec)}` : `Alvo: ${formatTime(targetReviewSec)}`}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+                        {tutoredPhase === 'solve'
+                          ? 'Resolva no Q-Bank. Ao clicar em Submit, a contagem de revisão iniciará automaticamente.'
+                          : 'Lendo gabarito e comentários no Q-Bank. Ao clicar em Next, avançará para a próxima questão.'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 self-end sm:self-auto">
+                    {tutoredPhase === 'solve' ? (
+                      <button
+                        onClick={handleSubmitReview}
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95"
+                        title="Simular clique de Submit no Q-Bank para iniciar revisão"
+                      >
+                        <Check className="w-4 h-4" />
+                        Submit & Iniciar Revisão
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleNext}
+                        className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95"
+                        title="Simular clique de Next no Q-Bank para concluir questão"
+                      >
+                        <FastForward className="w-4 h-4" />
+                        Next (Próxima Questão)
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* CARDS DE TEMPO DO PACER */}
               {isTutoredMode ? (
