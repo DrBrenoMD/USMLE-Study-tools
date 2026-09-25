@@ -72,12 +72,18 @@ export function extractQidsFromText(text: string): string[] {
     }
   }
 
-  // 3. Specific QID/Platform patterns (e.g. #UWorld::17499, qid:17499, uworld-17499, qid_17499)
-  const prefixRegex = /(?:^|[^\w])(?:qid|id|uworld|amboss|usmle|nbme|step|question|item)?[:\s\-_#]*(\d{2,8})(?=[^\w]|$)/gi;
+  // 3. Specific QID/Platform patterns (e.g. #UWorld::17499, #COMLEX::24210, qid:17499, uworld-17499, amboss:12345)
+  const prefixRegex = /(?:^|[^\w])(?:qid|id|uworld|amboss|comlex|combank|usmle|nbme|step|question|item)?[:\s\-_#]*(\d{2,8})(?=[^\w]|$)/gi;
   let match: RegExpExecArray | null;
   while ((match = prefixRegex.exec(trimmed)) !== null) {
     if (match[1]) {
       const rawNum = match[1];
+      const matchIndex = match.index + (match[0].length - rawNum.length);
+      const prefix = trimmed.substring(Math.max(0, matchIndex - 4), matchIndex).toLowerCase();
+      // Exclude version suffixes (like _v11, _v12)
+      if (prefix.endsWith('v') || prefix.endsWith('vol')) {
+        continue;
+      }
       const cleanNum = rawNum.replace(/^0+/, '') || rawNum;
       found.add(rawNum);
       found.add(cleanNum);

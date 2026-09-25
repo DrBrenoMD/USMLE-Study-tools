@@ -139,11 +139,11 @@ async function startServer() {
             if (tClean.includes('::')) {
               const segs = tClean.split('::').map(s => s.trim());
               return segs.some(seg => {
-                const sClean = seg.replace(/^(?:qid|id|uworld|amboss|step|#)[:\-_]*/i, '').trim();
+                const sClean = seg.replace(/^(?:qid|id|uworld|amboss|comlex|combank|step|#)[:\-_]*/i, '').trim();
                 return sClean === cleanQid || sClean === numericQid || seg === cleanQid;
               });
             }
-            const directClean = tClean.replace(/^(?:qid|id|uworld|amboss|#)[:\-_]*/i, '').trim();
+            const directClean = tClean.replace(/^(?:qid|id|uworld|amboss|comlex|combank|#)[:\-_]*/i, '').trim();
             return (
               directClean === cleanQid ||
               directClean === numericQid ||

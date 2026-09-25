@@ -24,6 +24,7 @@ import { sanitizeHtml, renderCardText, cn } from '../lib/utils';
 import { CardEditor } from '../components/CardEditor';
 import { CardCreationModal } from '../components/CardCreationModal';
 import { format } from 'date-fns';
+import { extractCardQids } from '../../utils/qbankCardMatcher';
 
 // Helpers para identificação de categorias de tags
 const isIdTag = (t: string) => {
@@ -559,11 +560,14 @@ export const BrowseView: React.FC<{ onNavigate: (p: Page) => void }> = ({ onNavi
                         dangerouslySetInnerHTML={{ __html: sanitizeHtml(renderCardText(card.front, false)) }}
                       />
                       <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                        {card.questionId && (
-                          <span className="text-[10px] bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 font-bold px-1.5 py-0.5 rounded-md border border-blue-200 dark:border-blue-900/40">
-                            QID: {card.questionId}
+                        {extractCardQids(card, deckName).map(qid => (
+                          <span
+                            key={qid}
+                            className="text-[10px] bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 font-bold px-1.5 py-0.5 rounded-md border border-blue-200 dark:border-blue-900/40"
+                          >
+                            QID: {qid}
                           </span>
-                        )}
+                        ))}
                         {cardSub && (
                           <span className="text-[10px] bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-300 font-semibold px-1.5 py-0.5 rounded-md border border-purple-200 dark:border-purple-900/40">
                             📚 {cardSub.label}

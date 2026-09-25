@@ -1275,12 +1275,17 @@ function extrairQidsDeTexto(text) {
         }
     }
 
-    // 3. Padrões com prefixos conhecidos (qid:17499, #UWorld::17499, uworld-17499, #17499)
-    const prefixRegex = /(?:^|[^\w])(?:qid|id|uworld|amboss|usmle|nbme|step|question|item)?[:\s\-_#]*(\d{2,8})(?=[^\w]|$)/gi;
+    // 3. Padrões com prefixos conhecidos (qid:17499, #UWorld::17499, #COMLEX::24210, uworld-17499, #17499)
+    const prefixRegex = /(?:^|[^\w])(?:qid|id|uworld|amboss|comlex|combank|usmle|nbme|step|question|item)?[:\s\-_#]*(\d{2,8})(?=[^\w]|$)/gi;
     let match;
     while ((match = prefixRegex.exec(trimmed)) !== null) {
         if (match[1]) {
             const rawNum = match[1];
+            const matchIndex = match.index + (match[0].length - rawNum.length);
+            const prefix = trimmed.substring(Math.max(0, matchIndex - 4), matchIndex).toLowerCase();
+            if (prefix.endsWith('v') || prefix.endsWith('vol')) {
+                continue;
+            }
             const cleanNum = rawNum.replace(/^0+/, '') || rawNum;
             found.add(rawNum);
             found.add(cleanNum);
