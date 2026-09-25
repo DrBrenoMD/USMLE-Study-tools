@@ -1,6 +1,34 @@
 import type { Flashcard } from '../cardblocks/store/useStore';
 
 /**
+ * Captures trailing numbers from a string backwards until the first non-digit character.
+ * Example: in "##AK_Step2_v12::#UWorld::Step::17499", captures "17499" (from '9' backwards to '1').
+ */
+export function extractTrailingDigits(str: string): string | null {
+  if (!str || typeof str !== 'string') return null;
+  const clean = str.trim().replace(/[)\]}>"';]+$/, '');
+  let digits = '';
+  for (let i = clean.length - 1; i >= 0; i--) {
+    const ch = clean[i];
+    if (ch >= '0' && ch <= '9') {
+      digits = ch + digits;
+    } else {
+      break;
+    }
+  }
+  if (digits.length >= 2) {
+    const beforeIndex = clean.length - digits.length;
+    const prefix = clean.substring(Math.max(0, beforeIndex - 5), beforeIndex).toLowerCase();
+    // Exclude version suffixes (like v11, v12) or step numbers (like step1, step2)
+    if (prefix.endsWith('v') || prefix.endsWith('vol') || prefix.endsWith('step') || prefix.endsWith('pt')) {
+      return null;
+    }
+    return digits;
+  }
+  return null;
+}
+
+/**
  * Extracts all possible question IDs (QIDs) from any text string (tag, deck name, field, text).
  * Supports:
  * - AnKing format: "##AK_Step2_v12::#UWorld::Step::17499" -> ["17499"]
@@ -21,16 +49,30 @@ export function extractQidsFromText(text: string): string[] {
 
   const found = new Set<string>();
 
-  // 1. Hierarchical tags/decks separated by "::"
+  // 1. Check trailing digits from the end of the full string (e.g. "...::17499")
+  const fullTrailing = extractTrailingDigits(trimmed);
+  if (fullTrailing) {
+    found.add(fullTrailing);
+    const cleanNum = fullTrailing.replace(/^0+/, '') || fullTrailing;
+    found.add(cleanNum);
+  }
+
+  // 2. Hierarchical tags/decks separated by "::"
   if (trimmed.includes('::')) {
     const segments = trimmed.split('::').map(s => s.trim()).filter(Boolean);
     for (const seg of segments) {
+      const segTrailing = extractTrailingDigits(seg);
+      if (segTrailing) {
+        found.add(segTrailing);
+        const cleanNum = segTrailing.replace(/^0+/, '') || segTrailing;
+        found.add(cleanNum);
+      }
       const subQids = extractQidsFromText(seg);
       subQids.forEach(q => found.add(q));
     }
   }
 
-  // 2. Specific QID/Platform patterns (e.g. #UWorld::17499, qid:17499, uworld-17499, qid_17499)
+  // 3. Specific QID/Platform patterns (e.g. #UWorld::17499, qid:17499, uworld-17499, qid_17499)
   const prefixRegex = /(?:^|[^\w])(?:qid|id|uworld|amboss|usmle|nbme|step|question|item)?[:\s\-_#]*(\d{2,8})(?=[^\w]|$)/gi;
   let match: RegExpExecArray | null;
   while ((match = prefixRegex.exec(trimmed)) !== null) {
@@ -42,18 +84,17 @@ export function extractQidsFromText(text: string): string[] {
     }
   }
 
-  // 3. Comma, semicolon or space separated list of numbers
+  // 4. Comma, semicolon or space separated list of numbers
   const listMatches = trimmed.match(/\b\d{2,8}\b/g);
   if (listMatches) {
     for (const num of listMatches) {
-      // Exclude obvious non-QID numbers like 2023, 2024, 2025, 2026, 2027 if they look like years
       const cleanNum = num.replace(/^0+/, '') || num;
       found.add(num);
       found.add(cleanNum);
     }
   }
 
-  // 4. Pure numeric or hashtag-numeric string (e.g. "#17499", "17499")
+  // 5. Pure numeric or hashtag-numeric string (e.g. "#17499", "17499")
   const stripped = trimmed.replace(/^[#\s\-_:qQidID]+|[#\s\-_:qQidID]+$/gi, '');
   if (/^\d{2,8}$/.test(stripped)) {
     found.add(stripped);

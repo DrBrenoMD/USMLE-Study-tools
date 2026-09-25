@@ -1223,22 +1223,59 @@ let cachedExtensionCardsCatalog = [];
 let cachedExtensionCardsIndex = new Map(); // QID limpo -> Array de cards
 let hasInitializedCardsSync = false;
 
+function extrairDigitosFinais(str) {
+    if (!str || typeof str !== 'string') return null;
+    const clean = str.trim().replace(/[)\]}>"';]+$/, '');
+    let digits = '';
+    for (let i = clean.length - 1; i >= 0; i--) {
+        const ch = clean[i];
+        if (ch >= '0' && ch <= '9') {
+            digits = ch + digits;
+        } else {
+            break;
+        }
+    }
+    if (digits.length >= 2) {
+        const beforeIndex = clean.length - digits.length;
+        const prefix = clean.substring(Math.max(0, beforeIndex - 5), beforeIndex).toLowerCase();
+        if (prefix.endsWith('v') || prefix.endsWith('vol') || prefix.endsWith('step') || prefix.endsWith('pt')) {
+            return null;
+        }
+        return digits;
+    }
+    return null;
+}
+
 function extrairQidsDeTexto(text) {
     if (!text || typeof text !== 'string') return [];
     const trimmed = text.trim();
     if (!trimmed) return [];
     const found = new Set();
 
-    // 1. Hierarquia AnKing / Decks com "::" (ex: "##AK_Step2_v12::#UWorld::Step::17499" ou "AnKing::Step 1::#UWorld::17499")
+    // 1. Extração por varredura reversa de dígitos finais (ex: "##AK_Step2_v12::#UWorld::Step::17499" -> "17499")
+    const fullTrailing = extrairDigitosFinais(trimmed);
+    if (fullTrailing) {
+        found.add(fullTrailing);
+        const cleanNum = fullTrailing.replace(/^0+/, '') || fullTrailing;
+        found.add(cleanNum);
+    }
+
+    // 2. Hierarquia AnKing / Decks com "::" (ex: "##AK_Step2_v12::#UWorld::Step::17499" ou "AnKing::Step 1::#UWorld::17499")
     if (trimmed.includes('::')) {
         const segs = trimmed.split('::').map(s => s.trim()).filter(Boolean);
         for (const seg of segs) {
+            const segTrailing = extrairDigitosFinais(seg);
+            if (segTrailing) {
+                found.add(segTrailing);
+                const cleanNum = segTrailing.replace(/^0+/, '') || segTrailing;
+                found.add(cleanNum);
+            }
             const sub = extrairQidsDeTexto(seg);
             sub.forEach(q => found.add(q));
         }
     }
 
-    // 2. Padrões com prefixos conhecidos (qid:17499, #UWorld::17499, uworld-17499, #17499)
+    // 3. Padrões com prefixos conhecidos (qid:17499, #UWorld::17499, uworld-17499, #17499)
     const prefixRegex = /(?:^|[^\w])(?:qid|id|uworld|amboss|usmle|nbme|step|question|item)?[:\s\-_#]*(\d{2,8})(?=[^\w]|$)/gi;
     let match;
     while ((match = prefixRegex.exec(trimmed)) !== null) {
@@ -1250,7 +1287,7 @@ function extrairQidsDeTexto(text) {
         }
     }
 
-    // 3. Qualquer sequência isolada de 2 a 8 dígitos
+    // 4. Qualquer sequência isolada de 2 a 8 dígitos
     const listMatches = trimmed.match(/\b\d{2,8}\b/g);
     if (listMatches) {
         for (const num of listMatches) {
@@ -1260,7 +1297,7 @@ function extrairQidsDeTexto(text) {
         }
     }
 
-    // 4. String puramente numérica ou com hashtag/qid (#17499, 17499)
+    // 5. String puramente numérica ou com hashtag/qid (#17499, 17499)
     const stripped = trimmed.replace(/^[#\s\-_:qQidID]+|[#\s\-_:qQidID]+$/gi, '');
     if (/^\d{2,8}$/.test(stripped)) {
         found.add(stripped);

@@ -4,6 +4,7 @@ import { saveAs } from 'file-saver';
 import { decompress } from 'fzstd';
 import type { Deck, Flashcard } from '../store/useStore';
 import { mediaStorage } from './mediaStorage';
+import { extractQidsFromText } from '../../utils/qbankCardMatcher';
 
 // Base91 GUID generator matching Anki's standard
 const ANKI_BASE91_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!#$%&()*+,-./:;<=>?@[]^_`{|}~';
@@ -1026,7 +1027,24 @@ export async function importFromApkg(file: File): Promise<{
       tags = tagsString.split(' ').map(s => s.trim()).filter(Boolean);
     }
 
-    const { questionId, questionStem, questionChoices, explanation, educationalObjective, questionImages } = extractEmbeddedQuestionData(back);
+    let { questionId, questionStem, questionChoices, explanation, educationalObjective, questionImages } = extractEmbeddedQuestionData(back);
+
+    // Auto-detect questionId from tags or deck hierarchy if not found in embedded box
+    if (!questionId) {
+      for (const tag of tags) {
+        const extracted = extractQidsFromText(tag);
+        if (extracted.length > 0) {
+          questionId = extracted[0];
+          break;
+        }
+      }
+      if (!questionId && targetDeckId && decksMap[targetDeckId]?.name) {
+        const extracted = extractQidsFromText(decksMap[targetDeckId].name);
+        if (extracted.length > 0) {
+          questionId = extracted[0];
+        }
+      }
+    }
 
     parsedCards.push({
       front: front || 'Sem conteúdo',
