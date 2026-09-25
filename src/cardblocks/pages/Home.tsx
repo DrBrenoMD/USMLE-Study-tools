@@ -70,9 +70,13 @@ export function Home({ onNavigate }: HomeProps) {
         const res = await importFromApkg(file);
         parsedCards = res.parsedCards;
         fileName = res.fileName;
-        const ankiDecks = Object.values(res.decksMap || {});
-        for (const d of ankiDecks) {
-          deckNamesByAnkiId[d.id] = d.name;
+        for (const [key, d] of Object.entries(res.decksMap || {})) {
+          if (d && (d as any).name) {
+            deckNamesByAnkiId[String(key)] = (d as any).name;
+            if ((d as any).id) {
+              deckNamesByAnkiId[String((d as any).id)] = (d as any).name;
+            }
+          }
         }
       } else if (ext === 'json') {
         const text = await file.text();
@@ -81,6 +85,7 @@ export function Home({ onNavigate }: HomeProps) {
         parsedCards = arr.map((c: any) => ({
           front: c.front || c.question || '',
           back: c.back || c.answer || '',
+          fields: c.fields,
           details: c.details,
           tags: Array.isArray(c.tags) ? c.tags : (c.tags ? c.tags.split(',') : []),
           questionId: c.questionId,
@@ -110,46 +115,81 @@ export function Home({ onNavigate }: HomeProps) {
       }
       
       const createdDecksByName: Record<string, string> = {};
-      const { createDeck, importApkgCards, decks } = useStore.getState();
+      const { createDeck, importCardsBatch } = useStore.getState();
+
+      const rootDeckName = (fileName || file.name.replace(/\.[^/.]+$/, "") || "Baralho Importado").trim();
+      // Cria o novo baralho com o nome do arquivo importado na raiz
+      const rootFileDeckId = createDeck(rootDeckName, null);
+      createdDecksByName[rootDeckName.toLowerCase()] = rootFileDeckId;
 
       const getOrCreateDeckByPath = (path: string): string => {
-        if (createdDecksByName[path]) return createdDecksByName[path];
-        
-        let currentPath = '';
-        let parentId: string | null = null;
-        
-        const parts = path.split('::');
+        if (!path || !path.trim()) return rootFileDeckId;
+        const normalizedPath = path.trim();
+        const lowerPath = normalizedPath.toLowerCase();
+        if (createdDecksByName[lowerPath]) return createdDecksByName[lowerPath];
+
+        if (lowerPath === 'default') {
+          return rootFileDeckId;
+        }
+
+        let parts = normalizedPath.split('::').map(p => p.trim()).filter(Boolean);
+        if (parts.length === 0) return rootFileDeckId;
+
+        // Se o primeiro segmento for o próprio nome do arquivo/baralho raiz, remove para evitar repetição (ex: File.apkg -> File::Subdeck)
+        if (parts[0].toLowerCase() === rootDeckName.toLowerCase()) {
+          parts = parts.slice(1);
+          if (parts.length === 0) {
+            return rootFileDeckId;
+          }
+        }
+
+        let currentPath = rootDeckName;
+        let parentId: string = rootFileDeckId;
+
         for (const part of parts) {
-          currentPath = currentPath ? `${currentPath}::${part}` : part;
-          
-          if (!createdDecksByName[currentPath]) {
-            const existing = decks.find(d => d.name === part && d.parentId === parentId);
+          currentPath = `${currentPath}::${part}`;
+          const currentKey = currentPath.toLowerCase();
+
+          if (!createdDecksByName[currentKey]) {
+            const currentDecks = useStore.getState().decks;
+            const existing = currentDecks.find(d => d.name.toLowerCase() === part.toLowerCase() && (d.parentId || null) === parentId);
             if (existing) {
-              createdDecksByName[currentPath] = existing.id;
+              createdDecksByName[currentKey] = existing.id;
             } else {
               const newId = createDeck(part, parentId);
-              createdDecksByName[currentPath] = newId;
+              createdDecksByName[currentKey] = newId;
             }
           }
-          parentId = createdDecksByName[currentPath];
+          parentId = createdDecksByName[currentKey];
         }
-        return createdDecksByName[path];
+
+        createdDecksByName[lowerPath] = parentId;
+        return parentId;
       };
-      
-      const defaultDeckId = getOrCreateDeckByPath(fileName || "Baralho Importado");
-      const cardsByDeckId: Record<string, Omit<Flashcard, 'id'|'deckId'>[]> = {};
+
+      // Pré-cria todas as hierarquias de baralhos importados como filhos do baralho do arquivo
+      for (const dName of Object.values(deckNamesByAnkiId)) {
+        if (dName && dName.toLowerCase() !== 'default') {
+          getOrCreateDeckByPath(dName);
+        }
+      }
+
+      const allNewCards: Flashcard[] = [];
       let importCount = 0;
 
       for (const c of parsedCards) {
-        const dName = deckNamesByAnkiId[c.originalDeckId];
-        const targetDeckId = dName ? getOrCreateDeckByPath(dName) : defaultDeckId;
-        
-        if (!cardsByDeckId[targetDeckId]) {
-          cardsByDeckId[targetDeckId] = [];
+        let dName = deckNamesByAnkiId[c.originalDeckId];
+        if (!dName && Object.keys(deckNamesByAnkiId).length === 1) {
+          dName = Object.values(deckNamesByAnkiId)[0];
         }
-        cardsByDeckId[targetDeckId].push({
+        const targetDeckId = dName ? getOrCreateDeckByPath(dName) : rootFileDeckId;
+        
+        allNewCards.push({
+          id: 'card-' + Math.random().toString(36).substring(2, 9),
+          deckId: targetDeckId,
           front: c.front,
           back: c.back,
+          fields: c.fields || [],
           details: c.details,
           tags: c.tags,
           repetition: 0,
@@ -169,12 +209,11 @@ export function Home({ onNavigate }: HomeProps) {
         importCount++;
       }
 
-      for (const [deckId, cards] of Object.entries(cardsByDeckId)) {
-        if (cards.length > 0) {
-          importApkgCards(deckId, cards as any);
-        }
+      if (allNewCards.length > 0) {
+        importCardsBatch(allNewCards);
       }
       
+      setExpandedDecks(prev => ({ ...prev, [rootFileDeckId]: true }));
       setImportNotice(`Sucesso: ${importCount} flashcards importados com êxito!`);
       setTimeout(() => setImportNotice(null), 5000);
       setShowCreateModal(false);

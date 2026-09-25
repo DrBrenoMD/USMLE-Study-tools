@@ -100,15 +100,19 @@ export const cloudSyncService = {
 
     try {
       for (const dataType of dataTypes) {
-        const payloadStr = JSON.stringify(data[dataType]);
-        const docRef = doc(db, 'users', userId, 'data', dataType);
-        
-        await setDoc(docRef, {
-          userId,
-          dataType,
-          payload: payloadStr,
-          updatedAt: nowIso,
-        });
+        try {
+          const payloadStr = JSON.stringify(data[dataType]);
+          const docRef = doc(db, 'users', userId, 'data', dataType);
+          
+          await setDoc(docRef, {
+            userId,
+            dataType,
+            payload: payloadStr,
+            updatedAt: nowIso,
+          });
+        } catch (itemErr: any) {
+          console.warn(`Failed to sync data type ${dataType}:`, itemErr);
+        }
       }
 
       // Contagem para relatório amigável

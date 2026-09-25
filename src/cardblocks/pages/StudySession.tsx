@@ -36,7 +36,15 @@ export function formatTime(minutes: number): string {
   return `${Math.round(minutes / (365 * 24 * 60))}ano`;
 }
 
+export function formatDays(days: number): string {
+  if (days <= 0) return '< 1d';
+  if (days < 30) return `${Math.round(days)}d`;
+  if (days < 365) return `${Math.round(days / 30)}mês`;
+  return `${Math.round(days / 365)}ano`;
+}
+
 interface StudySessionProps {
+  key?: string | number;
   deckId?: string;
   cardIds?: string[];
   onNavigate: (page: Page) => void;
@@ -68,7 +76,16 @@ export function StudySession({ deckId, cardIds, onNavigate }: StudySessionProps)
     if (cardIds) {
       filtered = cards.filter(c => remainingCustomCardIds.includes(c.id));
     } else {
-      filtered = cards.filter(c => c.deckId === deckId && c.nextReviewDate <= now && !c.isSuspended && !c.isBuried);
+      const getSubdeckIds = (parentId: string): string[] => {
+        const children = decks.filter(d => d.parentId === parentId).map(d => d.id);
+        let all = [...children];
+        children.forEach(child => {
+          all = [...all, ...getSubdeckIds(child)];
+        });
+        return all;
+      };
+      const targetDeckIds = deckId ? [deckId, ...getSubdeckIds(deckId)] : [];
+      filtered = cards.filter(c => targetDeckIds.includes(c.deckId) && c.nextReviewDate <= now && !c.isSuspended && !c.isBuried);
     }
     
     const deckOrder = deck?.settings?.cardOrder || settings.cardOrder || 'newFirst';
@@ -81,12 +98,22 @@ export function StudySession({ deckId, cardIds, onNavigate }: StudySessionProps)
     }
     
     return filtered;
-  }, [cards, deckId, cardIds, remainingCustomCardIds, deck?.settings?.cardOrder, settings.cardOrder]);
+  }, [cards, decks, deckId, cardIds, remainingCustomCardIds, deck?.settings?.cardOrder, settings.cardOrder]);
 
   // Current block of cards
   const [currentBlock, setCurrentBlock] = useState<Flashcard[]>([]);
   // Which cards are selected (checked) in the answer phase
   const [selectedCards, setSelectedCards] = useState<Record<string, boolean>>({});
+
+  // Reset session state when deck or card selection changes
+  useEffect(() => {
+    setCurrentBlock([]);
+    setPhase('question');
+    setCustomDays('');
+    setPeekCards({});
+    setIsPeekAll(false);
+    setShowDetails({});
+  }, [deckId, cardIds]);
 
   // Initialize block
   useEffect(() => {
@@ -160,27 +187,28 @@ export function StudySession({ deckId, cardIds, onNavigate }: StudySessionProps)
       updateCard(editingCardId, editFront, editBack, editDetails);
       setEditingCardId(null);
     }
-    const idsToRate = Object.keys(selectedCards).filter(id => selectedCards[id]);
+    let idsToRate = currentBlock.filter(c => selectedCards[c.id] !== false).map(c => c.id);
+    if (idsToRate.length === 0) {
+      idsToRate = currentBlock.map(c => c.id);
+    }
     
     if (idsToRate.length === 0) {
       setCurrentBlock([]);
       return;
     }
 
-    if (idsToRate.length > 0) {
-      hasStudied.current = true;
-      reviewCards(idsToRate, rating);
-      if (cardIds && rating !== 'again') {
-        setRemainingCustomCardIds(prev => prev.filter(id => !idsToRate.includes(id)));
-      }
-      const tStore = useTimerStore.getState();
-      if (tStore.pacerIsActive) {
-        tStore.nextPacerQuestion();
-      }
+    hasStudied.current = true;
+    reviewCards(idsToRate, rating);
+    if (cardIds && rating !== 'again') {
+      setRemainingCustomCardIds(prev => prev.filter(id => !idsToRate.includes(id)));
+    }
+    const tStore = useTimerStore.getState();
+    if (tStore.pacerIsActive) {
+      tStore.nextPacerQuestion();
     }
 
     setCurrentBlock([]);
-  }, [selectedCards, reviewCards, cardIds, editingCardId, editFront, editBack, editDetails, updateCard]);
+  }, [currentBlock, selectedCards, reviewCards, cardIds, editingCardId, editFront, editBack, editDetails, updateCard]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -293,43 +321,51 @@ export function StudySession({ deckId, cardIds, onNavigate }: StudySessionProps)
     const days = parseInt(customDays, 10);
     if (isNaN(days) || days <= 0) return;
 
-    const idsToRate = Object.keys(selectedCards).filter(id => selectedCards[id]);
+    let idsToRate = currentBlock.filter(c => selectedCards[c.id] !== false).map(c => c.id);
+    if (idsToRate.length === 0) {
+      idsToRate = currentBlock.map(c => c.id);
+    }
     if (idsToRate.length === 0) {
       setCurrentBlock([]);
       return;
     }
 
-    if (idsToRate.length > 0) {
-      hasStudied.current = true;
-      reviewCardsCustom(idsToRate, days);
+    hasStudied.current = true;
+    reviewCardsCustom(idsToRate, days);
+    if (cardIds) {
+      setRemainingCustomCardIds(prev => prev.filter(id => !idsToRate.includes(id)));
     }
     setCurrentBlock([]);
   };
 
   const getNextIntervals = () => {
-    const selectedIds = Object.keys(selectedCards).filter(id => selectedCards[id]);
-    const activeCards = currentBlock.filter(c => selectedIds.includes(c.id));
-    if (activeCards.length === 0) return { again: '< 1m', hard: '-', good: '-', easy: '-' };
+    let activeCards = currentBlock.filter(c => selectedCards[c.id] !== false);
+    if (activeCards.length === 0) activeCards = currentBlock;
+    if (activeCards.length === 0) return { again: '< 15m', hard: '1d', good: '4d', easy: '10d' };
     
-    const avgInterval = activeCards.reduce((acc, c) => acc + c.interval, 0) / activeCards.length;
     const isNew = activeCards.every(c => c.repetition === 0);
-    
-    const safeSettings = { ...DEFAULT_SETTINGS, ...settings };
+    const avgInterval = activeCards.reduce((acc, c) => acc + (c.interval || 0), 0) / activeCards.length;
+    const avgEase = activeCards.reduce((acc, c) => acc + (c.easeFactor || 2.5), 0) / activeCards.length;
     
     if (isNew) {
       return {
-        again: formatTime(safeSettings.newAgainMinutes || 15),
-        hard: formatTime(safeSettings.newHardMinutes || 1440),
-        good: formatTime(safeSettings.newGoodMinutes || 5760),
-        easy: formatTime(safeSettings.newEasyMinutes || 14400),
+        again: '< 15m',
+        hard: '1d',
+        good: '4d',
+        easy: '10d',
       };
     }
     
+    const baseDays = Math.max(1, avgInterval);
+    const hardDays = Math.max(1, Math.round(baseDays * 1.2));
+    const goodDays = Math.max(baseDays + 1, Math.round(baseDays * avgEase));
+    const easyDays = Math.max(baseDays + 2, Math.round(baseDays * avgEase * 1.3));
+
     return {
-      again: formatTime(safeSettings.againMinutes),
-      hard: formatTime(Math.max(safeSettings.hardMinMinutes, avgInterval * safeSettings.hardMultiplier)),
-      good: formatTime(avgInterval === 0 ? 10 : avgInterval * safeSettings.goodMultiplier),
-      easy: formatTime(avgInterval === 0 ? (4 * 24 * 60) : avgInterval * safeSettings.easyMultiplier),
+      again: '< 15m',
+      hard: formatDays(hardDays),
+      good: formatDays(goodDays),
+      easy: formatDays(easyDays),
     };
   };
 
@@ -634,6 +670,7 @@ export function StudySession({ deckId, cardIds, onNavigate }: StudySessionProps)
                         frontHtml={renderCardText(card.front, isRevealed)}
                         showBack={isRevealed}
                         backHtml={renderCardText(card.back, true)}
+                        fields={card.fields}
                         detailsHtml={showDetails[card.id] && card.details ? renderCardText(card.details, true) : undefined}
                       />
                       
@@ -720,8 +757,9 @@ export function StudySession({ deckId, cardIds, onNavigate }: StudySessionProps)
       <div className="sticky bottom-4 pt-6 pb-2 z-20">
         {phase === 'question' ? (
           <button 
-            onMouseDown={(e) => { e.preventDefault(); handleShowAnswers(); }}
-            className="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-2xl font-bold text-base shadow-xl shadow-blue-600/25 transition-all active:scale-[0.99] flex items-center justify-center gap-2"
+            type="button"
+            onClick={(e) => { e.preventDefault(); handleShowAnswers(); }}
+            className="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-2xl font-bold text-base shadow-xl shadow-blue-600/25 transition-all active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
           >
             <span>Mostrar Respostas (Pressione Espaço)</span>
           </button>
@@ -855,8 +893,9 @@ function RatingButton({
 }) {
   return (
     <button 
-      onMouseDown={(e) => { e.preventDefault(); onClick(); }}
-      className={cn("py-3.5 px-3 rounded-2xl w-full flex flex-col items-center justify-center transition-all active:scale-95 group", colorClass)}
+      type="button"
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClick(); }}
+      className={cn("py-3.5 px-3 rounded-2xl w-full flex flex-col items-center justify-center transition-all active:scale-95 group cursor-pointer select-none", colorClass)}
     >
       <div className="flex items-center gap-1.5 font-bold text-xs sm:text-sm tracking-wide">
         <span>{label}</span>

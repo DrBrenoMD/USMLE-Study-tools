@@ -17,6 +17,7 @@ import {
   Activity
 } from 'lucide-react';
 import { AssociatedCardsModal } from '../../../components/AssociatedCardsModal';
+import { findCardsForQuestion } from '../../../utils/qbankCardMatcher';
 import { ImportBankModal } from '../../components/ImportBankModal';
 import { QBankDiagnosticModal } from '../../components/QBankDiagnosticModal';
 import { RichContentRenderer } from '../../components/RichContentRenderer';
@@ -365,14 +366,7 @@ export const QuestionRepositoryView: React.FC<QuestionRepositoryViewProps> = ({
           isOpen={true}
           onClose={() => setActiveModalQid(null)}
           qid={activeModalQid}
-          cards={cards.filter(c => {
-            const qidStr = (activeModalQid || '').toString().trim();
-            return (
-              c.questionId === qidStr ||
-              c.questionId === `qid:${qidStr}` ||
-              (c.tags && c.tags.includes(`qid:${qidStr}`))
-            );
-          })}
+          cards={findCardsForQuestion(cards, activeModalQid)}
         />
       )}
     </div>

@@ -1050,6 +1050,11 @@ function criarFlashcardUI() {
                 <!-- Preenchido dinamicamente por atualizarStatusCardQuestaoAtual() -->
             </div>
 
+            <!-- Seção Dinâmica de Flashcards Sugeridos da Questão (AnKing e Criados) -->
+            <div id="drawer-suggested-cards-section" style="display: flex; flex-direction: column; gap: 10px;">
+                <!-- Preenchido dinamicamente por renderizarCardsSugeridosQuestao() -->
+            </div>
+
             <div style="padding: 12px; border-radius: 12px; background: rgba(30,41,59,0.5); border: 1px solid #334155; font-size: 11px; color: #94a3b8;">
                 <div style="font-weight: 700; color: #cbd5e1; text-transform: uppercase; margin-bottom: 8px; font-size: 10px; letter-spacing: 1px;">Campos da Questão Importados:</div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
@@ -1204,7 +1209,349 @@ function atualizarStatusCardQuestaoAtual() {
         if (btnGerar) {
             btnGerar.addEventListener('click', executarGeracaoFlashcard);
         }
+
+        // Renderiza cards sugeridos (AnKing / Criados) para a questão atual
+        renderizarCardsSugeridosQuestao(qId);
     });
+}
+
+// =========================================================================
+// Sincronização e Indexação O(1) de Flashcards por Tags/QID (AnKing & Criados)
+// =========================================================================
+
+let cachedExtensionCardsCatalog = [];
+let cachedExtensionCardsIndex = new Map(); // QID limpo -> Array de cards
+let hasInitializedCardsSync = false;
+
+function extrairQidsDeTag(tag) {
+    if (!tag || typeof tag !== 'string') return [];
+    const trimmed = tag.trim();
+    const found = new Set();
+
+    // 1. Hierarquia AnKing: "##AK_Step2_v12::#UWorld::Step::4911"
+    if (trimmed.includes('::')) {
+        const segs = trimmed.split('::').map(s => s.trim()).filter(Boolean);
+        const lastSeg = segs[segs.length - 1];
+        if (/^\d{1,8}$/.test(lastSeg)) {
+            found.add(lastSeg);
+        }
+        for (const seg of segs) {
+            const numMatch = seg.match(/(?:qid|uworld|amboss|step)?[:\-_]?\s*(\d{2,8})\b/i);
+            if (numMatch && numMatch[1]) {
+                found.add(numMatch[1]);
+            }
+        }
+    }
+
+    // 2. Formato de cards criados: "qid:4911", "qid-4911"
+    const qidMatch = trimmed.match(/^qid[:\s\-_]+(\d{1,8})$/i);
+    if (qidMatch && qidMatch[1]) {
+        found.add(qidMatch[1]);
+    }
+
+    // 3. Prefixos de plataforma: "uworld:4911", "amboss-12345"
+    const platMatch = trimmed.match(/^(?:uworld|amboss|usmle|nbme)[:\-_]+(\d{1,8})$/i);
+    if (platMatch && platMatch[1]) {
+        found.add(platMatch[1]);
+    }
+
+    // 4. Numérico puro: "4911"
+    if (/^\d{2,8}$/.test(trimmed)) {
+        found.add(trimmed);
+    }
+
+    return Array.from(found);
+}
+
+function rebuildExtensionCardsIndex(cards) {
+    if (!Array.isArray(cards)) return;
+    cachedExtensionCardsCatalog = cards;
+    cachedExtensionCardsIndex = new Map();
+
+    for (let i = 0; i < cards.length; i++) {
+        const card = cards[i];
+        if (!card) continue;
+        const qids = new Set();
+
+        if (card.questionId) {
+            const clean = card.questionId.toString().replace(/^qid[:\-_]*/i, '').trim();
+            if (clean) qids.add(clean);
+        }
+
+        if (card.qids && Array.isArray(card.qids)) {
+            card.qids.forEach(q => {
+                if (q) {
+                    const clean = q.toString().replace(/^qid[:\-_]*/i, '').trim();
+                    if (clean) qids.add(clean);
+                }
+            });
+        }
+
+        if (card.tags && Array.isArray(card.tags)) {
+            for (const tag of card.tags) {
+                const extracted = extrairQidsDeTag(tag);
+                extracted.forEach(q => qids.add(q));
+            }
+        }
+
+        qids.forEach(q => {
+            if (!cachedExtensionCardsIndex.has(q)) {
+                cachedExtensionCardsIndex.set(q, []);
+            }
+            cachedExtensionCardsIndex.get(q).push(card);
+        });
+    }
+}
+
+function initExtensionCardsSync() {
+    if (hasInitializedCardsSync) return;
+    hasInitializedCardsSync = true;
+
+    // 1. Carrega do chrome.storage.local
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.get(['cardblocks_qbank_cards'], (res) => {
+            if (res && Array.isArray(res.cardblocks_qbank_cards)) {
+                rebuildExtensionCardsIndex(res.cardblocks_qbank_cards);
+                renderizarCardsSugeridosQuestao();
+            }
+        });
+
+        chrome.storage.onChanged.addListener((changes, area) => {
+            if (area === 'local' && changes.cardblocks_qbank_cards) {
+                rebuildExtensionCardsIndex(changes.cardblocks_qbank_cards.newValue || []);
+                renderizarCardsSugeridosQuestao();
+            }
+        });
+    }
+
+    // 2. BroadcastChannel para comunicação direta com a aba aberta do CardBlocks
+    try {
+        const bc = new BroadcastChannel('usmle_flashcards_sync');
+        bc.onmessage = (event) => {
+            if (!event.data) return;
+            if (event.data.type === 'USMLE_CARDS_CATALOG_SYNC' && Array.isArray(event.data.cards)) {
+                rebuildExtensionCardsIndex(event.data.cards);
+                renderizarCardsSugeridosQuestao();
+            }
+        };
+    } catch (e) {}
+
+    // 3. Busca inicial no servidor local se disponível
+    fetch('/api/imported-questions').catch(() => null);
+}
+
+initExtensionCardsSync();
+
+async function renderizarCardsSugeridosQuestao(overrideQid) {
+    const container = document.getElementById('drawer-suggested-cards-section');
+    if (!container) return;
+
+    const rawQid = overrideQid || extrairIdQuestaoAtual();
+    const cleanQid = (rawQid || '').toString().replace(/^qid[:\-_]*/i, '').trim();
+
+    if (!cleanQid) {
+        container.innerHTML = '';
+        return;
+    }
+
+    // 1. Busca no índice local de alta performance
+    let matching = cachedExtensionCardsIndex.get(cleanQid) || [];
+
+    // 2. Se vazio no índice local, tenta consultar a API do servidor
+    if (matching.length === 0) {
+        try {
+            const res = await fetch(`/api/qbank-matching-cards?qid=${encodeURIComponent(cleanQid)}`);
+            if (res.ok) {
+                const data = await res.json();
+                if (data && Array.isArray(data.cards) && data.cards.length > 0) {
+                    matching = data.cards;
+                }
+            }
+        } catch (e) {}
+    }
+
+    if (matching.length === 0) {
+        container.innerHTML = `
+            <div style="padding: 12px; border-radius: 12px; background: rgba(30,41,59,0.5); border: 1px solid #334155; font-size: 11px; color: #94a3b8; text-align: center;">
+                <div style="display: flex; align-items: center; justify-content: center; gap: 6px; font-weight: 700; color: #cbd5e1; margin-bottom: 4px;">
+                    <span>🏷️ Nenhum Card AnKing / Criado com Tag #${cleanQid}</span>
+                </div>
+                <div style="font-size: 10px; color: #64748b;">
+                    Ao criar um flashcard para esta questão, ele será vinculado automaticamente a esta QID.
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    const now = Date.now();
+    const allSuspended = matching.every(c => c.isSuspended);
+
+    let cardsHtml = `
+        <div style="padding: 12px; border-radius: 12px; background: #1e293b; border: 1px solid #3b82f6; box-shadow: 0 4px 14px rgba(37,99,235,0.15);">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #334155;">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-size: 13px;">⚡</span>
+                    <span style="font-size: 11px; font-weight: 800; color: #93c5fd; text-transform: uppercase; letter-spacing: 0.5px;">
+                        Cards Sugeridos (${matching.length})
+                    </span>
+                </div>
+                <span style="font-size: 10px; font-family: monospace; background: rgba(59,130,246,0.25); color: #60a5fa; padding: 2px 6px; border-radius: 4px; font-weight: bold;">
+                    QID: ${cleanQid}
+                </span>
+            </div>
+
+            <div style="font-size: 10px; color: #94a3b8; margin-bottom: 10px; line-height: 1.4;">
+                Estes flashcards possuem tags ou associação direta com a questão <b>#${cleanQid}</b> (AnKing / Banco).
+            </div>
+
+            ${matching.length > 1 ? `
+                <button id="btn-drawer-activate-all" style="width: 100%; margin-bottom: 10px; padding: 8px 10px; border-radius: 8px; border: none; background: linear-gradient(135deg, #2563eb, #3b82f6); color: #fff; font-size: 11px; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 2px 8px rgba(37,99,235,0.3);">
+                    ⚡ Ativar Todos (${matching.length}) e Revisar Hoje
+                </button>
+            ` : ''}
+
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+    `;
+
+    matching.forEach((card, idx) => {
+        const isSuspended = Boolean(card.isSuspended);
+        const isDue = (card.nextReviewDate || 0) <= now && !isSuspended;
+        const deckName = card.deckName || 'Baralho';
+        const frontSnippet = (card.frontPreview || card.front || '')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/\{\{c\d+::(.*?)\}\}/gi, '[$1]')
+            .trim()
+            .substring(0, 95);
+
+        let statusBadge = '';
+        if (isSuspended) {
+            statusBadge = `<span style="font-size: 9px; padding: 2px 6px; border-radius: 4px; background: rgba(239,68,68,0.2); color: #f87171; font-weight: bold;">Inativo (Suspenso)</span>`;
+        } else if (isDue) {
+            statusBadge = `<span style="font-size: 9px; padding: 2px 6px; border-radius: 4px; background: rgba(245,158,11,0.2); color: #fbbf24; font-weight: bold;">Para Revisar Hoje</span>`;
+        } else {
+            const d = new Date(card.nextReviewDate || Date.now());
+            const dStr = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}`;
+            statusBadge = `<span style="font-size: 9px; padding: 2px 6px; border-radius: 4px; background: rgba(16,185,129,0.2); color: #34d399; font-weight: bold;">Agendado (${dStr})</span>`;
+        }
+
+        cardsHtml += `
+            <div style="background: #0f172a; border: 1px solid ${isSuspended ? '#7f1d1d' : isDue ? '#78350f' : '#1e293b'}; border-radius: 8px; padding: 9px; display: flex; flex-direction: column; gap: 6px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 4px;">
+                    <span style="font-size: 9px; font-weight: 700; color: #94a3b8; text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px;">
+                        ${deckName}
+                    </span>
+                    ${statusBadge}
+                </div>
+
+                <div style="font-size: 11px; color: #e2e8f0; line-height: 1.35; font-weight: 500;">
+                    ${frontSnippet || 'Flashcard relacionado'}...
+                </div>
+
+                <div style="display: flex; gap: 6px; margin-top: 4px;">
+                    <button class="btn-card-act-today" data-card-id="${card.id}" style="flex: 1; padding: 6px 8px; border-radius: 6px; border: none; background: #059669; color: #fff; font-size: 10px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; box-shadow: 0 1px 4px rgba(5,150,105,0.3);">
+                        ⚡ Ativar & Revisar Hoje
+                    </button>
+                    ${isSuspended ? `
+                        <button class="btn-card-unsuspend" data-card-id="${card.id}" style="padding: 6px 8px; border-radius: 6px; border: 1px solid #475569; background: #1e293b; color: #e2e8f0; font-size: 10px; font-weight: 600; cursor: pointer;">
+                            Ativar
+                        </button>
+                    ` : `
+                        <button class="btn-card-schedule-today" data-card-id="${card.id}" style="padding: 6px 8px; border-radius: 6px; border: 1px solid #3b82f6; background: rgba(59,130,246,0.15); color: #93c5fd; font-size: 10px; font-weight: 600; cursor: pointer;">
+                            Revisar Hoje
+                        </button>
+                    `}
+                </div>
+            </div>
+        `;
+    });
+
+    cardsHtml += `
+            </div>
+        </div>
+    `;
+
+    container.innerHTML = cardsHtml;
+
+    // Vincula Eventos
+    const btnActivateAll = document.getElementById('btn-drawer-activate-all');
+    if (btnActivateAll) {
+        btnActivateAll.addEventListener('click', () => {
+            matching.forEach(c => executarAcaoCardDrawer(c.id, 'activate_today', cleanQid));
+            mostrarFeedbackDrawer(`⚡ Todos os ${matching.length} flashcards foram ativados e agendados para hoje!`);
+            setTimeout(() => renderizarCardsSugeridosQuestao(cleanQid), 200);
+        });
+    }
+
+    container.querySelectorAll('.btn-card-act-today').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const cardId = btn.getAttribute('data-card-id');
+            executarAcaoCardDrawer(cardId, 'activate_today', cleanQid);
+            mostrarFeedbackDrawer('⚡ Flashcard ativado e adicionado à fila de hoje!');
+            setTimeout(() => renderizarCardsSugeridosQuestao(cleanQid), 200);
+        });
+    });
+
+    container.querySelectorAll('.btn-card-unsuspend').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const cardId = btn.getAttribute('data-card-id');
+            executarAcaoCardDrawer(cardId, 'unsuspend', cleanQid);
+            mostrarFeedbackDrawer('🟢 Flashcard ativado!');
+            setTimeout(() => renderizarCardsSugeridosQuestao(cleanQid), 200);
+        });
+    });
+
+    container.querySelectorAll('.btn-card-schedule-today').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const cardId = btn.getAttribute('data-card-id');
+            executarAcaoCardDrawer(cardId, 'schedule_today', cleanQid);
+            mostrarFeedbackDrawer('📅 Flashcard agendado para revisão hoje!');
+            setTimeout(() => renderizarCardsSugeridosQuestao(cleanQid), 200);
+        });
+    });
+}
+
+function executarAcaoCardDrawer(cardId, action, qid) {
+    if (!cardId) return;
+
+    // 1. Atualização otimista imediata na memória para feedback instantâneo (0ms)
+    const card = cachedExtensionCardsCatalog.find(c => c.id === cardId);
+    if (card) {
+        if (action === 'activate_today' || action === 'activate_and_schedule_today') {
+            card.isSuspended = false;
+            card.nextReviewDate = Date.now() - 1000;
+            card.isDue = true;
+            if (qid) {
+                card.questionId = qid;
+                if (!card.qids) card.qids = [];
+                if (!card.qids.includes(qid)) card.qids.push(qid);
+            }
+        } else if (action === 'unsuspend') {
+            card.isSuspended = false;
+        } else if (action === 'schedule_today') {
+            card.nextReviewDate = Date.now() - 1000;
+            card.isDue = true;
+            card.isSuspended = false;
+        }
+        rebuildExtensionCardsIndex(cachedExtensionCardsCatalog);
+    }
+
+    // 2. BroadcastChannel para a aba do CardBlocks
+    try {
+        const bc = new BroadcastChannel('usmle_flashcards_sync');
+        bc.postMessage({
+            type: 'CARD_ACTION',
+            payload: { cardId, action, qid }
+        });
+        setTimeout(() => bc.close(), 1000);
+    } catch (e) {}
+
+    // 3. Chamada para a API backend
+    fetch('/api/update-card-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cardId, action, qid })
+    }).catch(() => {});
 }
 
 function executarGeracaoFlashcard() {

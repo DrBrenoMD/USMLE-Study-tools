@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useStore, Question, QuestionAlternative } from '../../store/useStore';
 import { TestSessionConfig } from './TestCreatorView';
 import { useTimerStore } from '../../../store/useTimerStore';
 import { AssociatedCardsModal } from '../../../components/AssociatedCardsModal';
+import { findCardsForQuestion } from '../../../utils/qbankCardMatcher';
 import { LabValuesModal } from '../../../components/LabValuesModal';
 import { StudyCalculatorModal } from '../../../components/StudyCalculatorModal';
 import { RichContentRenderer } from '../../components/RichContentRenderer';
@@ -210,16 +211,10 @@ export const QuestionSessionView: React.FC<QuestionSessionViewProps> = ({
     );
   }
 
-  // Cards associados à questão atual pelo QID
-  const matchingCards = cards.filter(c => {
-    const qidStr = (currentQ.qid || '').toString().trim();
-    if (!qidStr) return false;
-    return (
-      c.questionId === qidStr ||
-      c.questionId === `qid:${qidStr}` ||
-      (c.tags && c.tags.includes(`qid:${qidStr}`))
-    );
-  });
+  // Cards associados à questão atual pelo QID (suporte a AnKing e cards criados)
+  const matchingCards = useMemo(() => {
+    return findCardsForQuestion(cards, currentQ?.qid);
+  }, [cards, currentQ?.qid]);
 
   const isSubmitted = Boolean(submittedQuestions[currentQ.id] || (currentQ.status === 'correct' || currentQ.status === 'incorrect'));
   const currentSelectedChoice = selectedChoices[currentQ.id] || currentQ.selectedChoiceId || '';

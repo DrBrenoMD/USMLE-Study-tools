@@ -1,6 +1,11 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import { temporal } from 'zundo';
+import localforage from 'localforage';
+
+export const cardblocksDataStore = localforage.createInstance({
+  name: 'cardblocks_data'
+});
 
 export interface Deck {
   id: string;
@@ -13,6 +18,11 @@ export interface Deck {
   createdAt?: number;
 }
 
+export interface FlashcardField {
+  name: string;
+  value: string;
+}
+
 export interface Flashcard {
   id: string;
   deckId: string;
@@ -21,6 +31,7 @@ export interface Flashcard {
   details?: string;
   tags?: string[];
   flag?: string;
+  fields?: FlashcardField[];
   repetition: number;
   interval: number;
   easeFactor: number;
@@ -232,11 +243,19 @@ export interface StoreState {
   bulkEditCards: (ids: string[], updates: Partial<Flashcard>) => void;
   bulkDeleteCards: (ids: string[]) => void;
   recordReview: (cardId: string, rating: number, interval: number, easeFactor: number) => void;
-  importApkgCards: (deckName: string, cards: Array<{ front: string; back: string; tags?: string[] }>) => void;
+  importCardsBatch: (newCards: Flashcard[]) => void;
+  importApkgCards: (deckIdOrName: string, cards: Array<Partial<Flashcard> & { front: string; back: string; tags?: string[]; fields?: FlashcardField[] }>) => void;
   importCardsCsv: (deckId: string, cardsOrCsv: Array<{ front: string; back: string }> | string) => void;
-  advanceCardsToNow: (deckId?: string) => void;
+  advanceCardsToNow: (deckIdOrCardIds?: string | string[]) => void;
   toggleSuspendCard: (cardId: string) => void;
   toggleBuryCard: (cardId: string) => void;
+  unsuspendCard: (cardId: string) => void;
+  suspendCard: (cardId: string) => void;
+  scheduleCardForToday: (cardId: string) => void;
+  rescheduleCard: (cardId: string, daysFromNow: number) => void;
+  associateCardWithQuestion: (cardId: string, qid: string) => void;
+  activateAndScheduleForToday: (cardId: string, qid?: string) => void;
+  bulkActivateAndScheduleForToday: (cardIds: string[], qid?: string) => void;
   reviewCards: (cardIdsOrDeckId?: string[] | string, rating?: any) => any;
   reviewCardsCustom: (cardIds: string[], days?: number) => any;
 
@@ -491,28 +510,210 @@ export const useStore = create<StoreState>()(
           }));
         },
 
-        advanceCardsToNow: (deckId) => {
-          const now = Date.now();
+        unsuspendCard: (cardId) => {
+          set(state => ({
+            cards: state.cards.map(c => c.id === cardId ? { ...c, isSuspended: false } : c)
+          }));
+        },
+
+        suspendCard: (cardId) => {
+          set(state => ({
+            cards: state.cards.map(c => c.id === cardId ? { ...c, isSuspended: true } : c)
+          }));
+        },
+
+        scheduleCardForToday: (cardId) => {
+          const now = Date.now() - 1000;
+          set(state => ({
+            cards: state.cards.map(c => c.id === cardId ? { ...c, isSuspended: false, isBuried: false, nextReviewDate: now } : c)
+          }));
+        },
+
+        rescheduleCard: (cardId, daysFromNow) => {
+          const numDays = Math.max(0, Number(daysFromNow) || 0);
+          const target = numDays === 0 ? Date.now() - 1000 : Date.now() + numDays * 24 * 60 * 60 * 1000;
+          set(state => ({
+            cards: state.cards.map(c => c.id === cardId ? { ...c, interval: numDays, nextReviewDate: target, isSuspended: false } : c)
+          }));
+        },
+
+        associateCardWithQuestion: (cardId, qid) => {
+          if (!qid) return;
+          const cleanQid = qid.toString().replace(/^qid[:\-_]*/i, '').trim();
           set(state => ({
             cards: state.cards.map(c => {
-              if (deckId && c.deckId !== deckId) return c;
-              return { ...c, nextReviewDate: now };
+              if (c.id !== cardId) return c;
+              const tags = [...(c.tags || [])];
+              const qidTag = `qid:${cleanQid}`;
+              if (!tags.includes(qidTag) && !tags.includes(cleanQid)) {
+                tags.push(qidTag);
+              }
+              return {
+                ...c,
+                questionId: cleanQid,
+                tags,
+              };
             })
           }));
+        },
+
+        activateAndScheduleForToday: (cardId, qid) => {
+          const now = Date.now() - 1000;
+          const cleanQid = qid ? qid.toString().replace(/^qid[:\-_]*/i, '').trim() : undefined;
+          set(state => ({
+            cards: state.cards.map(c => {
+              if (c.id !== cardId) return c;
+              const tags = [...(c.tags || [])];
+              if (cleanQid) {
+                const qidTag = `qid:${cleanQid}`;
+                if (!tags.includes(qidTag) && !tags.includes(cleanQid)) {
+                  tags.push(qidTag);
+                }
+              }
+              return {
+                ...c,
+                isSuspended: false,
+                isBuried: false,
+                nextReviewDate: now,
+                questionId: cleanQid || c.questionId,
+                tags,
+              };
+            })
+          }));
+        },
+
+        bulkActivateAndScheduleForToday: (cardIds, qid) => {
+          const now = Date.now() - 1000;
+          const idSet = new Set(cardIds);
+          const cleanQid = qid ? qid.toString().replace(/^qid[:\-_]*/i, '').trim() : undefined;
+          set(state => ({
+            cards: state.cards.map(c => {
+              if (!idSet.has(c.id)) return c;
+              const tags = [...(c.tags || [])];
+              if (cleanQid) {
+                const qidTag = `qid:${cleanQid}`;
+                if (!tags.includes(qidTag) && !tags.includes(cleanQid)) {
+                  tags.push(qidTag);
+                }
+              }
+              return {
+                ...c,
+                isSuspended: false,
+                isBuried: false,
+                nextReviewDate: now,
+                questionId: cleanQid || c.questionId,
+                tags,
+              };
+            })
+          }));
+        },
+
+        advanceCardsToNow: (target) => {
+          const now = Date.now();
+          set(state => {
+            if (Array.isArray(target)) {
+              const idSet = new Set(target);
+              return {
+                cards: state.cards.map(c => idSet.has(c.id) ? { ...c, nextReviewDate: now } : c)
+              };
+            }
+            return {
+              cards: state.cards.map(c => {
+                if (target && c.deckId !== target) return c;
+                return { ...c, nextReviewDate: now };
+              })
+            };
+          });
         },
 
         reviewCards: (cardIdsOrDeckId, rating) => {
           const state = get();
           if (Array.isArray(cardIdsOrDeckId) && rating !== undefined) {
-            // Rating multiple cards
-            const ratingNum = typeof rating === 'number' ? rating : (rating === 'again' ? 1 : rating === 'hard' ? 2 : rating === 'good' ? 3 : 4);
-            cardIdsOrDeckId.forEach(id => {
-              const card = state.cards.find(c => c.id === id);
-              if (card) {
-                const interval = ratingNum === 1 ? 1 : (ratingNum === 2 ? Math.max(1, card.interval * 1.2) : (ratingNum === 3 ? (card.interval === 0 ? 1 : card.interval * card.easeFactor) : (card.interval === 0 ? 4 : card.interval * card.easeFactor * 1.3)));
-                const easeFactor = ratingNum === 1 ? Math.max(1.3, card.easeFactor - 0.2) : (ratingNum === 2 ? Math.max(1.3, card.easeFactor - 0.15) : (ratingNum === 4 ? card.easeFactor + 0.15 : card.easeFactor));
-                state.recordReview(id, ratingNum, Math.round(interval), easeFactor);
+            const ratingNum = typeof rating === 'number'
+              ? rating
+              : (rating === 'again' ? 1 : rating === 'hard' ? 2 : rating === 'good' ? 3 : 4);
+            const now = Date.now();
+            const idSet = new Set(cardIdsOrDeckId);
+            const newLogs: ReviewLog[] = [];
+
+            const updatedCards = state.cards.map(card => {
+              if (!idSet.has(card.id)) return card;
+
+              const isNew = card.repetition === 0;
+              let nextIntervalDays = 0;
+              let nextReviewMs = 0;
+              let newRepetition = 0;
+              let newEase = card.easeFactor || 2.5;
+
+              if (isNew) {
+                if (ratingNum === 1) { // ERREI (Again)
+                  newRepetition = 0;
+                  nextIntervalDays = 0;
+                  nextReviewMs = now + 15 * 60 * 1000; // 15 minutes
+                  newEase = Math.max(1.3, newEase - 0.2);
+                } else if (ratingNum === 2) { // DIFÍCIL (Hard)
+                  newRepetition = 1;
+                  nextIntervalDays = 1;
+                  nextReviewMs = now + 1 * 24 * 60 * 60 * 1000; // 1 day
+                  newEase = Math.max(1.3, newEase - 0.15);
+                } else if (ratingNum === 3) { // BOM (Good)
+                  newRepetition = 1;
+                  nextIntervalDays = 4;
+                  nextReviewMs = now + 4 * 24 * 60 * 60 * 1000; // 4 days
+                } else { // FÁCIL (Easy)
+                  newRepetition = 1;
+                  nextIntervalDays = 10;
+                  nextReviewMs = now + 10 * 24 * 60 * 60 * 1000; // 10 days
+                  newEase = Math.min(3.5, newEase + 0.15);
+                }
+              } else {
+                // Review cards: interval is strictly calculated in DAYS
+                const currentInterval = Math.max(1, card.interval || 1);
+                if (ratingNum === 1) { // ERREI (Again)
+                  newRepetition = 0;
+                  nextIntervalDays = 0;
+                  nextReviewMs = now + 15 * 60 * 1000; // 15 minutes
+                  newEase = Math.max(1.3, newEase - 0.2);
+                } else if (ratingNum === 2) { // DIFÍCIL (Hard)
+                  newRepetition = card.repetition + 1;
+                  nextIntervalDays = Math.max(1, Math.round(currentInterval * 1.2));
+                  nextReviewMs = now + nextIntervalDays * 24 * 60 * 60 * 1000;
+                  newEase = Math.max(1.3, newEase - 0.15);
+                } else if (ratingNum === 3) { // BOM (Good)
+                  newRepetition = card.repetition + 1;
+                  nextIntervalDays = Math.max(currentInterval + 1, Math.round(currentInterval * newEase));
+                  nextReviewMs = now + nextIntervalDays * 24 * 60 * 60 * 1000;
+                } else { // FÁCIL (Easy)
+                  newRepetition = card.repetition + 1;
+                  newEase = Math.min(3.5, newEase + 0.15);
+                  nextIntervalDays = Math.max(currentInterval + 2, Math.round(currentInterval * newEase * 1.3));
+                  nextReviewMs = now + nextIntervalDays * 24 * 60 * 60 * 1000;
+                }
               }
+
+              newLogs.push({
+                id: 'rev-' + Math.random().toString(36).substring(2, 9),
+                cardId: card.id,
+                deckId: card.deckId,
+                rating: ratingNum,
+                reviewDate: now,
+                interval: nextIntervalDays,
+                easeFactor: Number(newEase.toFixed(2)),
+              });
+
+              return {
+                ...card,
+                repetition: newRepetition,
+                interval: nextIntervalDays,
+                easeFactor: Number(newEase.toFixed(2)),
+                nextReviewDate: nextReviewMs,
+              };
+            });
+
+            set({
+              cards: updatedCards,
+              reviewHistory: [...newLogs, ...state.reviewHistory],
+              reviewLog: [...newLogs, ...state.reviewLog],
             });
             return;
           }
@@ -527,28 +728,48 @@ export const useStore = create<StoreState>()(
 
         reviewCardsCustom: (cardIds, days = 1) => {
           const state = get();
-          const targetDate = Date.now() + days * 24 * 60 * 60 * 1000;
+          const numDays = Math.max(0, Number(days) || 0);
+          const targetDate = numDays === 0 ? Date.now() - 1000 : Date.now() + numDays * 24 * 60 * 60 * 1000;
           const idSet = new Set(cardIds);
+          const now = Date.now();
+          const newLogs: ReviewLog[] = [];
+
+          const updatedCards = state.cards.map(c => {
+            if (!idSet.has(c.id)) return c;
+            const logItem: ReviewLog = {
+              id: 'rev-' + Math.random().toString(36).substring(2, 9),
+              cardId: c.id,
+              deckId: c.deckId,
+              rating: 3,
+              reviewDate: now,
+              interval: numDays,
+              easeFactor: c.easeFactor || 2.5,
+            };
+            newLogs.push(logItem);
+            return {
+              ...c,
+              repetition: c.repetition + 1,
+              interval: numDays,
+              nextReviewDate: targetDate,
+            };
+          });
+
           set({
-            cards: state.cards.map(c =>
-              idSet.has(c.id)
-                ? {
-                    ...c,
-                    repetition: c.repetition + 1,
-                    interval: days,
-                    nextReviewDate: targetDate,
-                  }
-                : c
-            )
+            cards: updatedCards,
+            reviewHistory: [...newLogs, ...state.reviewHistory],
+            reviewLog: [...newLogs, ...state.reviewLog],
           });
         },
 
-        recordReview: (cardId, rating, interval, easeFactor) => {
+        recordReview: (cardId, rating, intervalDays, easeFactor) => {
           const state = get();
           const card = state.cards.find(c => c.id === cardId);
           if (!card) return;
 
-          const nextReviewDate = Date.now() + interval * 60 * 1000;
+          // If intervalDays is 0, schedule in 15 minutes, otherwise intervalDays * 24 hours
+          const nextReviewDate = intervalDays === 0
+            ? Date.now() + 15 * 60 * 1000
+            : Date.now() + intervalDays * 24 * 60 * 60 * 1000;
           const newRepetition = rating >= 3 ? card.repetition + 1 : 0;
 
           const reviewLogItem: ReviewLog = {
@@ -557,7 +778,7 @@ export const useStore = create<StoreState>()(
             deckId: card.deckId,
             rating,
             reviewDate: Date.now(),
-            interval,
+            interval: intervalDays,
             easeFactor,
           };
 
@@ -567,7 +788,7 @@ export const useStore = create<StoreState>()(
                 ? {
                     ...c,
                     repetition: newRepetition,
-                    interval,
+                    interval: intervalDays,
                     easeFactor,
                     nextReviewDate,
                   }
@@ -578,28 +799,45 @@ export const useStore = create<StoreState>()(
           });
         },
 
-        importApkgCards: (deckName, importedCards) => {
+        importCardsBatch: (newCards) => {
+          set(state => ({
+            cards: [...newCards, ...state.cards]
+          }));
+        },
+
+        importApkgCards: (deckIdOrName, importedCards) => {
           const state = get();
-          let deck = state.decks.find(d => d.name.toLowerCase() === deckName.toLowerCase());
-          let deckId = deck?.id;
-          if (!deckId) {
-            deckId = 'deck-' + Math.random().toString(36).substring(2, 9);
-            state.decks.push({ id: deckId, name: deckName, parentId: null, settings: {} });
+          // Look up by id first, then by name
+          let deck = state.decks.find(d => d.id === deckIdOrName) ||
+                     state.decks.find(d => d.name.toLowerCase() === deckIdOrName.toLowerCase());
+          let targetDeckId = deck?.id;
+          if (!targetDeckId) {
+            targetDeckId = 'deck-' + Math.random().toString(36).substring(2, 9);
+            state.decks.push({ id: targetDeckId, name: deckIdOrName, parentId: null, settings: {} });
           }
 
           const newCards: Flashcard[] = importedCards.map(c => ({
             id: 'card-' + Math.random().toString(36).substring(2, 9),
-            deckId: deckId!,
+            deckId: targetDeckId!,
             front: c.front,
             back: c.back,
-            details: '',
+            details: c.details || '',
             tags: c.tags || [],
-            flag: '',
-            repetition: 0,
-            interval: 0,
-            easeFactor: 2.5,
-            nextReviewDate: Date.now(),
-            createdAt: Date.now(),
+            flag: c.flag || '',
+            fields: c.fields || [],
+            repetition: c.repetition || 0,
+            interval: c.interval || 0,
+            easeFactor: c.easeFactor || 2.5,
+            nextReviewDate: c.nextReviewDate || Date.now(),
+            createdAt: c.createdAt || Date.now(),
+            isSuspended: c.isSuspended || false,
+            isBuried: c.isBuried || false,
+            questionId: c.questionId,
+            questionStem: c.questionStem,
+            questionChoices: c.questionChoices,
+            explanation: c.explanation,
+            educationalObjective: c.educationalObjective,
+            questionImages: c.questionImages,
           }));
 
           set({
@@ -979,10 +1217,56 @@ export const useStore = create<StoreState>()(
       }),
       {
         name: 'cardblocks-storage',
+        storage: createJSONStorage(() => ({
+          getItem: async (name: string): Promise<string | null> => {
+            try {
+              const item = await cardblocksDataStore.getItem<string>(name);
+              if (item) return typeof item === 'string' ? item : JSON.stringify(item);
+            } catch (e) {
+              console.warn("Could not read from IndexedDB storage", e);
+            }
+            try {
+              const local = localStorage.getItem(name);
+              if (local) {
+                cardblocksDataStore.setItem(name, local).catch(() => {});
+                return local;
+              }
+            } catch (e) {}
+            return null;
+          },
+          setItem: async (name: string, value: string): Promise<void> => {
+            try {
+              await cardblocksDataStore.setItem(name, value);
+            } catch (e) {
+              console.warn("Could not write to IndexedDB storage", e);
+            }
+            try {
+              if (value.length < 2 * 1024 * 1024) {
+                localStorage.setItem(name, value);
+              }
+            } catch (e) {
+              // Ignore quota errors on localStorage
+            }
+          },
+          removeItem: async (name: string): Promise<void> => {
+            try {
+              await cardblocksDataStore.removeItem(name);
+            } catch (e) {}
+            try {
+              localStorage.removeItem(name);
+            } catch (e) {}
+          }
+        })),
       }
     ),
     {
-      limit: 100,
+      limit: 30,
+      partialize: (state) => ({
+        decks: state.decks,
+        settings: state.settings,
+        notebooks: state.notebooks,
+        notes: state.notes,
+      }),
     }
   )
 );

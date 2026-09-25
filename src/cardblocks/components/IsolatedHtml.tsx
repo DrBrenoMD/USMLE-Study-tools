@@ -101,6 +101,19 @@ function SafeHtmlPiece({ html, className }: { html?: string, className?: string 
         
         sendHeight();
       };
+
+      // Auto-recover media images if needed from parent media store
+      document.querySelectorAll('img').forEach(function(img) {
+        img.addEventListener('error', function() {
+          const src = img.getAttribute('src');
+          if (src && window.parent && window.parent.getAppMediaUrl) {
+            const basename = src.split('/').pop() || src;
+            window.parent.getAppMediaUrl(basename).then(function(newUrl) {
+              if (newUrl) img.src = newUrl;
+            });
+          }
+        });
+      });
     </script>
   `;
 
@@ -217,26 +230,76 @@ interface IsolatedHtmlProps {
   frontHtml?: string;
   backHtml?: string;
   detailsHtml?: string;
+  fields?: { name: string; value: string }[];
   className?: string;
   showBack?: boolean;
   layout?: 'vertical' | 'grid';
 }
 
-export function IsolatedHtml({ html, frontHtml, backHtml, detailsHtml, className, showBack = true, layout = 'vertical' }: IsolatedHtmlProps) {
+export function IsolatedHtml({ html, frontHtml, backHtml, detailsHtml, fields, className, showBack = false, layout = 'vertical' }: IsolatedHtmlProps) {
+  const renderBackFields = () => {
+    if (fields && fields.length > 0) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', width: '100%' }}>
+          {fields.map((f, i) => (
+            <div 
+              key={i} 
+              style={{ 
+                border: '1px solid rgba(148, 163, 184, 0.25)', 
+                borderRadius: '12px', 
+                padding: '12px 14px', 
+                background: 'rgba(248, 250, 252, 0.6)' 
+              }}
+              className="dark:!bg-gray-800/40 dark:!border-gray-800"
+            >
+              <div style={{ 
+                fontSize: '11px', 
+                fontWeight: 700, 
+                color: '#3b82f6', 
+                textTransform: 'uppercase', 
+                letterSpacing: '0.06em', 
+                marginBottom: '6px',
+                display: 'inline-block',
+                padding: '2px 8px',
+                borderRadius: '6px',
+                background: 'rgba(59, 130, 246, 0.1)'
+              }}
+              className="dark:text-blue-400 dark:bg-blue-950/50"
+              >
+                {f.name}
+              </div>
+              <div style={{ width: '100%', wordBreak: 'break-word' }}>
+                <SafeHtmlPiece html={f.value} />
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    if (backHtml) {
+      return <SafeHtmlPiece html={backHtml} />;
+    }
+
+    return null;
+  };
+
   if (layout === 'grid') {
     return (
-      <div className={className} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+      <div className={className} style={{ display: 'grid', gridTemplateColumns: showBack ? '1fr 1fr' : '1fr', gap: showBack ? '24px' : '0px' }}>
         {html && <SafeHtmlPiece html={html} />}
         {frontHtml && (
            <div>
-             <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#6366f1', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Front</div>
+             {showBack && (
+               <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#6366f1', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Frente</div>
+             )}
              <SafeHtmlPiece html={frontHtml} />
            </div>
         )}
-        {showBack && backHtml && (
+        {showBack && (
            <div style={{ borderLeft: '1px solid #374151', paddingLeft: '24px' }}>
-             <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#6366f1', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Back</div>
-             <SafeHtmlPiece html={backHtml} />
+             <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#6366f1', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Verso & Blocos</div>
+             {renderBackFields()}
              {detailsHtml && (
                <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #374151' }}>
                   <SafeHtmlPiece html={detailsHtml} />
@@ -252,9 +315,9 @@ export function IsolatedHtml({ html, frontHtml, backHtml, detailsHtml, className
     <div className={className}>
       {html && <SafeHtmlPiece html={html} />}
       {frontHtml && <SafeHtmlPiece html={frontHtml} />}
-      {showBack && backHtml && (
+      {showBack && (
         <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #374151' }}>
-           <SafeHtmlPiece html={backHtml} />
+           {renderBackFields()}
         </div>
       )}
       {showBack && detailsHtml && (

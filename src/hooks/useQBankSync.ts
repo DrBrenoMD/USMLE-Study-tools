@@ -1,10 +1,53 @@
 import { useEffect, useRef } from 'react';
 import { useStore, QuestionAlternative } from '../cardblocks/store/useStore';
+import { toCompactCardSummary } from '../utils/qbankCardMatcher';
 
 export function useQBankSync() {
-  const { questionBanks, createQuestionBank, upsertQuestionFromQBank } = useStore();
+  const {
+    questionBanks,
+    createQuestionBank,
+    upsertQuestionFromQBank,
+    cards,
+    decks,
+    activateAndScheduleForToday,
+    unsuspendCard,
+    scheduleCardForToday,
+    associateCardWithQuestion,
+  } = useStore();
   const banksRef = useRef(questionBanks);
   banksRef.current = questionBanks;
+
+  // Sincroniza catálogo de cards para a extensão e servidor (com debounce leve)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      try {
+        const decksMap = new Map(decks.map(d => [d.id, d.name]));
+        const compactCatalog = cards.map(c => toCompactCardSummary(c, decksMap.get(c.deckId)));
+
+        // 1. Envia para o servidor local
+        fetch('/api/cards-catalog', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cards: compactCatalog }),
+        }).catch(() => {});
+
+        // 2. BroadcastChannel para abas abertas da extensão
+        try {
+          const bc = new BroadcastChannel('usmle_flashcards_sync');
+          bc.postMessage({ type: 'USMLE_CARDS_CATALOG_SYNC', cards: compactCatalog });
+          setTimeout(() => bc.close(), 1000);
+        } catch (e) {}
+
+        // 3. chrome.storage.local se a aba estiver no mesmo contexto
+        const winChrome = typeof window !== 'undefined' ? (window as any).chrome : undefined;
+        if (winChrome && winChrome.storage && winChrome.storage.local) {
+          winChrome.storage.local.set({ cardblocks_qbank_cards: compactCatalog });
+        }
+      } catch (err) {}
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [cards, decks]);
 
   useEffect(() => {
     // 1. Sincroniza lista de bancos de questões disponíveis com a extensão
@@ -270,17 +313,54 @@ export function useQBankSync() {
       }
     } catch (e) {}
 
+    const handleCardAction = (payload: any) => {
+      if (!payload || !payload.cardId || !payload.action) return;
+      const { cardId, action, qid } = payload;
+      if (action === 'activate_today' || action === 'activate_and_schedule_today') {
+        activateAndScheduleForToday(cardId, qid);
+      } else if (action === 'unsuspend') {
+        unsuspendCard(cardId);
+      } else if (action === 'schedule_today') {
+        scheduleCardForToday(cardId);
+      } else if (action === 'associate' && qid) {
+        associateCardWithQuestion(cardId, qid);
+      }
+    };
+
+    let bcCards: BroadcastChannel | null = null;
+    try {
+      bcCards = new BroadcastChannel('usmle_flashcards_sync');
+      bcCards.onmessage = (event) => {
+        if (!event.data) return;
+        if (event.data.type === 'CARD_ACTION' || event.data.action === 'CARD_ACTION') {
+          handleCardAction(event.data.payload || event.data);
+        }
+      };
+    } catch (e) {}
+
     // 6. Polling no servidor para importações cross-origin via background / extension
     const checkServerQueue = async () => {
       try {
         const res = await fetch('/api/imported-questions');
-        if (!res.ok) return;
-        const data = await res.json();
-        if (data && Array.isArray(data.questions) && data.questions.length > 0) {
-          for (const item of data.questions) {
-            handleIncomingQuestion(item);
+        if (res && res.ok) {
+          const data = await res.json();
+          if (data && Array.isArray(data.questions) && data.questions.length > 0) {
+            for (const item of data.questions) {
+              handleIncomingQuestion(item);
+            }
+            await fetch('/api/imported-questions', { method: 'DELETE' }).catch(() => {});
           }
-          await fetch('/api/imported-questions', { method: 'DELETE' }).catch(() => {});
+        }
+
+        const actRes = await fetch('/api/pending-card-actions').catch(() => null);
+        if (actRes && actRes.ok) {
+          const actData = await actRes.json();
+          if (actData && Array.isArray(actData.actions) && actData.actions.length > 0) {
+            for (const item of actData.actions) {
+              handleCardAction(item);
+            }
+            await fetch('/api/pending-card-actions', { method: 'DELETE' }).catch(() => {});
+          }
         }
       } catch (e) {}
     };
@@ -290,10 +370,11 @@ export function useQBankSync() {
 
     return () => {
       if (bcQuestions) bcQuestions.close();
+      if (bcCards) bcCards.close();
       window.removeEventListener('message', onWindowMessage);
       window.removeEventListener('usmle_import_question', onCustomEvent as EventListener);
       window.removeEventListener('storage', onStorage);
       clearInterval(serverInterval);
     };
-  }, [upsertQuestionFromQBank, createQuestionBank]);
+  }, [upsertQuestionFromQBank, createQuestionBank, activateAndScheduleForToday, unsuspendCard, scheduleCardForToday, associateCardWithQuestion]);
 }

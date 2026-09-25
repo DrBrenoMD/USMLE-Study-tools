@@ -23,6 +23,7 @@ import { HelpView } from './pages/HelpView';
 import { BookOpen, Settings, Search, HelpCircle, Archive, ScrollText, PieChart, Edit3, Layers, LogIn, LogOut } from 'lucide-react';
 import { cn } from './lib/utils';
 import { useTranslation } from './lib/i18n';
+import { mediaStorage } from './lib/mediaStorage';
 
 export type Page = 
   | { type: 'home' }
@@ -52,6 +53,10 @@ export default function App() {
     document.documentElement.setAttribute('data-theme', theme);
     document.documentElement.style.colorScheme = ['light', 'paty', 'rose', 'sepia'].includes(theme) ? 'light' : 'dark';
   }, [theme]);
+
+  useEffect(() => {
+    mediaStorage.init();
+  }, []);
 
   // Listener Global para Sincronização e Importação de Questões do Q-Bank
   useEffect(() => {
@@ -219,7 +224,7 @@ export default function App() {
       <main className={cn("mx-auto px-4 py-8", page.type === 'browse' ? "max-w-[95%] w-full" : "max-w-5xl")}>
         {page.type === 'home' && <Home onNavigate={setPage} />}
         {page.type === 'deck' && <DeckView deckId={page.deckId} onNavigate={setPage} />}
-        {page.type === 'study' && <StudySession deckId={page.deckId} cardIds={page.cardIds} onNavigate={setPage} />}
+        {page.type === 'study' && <StudySession key={`study-${page.deckId || ''}-${(page.cardIds || []).join(',')}`} deckId={page.deckId} cardIds={page.cardIds} onNavigate={setPage} />}
         {page.type === 'settings' && <SettingsView onNavigate={setPage} />}
         {page.type === 'help' && <HelpView onNavigate={setPage} />}
         {page.type === 'library' && <LibraryView onNavigate={setPage} />}

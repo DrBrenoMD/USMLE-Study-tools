@@ -23,7 +23,7 @@ import {
   RotateCcw,
   Image as ImageIcon
 } from 'lucide-react';
-import { sanitizeHtml, renderCardText } from '../lib/utils';
+import { sanitizeHtml, renderCardText, cn } from '../lib/utils';
 import { RichEditor } from '../components/RichEditor';
 import { IsolatedHtml } from '../components/IsolatedHtml';
 import { CardEditor } from '../components/CardEditor';
@@ -80,7 +80,17 @@ export function DeckView({ deckId, onNavigate }: DeckViewProps) {
   const [isExporting, setIsExporting] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
 
-  const deckCards = cards.filter(c => c.deckId === deckId).sort((a, b) => b.createdAt - a.createdAt);
+  const getSubdeckIds = (parentId: string): string[] => {
+    const children = decks.filter(d => d.parentId === parentId).map(d => d.id);
+    let all = [...children];
+    children.forEach(child => {
+      all = [...all, ...getSubdeckIds(child)];
+    });
+    return all;
+  };
+  const targetDeckIds = [deckId, ...getSubdeckIds(deckId)];
+
+  const deckCards = cards.filter(c => targetDeckIds.includes(c.deckId)).sort((a, b) => b.createdAt - a.createdAt);
   const filteredDeckCards = deckCards.filter(c => 
     c.front.toLowerCase().includes(searchQuery.toLowerCase()) || 
     c.back.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -185,6 +195,7 @@ export function DeckView({ deckId, onNavigate }: DeckViewProps) {
           cardsByDeckId[deckId].push({
             front: c.front,
             back: c.back,
+            fields: c.fields || [],
             details: c.details,
             tags: c.tags,
             repetition: 0,
@@ -812,9 +823,10 @@ export function DeckView({ deckId, onNavigate }: DeckViewProps) {
             </div>
             <button 
               onClick={() => setExpandAll(!expandAll)}
-              className="px-3.5 py-2 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-700 dark:text-gray-300 text-xs sm:text-sm font-semibold whitespace-nowrap transition-colors"
+              className="px-3.5 py-2 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-700 dark:text-gray-300 text-xs sm:text-sm font-semibold whitespace-nowrap transition-colors flex items-center gap-1.5"
             >
-              {expandAll ? 'Recolher Tudo' : 'Expandir Tudo'}
+              {expandAll ? <EyeOff className="w-4 h-4 text-blue-600 dark:text-blue-400" /> : <Eye className="w-4 h-4 text-gray-500" />}
+              <span>{expandAll ? 'Ocultar Respostas de Todos' : 'Revelar Respostas de Todos'}</span>
             </button>
           </div>
         </div>
@@ -950,10 +962,11 @@ const CardRow: React.FC<{
         )}
         <IsolatedHtml 
           className={`w-full max-w-none text-gray-900 dark:text-gray-100 break-words ${!isExpanded ? 'line-clamp-2' : ''}`}
-          layout="grid"
-          frontHtml={sanitizeHtml(card.front)}
-          showBack={true}
+          layout={isExpanded ? 'grid' : 'vertical'}
+          frontHtml={sanitizeHtml(renderCardText(card.front, isExpanded))}
+          showBack={isExpanded}
           backHtml={sanitizeHtml(card.back)}
+          fields={card.fields}
           detailsHtml={isExpanded && card.details ? sanitizeHtml(card.details) : undefined}
         />
         {card.tags && card.tags.length > 0 && isExpanded && (
@@ -1011,7 +1024,21 @@ const CardRow: React.FC<{
       </div>
 
       <div className="flex items-center sm:items-end justify-between sm:flex-col gap-2 shrink-0" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+          <button
+            type="button"
+            onClick={() => setExpanded(!expanded)}
+            className={cn(
+              "flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-xl border transition-colors",
+              isExpanded
+                ? "bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800"
+                : "bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-750"
+            )}
+            title={isExpanded ? "Ocultar verso e resposta" : "Revelar verso e resposta"}
+          >
+            {isExpanded ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            <span>{isExpanded ? 'Ocultar' : 'Revelar'}</span>
+          </button>
           <button 
             onClick={() => setIsEditing(true)}
             className="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-xl transition-colors"

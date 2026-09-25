@@ -63,6 +63,111 @@ async function startServer() {
     res.json({ success: true });
   });
 
+  // In-memory catalog of cards with QIDs for instant extension lookups
+  let cardsCatalog: any[] = [];
+  let pendingCardActions: any[] = [];
+
+  app.post("/api/cards-catalog", (req, res) => {
+    try {
+      const { cards } = req.body;
+      if (Array.isArray(cards)) {
+        cardsCatalog = cards;
+      }
+      res.json({ success: true, count: cardsCatalog.length });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/qbank-matching-cards", (req, res) => {
+    try {
+      const qid = (req.query.qid || '').toString().trim();
+      if (!qid) {
+        return res.json({ cards: [] });
+      }
+      const cleanQid = qid.replace(/^qid[:\-_]*/i, '').trim();
+      const matches = cardsCatalog.filter((c: any) => {
+        if (!c) return false;
+        if (c.qids && Array.isArray(c.qids) && c.qids.includes(cleanQid)) return true;
+        if (c.questionId && c.questionId.toString().replace(/^qid[:\-_]*/i, '').trim() === cleanQid) return true;
+        if (c.tags && Array.isArray(c.tags)) {
+          return c.tags.some((t: string) => {
+            if (!t) return false;
+            if (t.includes('::')) {
+              const segs = t.split('::');
+              return segs[segs.length - 1] === cleanQid;
+            }
+            return t === `qid:${cleanQid}` || t === cleanQid;
+          });
+        }
+        return false;
+      });
+      res.json({ cards: matches });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/update-card-status", (req, res) => {
+    try {
+      const { cardId, action, qid } = req.body;
+      if (!cardId || !action) {
+        return res.status(400).json({ error: "cardId and action required" });
+      }
+
+      // Update in-memory catalog
+      const card = cardsCatalog.find((c: any) => c.id === cardId);
+      if (card) {
+        if (action === 'activate_today' || action === 'activate_and_schedule_today') {
+          card.isSuspended = false;
+          card.nextReviewDate = Date.now() - 1000;
+          card.isDue = true;
+          if (qid) {
+            card.questionId = qid;
+            if (!card.qids) card.qids = [];
+            if (!card.qids.includes(qid)) card.qids.push(qid);
+          }
+        } else if (action === 'unsuspend') {
+          card.isSuspended = false;
+        } else if (action === 'schedule_today') {
+          card.nextReviewDate = Date.now() - 1000;
+          card.isDue = true;
+          card.isSuspended = false;
+        } else if (action === 'associate' && qid) {
+          card.questionId = qid;
+          if (!card.qids) card.qids = [];
+          if (!card.qids.includes(qid)) card.qids.push(qid);
+        }
+      }
+
+      // Queue action for web app store synchronization
+      pendingCardActions.push({
+        id: 'act-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+        cardId,
+        action,
+        qid,
+        timestamp: Date.now(),
+      });
+
+      if (pendingCardActions.length > 300) {
+        pendingCardActions = pendingCardActions.slice(-300);
+      }
+
+      res.json({ success: true, updated: Boolean(card) });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/pending-card-actions", (_req, res) => {
+    res.json({ actions: pendingCardActions });
+  });
+
+  app.delete("/api/pending-card-actions", (_req, res) => {
+    pendingCardActions = [];
+    res.json({ success: true });
+  });
+
   // AI Study Material Generation
   app.post("/api/generate-study-material", async (req, res) => {
     try {
