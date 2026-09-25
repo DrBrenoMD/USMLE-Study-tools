@@ -139,13 +139,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
 
       if (user) {
-        // Se já está logado na inicialização, tenta sincronização inicial se necessário
+        // Se já está logado na inicialização, mescla dados de forma segura
         try {
           const hasData = await cloudSyncService.hasCloudData(user.uid);
           if (hasData) {
             await cloudSyncService.downloadAndApplyFromCloud(user.uid);
             setSyncState('synced');
             setLastSyncTime(new Date());
+          }
+          // Garante que os dados locais completos fiquem salvos na nuvem
+          const localCardCount = useStore.getState().cards?.length || 0;
+          if (localCardCount > 0) {
+            await cloudSyncService.uploadAllToCloud(user.uid);
           }
         } catch (e) {
           console.warn("Sincronização inicial em background:", e);

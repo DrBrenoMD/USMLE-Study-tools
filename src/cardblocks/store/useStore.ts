@@ -295,6 +295,7 @@ export interface StoreState {
   resetSettings: () => void;
   resetAllData: () => void;
   importProfile: (data: any) => void;
+  mergeProfile: (data: any) => void;
 }
 
 export const useStore = create<StoreState>()(
@@ -1212,6 +1213,96 @@ export const useStore = create<StoreState>()(
             notebookHistory: data.notebookHistory || [],
             notes: data.notes || [],
             settings: { ...DEFAULT_SETTINGS, ...(data.settings || {}) },
+          });
+        },
+
+        mergeProfile: (data) => {
+          if (!data) return;
+          set((state) => {
+            // 1. Decks merge (Union by deck.id)
+            const deckMap = new Map<string, Deck>();
+            (state.decks || []).forEach(d => deckMap.set(d.id, d));
+            (data.decks || []).forEach((d: Deck) => {
+              if (d && d.id && !deckMap.has(d.id)) {
+                deckMap.set(d.id, d);
+              }
+            });
+
+            // 2. Cards merge (Preserve all local cards + add any unique cloud cards)
+            const cardMap = new Map<string, Flashcard>();
+            (state.cards || []).forEach(c => {
+              if (c && c.id) cardMap.set(c.id, c);
+            });
+            (data.cards || []).forEach((c: Flashcard) => {
+              if (c && c.id) {
+                if (!cardMap.has(c.id)) {
+                  cardMap.set(c.id, c);
+                } else {
+                  // If incoming card has review history while local is unreviewed, update scheduling
+                  const localCard = cardMap.get(c.id)!;
+                  if ((c.repetition || 0) > (localCard.repetition || 0)) {
+                    cardMap.set(c.id, { ...localCard, ...c });
+                  }
+                }
+              }
+            });
+
+            // 3. Questions merge (Union by qid or id)
+            const qMap = new Map<string, Question>();
+            (state.questions || []).forEach(q => {
+              if (q) qMap.set(q.id || q.qid, q);
+            });
+            (data.questions || []).forEach((q: Question) => {
+              if (q) {
+                const key = q.id || q.qid;
+                if (key && !qMap.has(key)) {
+                  qMap.set(key, q);
+                }
+              }
+            });
+
+            // 4. Question Banks merge
+            const bankMap = new Map<string, QuestionBank>();
+            (state.questionBanks || []).forEach(b => {
+              if (b && b.id) bankMap.set(b.id, b);
+            });
+            (data.questionBanks || []).forEach((b: QuestionBank) => {
+              if (b && b.id && !bankMap.has(b.id)) {
+                bankMap.set(b.id, b);
+              }
+            });
+
+            // 5. Notebooks merge
+            const nbMap = new Map<string, Notebook>();
+            (state.notebooks || []).forEach(nb => {
+              if (nb && nb.id) nbMap.set(nb.id, nb);
+            });
+            (data.notebooks || []).forEach((nb: Notebook) => {
+              if (nb && nb.id && !nbMap.has(nb.id)) {
+                nbMap.set(nb.id, nb);
+              }
+            });
+
+            // 6. Notes merge
+            const noteMap = new Map<string, Note>();
+            (state.notes || []).forEach(n => {
+              if (n && n.id) noteMap.set(n.id, n);
+            });
+            (data.notes || []).forEach((n: Note) => {
+              if (n && n.id && !noteMap.has(n.id)) {
+                noteMap.set(n.id, n);
+              }
+            });
+
+            return {
+              decks: Array.from(deckMap.values()),
+              cards: Array.from(cardMap.values()),
+              questions: Array.from(qMap.values()),
+              questionBanks: Array.from(bankMap.values()),
+              notebooks: Array.from(nbMap.values()),
+              notes: Array.from(noteMap.values()),
+              settings: { ...DEFAULT_SETTINGS, ...(state.settings || {}), ...(data.settings || {}) },
+            };
           });
         },
       }),

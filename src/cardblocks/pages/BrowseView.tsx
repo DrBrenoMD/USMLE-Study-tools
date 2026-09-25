@@ -100,13 +100,20 @@ export const BrowseView: React.FC<{ onNavigate: (p: Page) => void }> = ({ onNavi
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
   const [isAddCardOpen, setIsAddCardOpen] = useState(false);
 
-  // Extrai tags gerais puras para o dropdown de tags (removendo IDs, subject e system)
+  // Extrai tags gerais puras para o dropdown de tags (removendo tags com # do AnKing, IDs, subject e system para evitar poluição visual)
   const allGeneralTags = useMemo(() => {
     const set = new Set<string>();
     cards.forEach(c => {
       c.tags?.forEach(t => {
         const clean = t.trim();
-        if (clean && !isIdTag(clean) && !isSubjectTag(clean) && !isSystemTag(clean)) {
+        if (
+          clean &&
+          !clean.startsWith('#') &&
+          !clean.startsWith('!') &&
+          !isIdTag(clean) &&
+          !isSubjectTag(clean) &&
+          !isSystemTag(clean)
+        ) {
           set.add(clean);
         }
       });

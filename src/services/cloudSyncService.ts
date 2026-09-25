@@ -90,20 +90,66 @@ export const cloudSyncService = {
     const data = this.gatherLocalData();
     const nowIso = new Date().toISOString();
 
-    const dataTypes: Array<string & keyof typeof data> = [
-      'cardblocks',
-      'study_tracker',
-      'timer_metrics',
-      'scores',
-      'preferences',
-    ];
-
     try {
-      for (const dataType of dataTypes) {
+      // 1. Salvar CardBlocks com chunking inteligente para suportar milhares de cards no Firestore (limite de 1MB por doc)
+      const allCards = data.cardblocks.cards || [];
+      const CHUNK_SIZE = 120; // 120 cards por documento para garantir que fique bem abaixo de 500KB
+      const cardChunks: any[][] = [];
+      for (let i = 0; i < allCards.length; i += CHUNK_SIZE) {
+        cardChunks.push(allCards.slice(i, i + CHUNK_SIZE));
+      }
+
+      // Salva chunks de cards
+      for (let cIdx = 0; cIdx < cardChunks.length; cIdx++) {
+        const chunkDocRef = doc(db, 'users', userId, 'data', `cardblocks_cards_${cIdx}`);
+        await setDoc(chunkDocRef, {
+          userId,
+          dataType: `cardblocks_cards_${cIdx}`,
+          chunkIndex: cIdx,
+          cards: cardChunks[cIdx],
+          updatedAt: nowIso,
+        });
+      }
+
+      // Salva metadados e outros elementos do CardBlocks
+      const cardblocksMeta = {
+        decks: data.cardblocks.decks || [],
+        cardsCount: allCards.length,
+        chunksCount: cardChunks.length,
+        // Se houver poucos cards, armazena inline como fallback
+        cardsInline: allCards.length <= 40 ? allCards : [],
+        reviewHistory: (data.cardblocks.reviewHistory || []).slice(0, 500),
+        reviewLog: (data.cardblocks.reviewLog || []).slice(0, 500),
+        questions: data.cardblocks.questions || [],
+        questionBanks: data.cardblocks.questionBanks || [],
+        notebooks: data.cardblocks.notebooks || [],
+        notebookHistory: data.cardblocks.notebookHistory || [],
+        notes: data.cardblocks.notes || [],
+        settings: data.cardblocks.settings || {},
+      };
+
+      const cardblocksMetaDoc = doc(db, 'users', userId, 'data', 'cardblocks');
+      await setDoc(cardblocksMetaDoc, {
+        userId,
+        dataType: 'cardblocks',
+        payload: JSON.stringify(cardblocksMeta),
+        chunksCount: cardChunks.length,
+        totalCards: allCards.length,
+        updatedAt: nowIso,
+      });
+
+      // 2. Salvar outros módulos (Study Tracker, Timer Metrics, Scores, Preferences)
+      const otherDataTypes = [
+        'study_tracker',
+        'timer_metrics',
+        'scores',
+        'preferences',
+      ] as const;
+
+      for (const dataType of otherDataTypes) {
         try {
           const payloadStr = JSON.stringify(data[dataType]);
           const docRef = doc(db, 'users', userId, 'data', dataType);
-          
           await setDoc(docRef, {
             userId,
             dataType,
@@ -130,7 +176,7 @@ export const cloudSyncService = {
         success: true,
         timestamp: new Date(),
         itemsSynced: {
-          flashcards: data.cardblocks.cards.length,
+          flashcards: allCards.length,
           notebooks: data.cardblocks.notebooks.length,
           questions: data.cardblocks.questions.length,
           studyLogs: logsCount,
@@ -143,7 +189,7 @@ export const cloudSyncService = {
   },
 
   /**
-   * Baixa e restaura todos os dados salvos na nuvem para a sessão local.
+   * Baixa e restaura todos os dados salvos na nuvem para a sessão local usando merge seguro.
    */
   async downloadAndApplyFromCloud(userId: string): Promise<boolean> {
     try {
@@ -154,19 +200,48 @@ export const cloudSyncService = {
         return false;
       }
 
-      const cloudMap: Record<string, string> = {};
+      const cloudMap: Record<string, any> = {};
+      const cardChunksMap: Map<number, any[]> = new Map();
+
       snapshot.forEach(docSnap => {
         const d = docSnap.data();
-        if (d && d.payload) {
+        if (!d) return;
+
+        if (docSnap.id.startsWith('cardblocks_cards_')) {
+          const idx = d.chunkIndex ?? parseInt(docSnap.id.replace('cardblocks_cards_', ''), 10);
+          if (Array.isArray(d.cards)) {
+            cardChunksMap.set(idx, d.cards);
+          }
+        } else if (d.payload) {
           cloudMap[docSnap.id] = d.payload;
         }
       });
 
-      // 1. Restaurar Flashcards, Cadernos e Questões
+      // 1. Restaurar Flashcards, Cadernos e Questões via Merge Seguro
       if (cloudMap['cardblocks']) {
         try {
-          const parsed = JSON.parse(cloudMap['cardblocks']);
-          useStore.getState().importProfile(parsed);
+          const meta = JSON.parse(cloudMap['cardblocks']);
+          let assembledCards: any[] = [];
+
+          if (cardChunksMap.size > 0) {
+            const sortedIndices = Array.from(cardChunksMap.keys()).sort((a, b) => a - b);
+            for (const idx of sortedIndices) {
+              const chunk = cardChunksMap.get(idx) || [];
+              assembledCards.push(...chunk);
+            }
+          } else if (Array.isArray(meta.cardsInline) && meta.cardsInline.length > 0) {
+            assembledCards = meta.cardsInline;
+          } else if (Array.isArray(meta.cards)) {
+            assembledCards = meta.cards;
+          }
+
+          const cloudCardblocksData = {
+            ...meta,
+            cards: assembledCards,
+          };
+
+          // Usa mergeProfile para preservar dados e cards locais recém-importados
+          useStore.getState().mergeProfile(cloudCardblocksData);
         } catch (e) {
           console.error("Erro ao aplicar cardblocks da nuvem", e);
         }
