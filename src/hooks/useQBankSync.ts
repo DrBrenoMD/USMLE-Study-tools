@@ -31,17 +31,30 @@ export function useQBankSync() {
           body: JSON.stringify({ cards: compactCatalog }),
         }).catch(() => {});
 
-        // 2. BroadcastChannel para abas abertas da extensão
+        // 2. BroadcastChannel para abas abertas no mesmo domínio
         try {
           const bc = new BroadcastChannel('usmle_flashcards_sync');
           bc.postMessage({ type: 'USMLE_CARDS_CATALOG_SYNC', cards: compactCatalog });
           setTimeout(() => bc.close(), 1000);
         } catch (e) {}
 
-        // 3. chrome.storage.local se a aba estiver no mesmo contexto
+        // 3. Comunicação direta via window events para o content script da extensão injetado nesta aba
+        window.postMessage({ type: 'USMLE_CARDS_CATALOG_SYNC', cards: compactCatalog }, '*');
+        window.dispatchEvent(new CustomEvent('usmle_cards_catalog_sync', { detail: { cards: compactCatalog } }));
+
+        // 4. chrome.storage.local se a aba estiver no mesmo contexto
         const winChrome = typeof window !== 'undefined' ? (window as any).chrome : undefined;
         if (winChrome && winChrome.storage && winChrome.storage.local) {
           winChrome.storage.local.set({ cardblocks_qbank_cards: compactCatalog });
+        }
+        if (winChrome && winChrome.runtime && winChrome.runtime.sendMessage) {
+          try {
+            winChrome.runtime.sendMessage({
+              type: 'STORE_CARDS_CATALOG',
+              cards: compactCatalog,
+              appUrl: window.location.origin
+            }, () => {});
+          } catch(e) {}
         }
       } catch (err) {}
     }, 400);

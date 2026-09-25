@@ -219,11 +219,13 @@ export const BrowseView: React.FC<{ onNavigate: (p: Page) => void }> = ({ onNavi
       // Filtro por Tags Gerais (sem tags de ID, subject ou system)
       if (selectedTag !== 'all' && !c.tags?.includes(selectedTag)) return false;
 
-      // Barra de Pesquisa (IDs podem ser pesquisados diretamente aqui!)
+      // Barra de Pesquisa (IDs, Decks, Tags e Campos podem ser pesquisados diretamente aqui!)
       if (search.trim()) {
         const query = search.toLowerCase().trim();
         const cleanQueryId = query.replace(/^#|^qid:|^qid-|^id:|^id-/i, '').trim();
 
+        const deckObj = decks.find(d => d.id === c.deckId);
+        const deckNameText = (deckObj?.name || '').toLowerCase();
         const fText = (c.front || '').toLowerCase();
         const bText = (c.back || '').toLowerCase();
         const tText = (c.tags || []).join(' ').toLowerCase();
@@ -234,8 +236,10 @@ export const BrowseView: React.FC<{ onNavigate: (p: Page) => void }> = ({ onNavi
         const choicesText = (c.questionChoices || '').toLowerCase();
         const expText = (c.explanation || '').toLowerCase();
         const objText = (c.educationalObjective || '').toLowerCase();
+        const fieldsText = (c.fields || []).map(f => `${f.name} ${f.value}`).join(' ').toLowerCase();
 
         const matches =
+          deckNameText.includes(query) ||
           fText.includes(query) ||
           bText.includes(query) ||
           tText.includes(query) ||
@@ -246,7 +250,8 @@ export const BrowseView: React.FC<{ onNavigate: (p: Page) => void }> = ({ onNavi
           stemText.includes(query) ||
           choicesText.includes(query) ||
           expText.includes(query) ||
-          objText.includes(query);
+          objText.includes(query) ||
+          fieldsText.includes(query);
 
         if (!matches) {
           return false;

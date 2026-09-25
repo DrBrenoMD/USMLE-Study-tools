@@ -1,90 +1,141 @@
 import type { Flashcard } from '../cardblocks/store/useStore';
 
 /**
- * Extracts all possible question IDs (QIDs) from a list of tags.
+ * Extracts all possible question IDs (QIDs) from any text string (tag, deck name, field, text).
  * Supports:
- * - AnKing format: "##AK_Step2_v12::#UWorld::Step::4911" -> "4911"
- * - AnKing Step 1: "##AK_Step1_v12::#UWorld::01_Step1::4911" -> "4911"
- * - Short tags: "#UWorld::4911", "#AMBOSS::12345" -> "4911", "12345"
- * - Created card tags: "qid:4911", "qid: 4911", "qid-4911" -> "4911"
- * - Platform tags: "uworld:4911", "uworld-4911", "amboss:4911" -> "4911"
- * - Plain numeric tags: "4911" -> "4911"
+ * - AnKing format: "##AK_Step2_v12::#UWorld::Step::17499" -> ["17499"]
+ * - AnKing Step 1: "##AK_Step1_v12::#UWorld::01_Step1::17499" -> ["17499"]
+ * - AnKing with sub-tags: "##AK_Step2_v12::#UWorld::17499::Pathology" -> ["17499"]
+ * - Hierarchical Decks: "AnKing::Step 1::#UWorld::17499" -> ["17499"]
+ * - Short tags: "#UWorld::17499", "#AMBOSS::12345" -> ["17499", "12345"]
+ * - Created card tags: "qid:17499", "qid: 17499", "qid-17499", "id:17499" -> ["17499"]
+ * - Platform tags: "uworld:17499", "uworld-17499", "amboss:17499" -> ["17499"]
+ * - Hashtag numbers: "#17499", "##17499" -> ["17499"]
+ * - Plain numeric tags: "17499" -> ["17499"]
+ * - Comma/space separated numbers in fields: "17499, 17500" -> ["17499", "17500"]
  */
-export function extractQidsFromTag(tag: string): string[] {
-  if (!tag || typeof tag !== 'string') return [];
-  const trimmed = tag.trim();
+export function extractQidsFromText(text: string): string[] {
+  if (!text || typeof text !== 'string') return [];
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+
   const found = new Set<string>();
 
-  // 1. AnKing hierarchical tag format: segments separated by "::"
-  // Example: ##AK_Step2_v12::#UWorld::Step::4911 or #UWorld::4911
+  // 1. Hierarchical tags/decks separated by "::"
   if (trimmed.includes('::')) {
     const segments = trimmed.split('::').map(s => s.trim()).filter(Boolean);
-    // Usually the last segment is the question number (e.g. "4911")
-    const lastSeg = segments[segments.length - 1];
-    if (/^\d{1,8}$/.test(lastSeg)) {
-      found.add(lastSeg);
-    }
-    // Check if any segment is a pure number or contains QID pattern
     for (const seg of segments) {
-      const numMatch = seg.match(/(?:qid|uworld|amboss|step)?[:\-_]?\s*(\d{2,8})\b/i);
-      if (numMatch && numMatch[1]) {
-        found.add(numMatch[1]);
-      }
+      const subQids = extractQidsFromText(seg);
+      subQids.forEach(q => found.add(q));
     }
   }
 
-  // 2. Created card formats: "qid:4911", "qid-4911", "qid: 4911"
-  const qidMatch = trimmed.match(/^qid[:\s\-_]+(\d{1,8})$/i);
-  if (qidMatch && qidMatch[1]) {
-    found.add(qidMatch[1]);
+  // 2. Specific QID/Platform patterns (e.g. #UWorld::17499, qid:17499, uworld-17499, qid_17499)
+  const prefixRegex = /(?:^|[^\w])(?:qid|id|uworld|amboss|usmle|nbme|step|question|item)?[:\s\-_#]*(\d{2,8})(?=[^\w]|$)/gi;
+  let match: RegExpExecArray | null;
+  while ((match = prefixRegex.exec(trimmed)) !== null) {
+    if (match[1]) {
+      const rawNum = match[1];
+      const cleanNum = rawNum.replace(/^0+/, '') || rawNum;
+      found.add(rawNum);
+      found.add(cleanNum);
+    }
   }
 
-  // 3. Platform prefixed tags: "uworld:4911", "uworld-4911", "amboss-12345"
-  const platformMatch = trimmed.match(/^(?:uworld|amboss|usmle|nbme)[:\-_]+(\d{1,8})$/i);
-  if (platformMatch && platformMatch[1]) {
-    found.add(platformMatch[1]);
+  // 3. Comma, semicolon or space separated list of numbers
+  const listMatches = trimmed.match(/\b\d{2,8}\b/g);
+  if (listMatches) {
+    for (const num of listMatches) {
+      // Exclude obvious non-QID numbers like 2023, 2024, 2025, 2026, 2027 if they look like years
+      const cleanNum = num.replace(/^0+/, '') || num;
+      found.add(num);
+      found.add(cleanNum);
+    }
   }
 
-  // 4. Pure numeric tag: "4911" (at least 2 digits to prevent collision with flags/ratings)
-  if (/^\d{2,8}$/.test(trimmed)) {
-    found.add(trimmed);
+  // 4. Pure numeric or hashtag-numeric string (e.g. "#17499", "17499")
+  const stripped = trimmed.replace(/^[#\s\-_:qQidID]+|[#\s\-_:qQidID]+$/gi, '');
+  if (/^\d{2,8}$/.test(stripped)) {
+    found.add(stripped);
+    const cleanNum = stripped.replace(/^0+/, '') || stripped;
+    found.add(cleanNum);
   }
 
   return Array.from(found);
 }
 
 /**
- * Extracts all QIDs associated with a flashcard (from tags, questionId, details, etc.)
+ * Backward compatibility alias for extractQidsFromText
  */
-export function extractCardQids(card: Flashcard): string[] {
+export function extractQidsFromTag(tag: string): string[] {
+  return extractQidsFromText(tag);
+}
+
+/**
+ * Extracts all QIDs associated with a flashcard (from tags, deck name, fields, questionId, details, etc.)
+ */
+export function extractCardQids(card: Flashcard, deckName?: string): string[] {
+  if (!card) return [];
   const qids = new Set<string>();
 
-  // 1. Direct questionId field
-  if (card.questionId) {
-    const clean = card.questionId.toString().replace(/^qid[:\-_]*/i, '').trim();
-    if (clean) qids.add(clean);
-  }
+  const addQid = (val: any) => {
+    if (!val) return;
+    const str = val.toString();
+    const extracted = extractQidsFromText(str);
+    extracted.forEach(q => qids.add(q));
+    const clean = str.replace(/^(?:qid|id|q|#)[:\-_]*/i, '').trim();
+    if (clean) {
+      qids.add(clean);
+      const cleanNum = clean.replace(/^0+/, '') || clean;
+      qids.add(cleanNum);
+    }
+  };
 
-  // 2. Source question ID
-  if (card.sourceQuestionId) {
-    const clean = card.sourceQuestionId.toString().replace(/^qid[:\-_]*/i, '').trim();
-    if (clean) qids.add(clean);
-  }
+  // 1. Direct questionId and sourceQuestionId fields
+  if (card.questionId) addQid(card.questionId);
+  if (card.sourceQuestionId) addQid(card.sourceQuestionId);
 
-  // 3. Tags
+  // 2. Tags
   if (Array.isArray(card.tags)) {
     for (const tag of card.tags) {
-      const extracted = extractQidsFromTag(tag);
+      const extracted = extractQidsFromText(tag);
       extracted.forEach(q => qids.add(q));
     }
   }
 
-  // 4. Back / Details embedded question data (e.g. "Dados da Questão (ID: 4911)")
-  const textToCheck = `${card.back || ''} ${card.details || ''}`;
-  const embeddedMatch = textToCheck.match(/Dados da Questão\s*(?:\(ID:\s*([^)]+)\))?/i);
-  if (embeddedMatch && embeddedMatch[1]) {
-    const clean = embeddedMatch[1].toString().replace(/^qid[:\-_]*/i, '').trim();
-    if (clean) qids.add(clean);
+  // 3. Deck Name (supports hierarchical decks like "AnKing::Step 1::#UWorld::17499")
+  if (deckName) {
+    const extracted = extractQidsFromText(deckName);
+    extracted.forEach(q => qids.add(q));
+  }
+
+  // 4. Card Fields (e.g. UWorld QIDs, UWorld, AMBOSS, Question ID)
+  if (Array.isArray(card.fields)) {
+    for (const f of card.fields) {
+      if (!f) continue;
+      const fName = (f.name || '').toLowerCase();
+      const fVal = f.value || '';
+      if (
+        fName.includes('qid') ||
+        fName.includes('uworld') ||
+        fName.includes('amboss') ||
+        fName.includes('question') ||
+        fName.includes('id') ||
+        fName.includes('tag')
+      ) {
+        const extracted = extractQidsFromText(fVal);
+        extracted.forEach(q => qids.add(q));
+      }
+    }
+  }
+
+  // 5. Back / Details / Explanations embedded question data
+  const textToCheck = `${card.back || ''} ${card.details || ''} ${card.explanation || ''} ${card.questionStem || ''}`;
+  const embeddedMatches = textToCheck.matchAll(/(?:Question\s*ID|Dados da Questão|QID|UWorld(?:\s*ID)?)[:\s\-_#]*\(?(?:ID:\s*)?(\d{2,8})\)?/gi);
+  for (const m of embeddedMatches) {
+    if (m[1]) {
+      addQid(m[1]);
+    }
   }
 
   return Array.from(qids);
@@ -98,15 +149,16 @@ let cachedIndexMap: Map<string, Flashcard[]> = new Map();
  * Builds or retrieves a memoized inverted index of QID -> Flashcards.
  * For 35,000 cards, this takes ~12-18ms once and makes subsequent lookups 0.001ms.
  */
-export function getQidCardsIndex(cards: Flashcard[]): Map<string, Flashcard[]> {
-  if (cachedIndexCardsRef === cards && cachedIndexMap.size > 0) {
+export function getQidCardsIndex(cards: Flashcard[], decksMap?: Map<string, string>): Map<string, Flashcard[]> {
+  if (cachedIndexCardsRef === cards && cachedIndexMap.size > 0 && !decksMap) {
     return cachedIndexMap;
   }
 
   const map = new Map<string, Flashcard[]>();
   for (let i = 0; i < cards.length; i++) {
     const card = cards[i];
-    const qids = extractCardQids(card);
+    const deckName = decksMap ? decksMap.get(card.deckId) : undefined;
+    const qids = extractCardQids(card, deckName);
     for (let j = 0; j < qids.length; j++) {
       const qid = qids[j];
       let list = map.get(qid);
@@ -114,44 +166,89 @@ export function getQidCardsIndex(cards: Flashcard[]): Map<string, Flashcard[]> {
         list = [];
         map.set(qid, list);
       }
-      list.push(card);
+      if (!list.includes(card)) {
+        list.push(card);
+      }
     }
   }
 
-  cachedIndexCardsRef = cards;
-  cachedIndexMap = map;
+  if (!decksMap) {
+    cachedIndexCardsRef = cards;
+    cachedIndexMap = map;
+  }
   return map;
 }
 
 /**
- * Finds all flashcards matching a given question ID (e.g. "4911").
- * Extremely fast: O(1) after single indexing.
+ * Finds all flashcards matching a given question ID (e.g. "17499", "Q-17499", "qid:17499").
+ * Extremely fast: O(1) lookup with robust multi-format matching.
  */
-export function findCardsForQuestion(cards: Flashcard[], qid: string | number | undefined | null): Flashcard[] {
-  if (!qid) return [];
-  const cleanQid = qid.toString().replace(/^qid[:\-_]*/i, '').trim();
+export function findCardsForQuestion(
+  cards: Flashcard[],
+  qid: string | number | undefined | null,
+  decksMap?: Map<string, string>
+): Flashcard[] {
+  if (!qid || !Array.isArray(cards)) return [];
+  const rawQid = qid.toString().trim();
+  const cleanQid = rawQid.replace(/^(?:qid|id|q|#)[:\-_]*/i, '').trim();
   if (!cleanQid) return [];
 
-  const index = getQidCardsIndex(cards);
-  return index.get(cleanQid) || [];
+  const numericQid = cleanQid.replace(/^0+/, '') || cleanQid;
+  const index = getQidCardsIndex(cards, decksMap);
+
+  const matchedSet = new Set<Flashcard>();
+
+  // Look up clean and numeric variants
+  const list1 = index.get(cleanQid);
+  if (list1) list1.forEach(c => matchedSet.add(c));
+
+  if (numericQid !== cleanQid) {
+    const list2 = index.get(numericQid);
+    if (list2) list2.forEach(c => matchedSet.add(c));
+  }
+
+  const listRaw = index.get(rawQid);
+  if (listRaw) listRaw.forEach(c => matchedSet.add(c));
+
+  // If still empty, do fallback linear search across tags & deck names
+  if (matchedSet.size === 0) {
+    for (let i = 0; i < cards.length; i++) {
+      const c = cards[i];
+      const dName = decksMap ? decksMap.get(c.deckId) : undefined;
+      if (cardMatchesQid(c, cleanQid, dName)) {
+        matchedSet.add(c);
+      }
+    }
+  }
+
+  return Array.from(matchedSet);
 }
 
 /**
  * Checks if a specific card matches a given QID.
  */
-export function cardMatchesQid(card: Flashcard, qid: string | number | undefined | null): boolean {
-  if (!qid) return false;
-  const cleanQid = qid.toString().replace(/^qid[:\-_]*/i, '').trim();
+export function cardMatchesQid(card: Flashcard, qid: string | number | undefined | null, deckName?: string): boolean {
+  if (!card || !qid) return false;
+  const rawQid = qid.toString().trim();
+  const cleanQid = rawQid.replace(/^(?:qid|id|q|#)[:\-_]*/i, '').trim();
   if (!cleanQid) return false;
+  const numericQid = cleanQid.replace(/^0+/, '') || cleanQid;
 
-  const cardQids = extractCardQids(card);
-  return cardQids.includes(cleanQid);
+  const cardQids = extractCardQids(card, deckName);
+  return (
+    cardQids.includes(cleanQid) ||
+    cardQids.includes(numericQid) ||
+    cardQids.includes(rawQid)
+  );
 }
 
 /**
  * Creates a lightweight card summary suitable for extension sidebar or network transfer.
  */
 export function toCompactCardSummary(card: Flashcard, deckName?: string) {
+  const dName = deckName || 'Baralho';
+  const qids = extractCardQids(card, dName);
+
   // Strip heavy HTML / base64 for fast transfer
   const cleanFront = (card.front || '')
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
@@ -172,7 +269,7 @@ export function toCompactCardSummary(card: Flashcard, deckName?: string) {
   return {
     id: card.id,
     deckId: card.deckId,
-    deckName: deckName || 'Baralho',
+    deckName: dName,
     frontPreview: cleanFront || 'Sem texto frontal',
     backPreview: cleanBack || 'Sem texto de resposta',
     isSuspended: Boolean(card.isSuspended),
@@ -181,7 +278,7 @@ export function toCompactCardSummary(card: Flashcard, deckName?: string) {
     repetition: card.repetition || 0,
     interval: card.interval || 0,
     tags: card.tags || [],
-    qids: extractCardQids(card),
-    questionId: card.questionId,
+    qids: qids,
+    questionId: card.questionId || (qids.length > 0 ? qids[0] : undefined),
   };
 }

@@ -1223,44 +1223,56 @@ let cachedExtensionCardsCatalog = [];
 let cachedExtensionCardsIndex = new Map(); // QID limpo -> Array de cards
 let hasInitializedCardsSync = false;
 
-function extrairQidsDeTag(tag) {
-    if (!tag || typeof tag !== 'string') return [];
-    const trimmed = tag.trim();
+function extrairQidsDeTexto(text) {
+    if (!text || typeof text !== 'string') return [];
+    const trimmed = text.trim();
+    if (!trimmed) return [];
     const found = new Set();
 
-    // 1. Hierarquia AnKing: "##AK_Step2_v12::#UWorld::Step::4911"
+    // 1. Hierarquia AnKing / Decks com "::" (ex: "##AK_Step2_v12::#UWorld::Step::17499" ou "AnKing::Step 1::#UWorld::17499")
     if (trimmed.includes('::')) {
         const segs = trimmed.split('::').map(s => s.trim()).filter(Boolean);
-        const lastSeg = segs[segs.length - 1];
-        if (/^\d{1,8}$/.test(lastSeg)) {
-            found.add(lastSeg);
-        }
         for (const seg of segs) {
-            const numMatch = seg.match(/(?:qid|uworld|amboss|step)?[:\-_]?\s*(\d{2,8})\b/i);
-            if (numMatch && numMatch[1]) {
-                found.add(numMatch[1]);
-            }
+            const sub = extrairQidsDeTexto(seg);
+            sub.forEach(q => found.add(q));
         }
     }
 
-    // 2. Formato de cards criados: "qid:4911", "qid-4911"
-    const qidMatch = trimmed.match(/^qid[:\s\-_]+(\d{1,8})$/i);
-    if (qidMatch && qidMatch[1]) {
-        found.add(qidMatch[1]);
+    // 2. Padrões com prefixos conhecidos (qid:17499, #UWorld::17499, uworld-17499, #17499)
+    const prefixRegex = /(?:^|[^\w])(?:qid|id|uworld|amboss|usmle|nbme|step|question|item)?[:\s\-_#]*(\d{2,8})(?=[^\w]|$)/gi;
+    let match;
+    while ((match = prefixRegex.exec(trimmed)) !== null) {
+        if (match[1]) {
+            const rawNum = match[1];
+            const cleanNum = rawNum.replace(/^0+/, '') || rawNum;
+            found.add(rawNum);
+            found.add(cleanNum);
+        }
     }
 
-    // 3. Prefixos de plataforma: "uworld:4911", "amboss-12345"
-    const platMatch = trimmed.match(/^(?:uworld|amboss|usmle|nbme)[:\-_]+(\d{1,8})$/i);
-    if (platMatch && platMatch[1]) {
-        found.add(platMatch[1]);
+    // 3. Qualquer sequência isolada de 2 a 8 dígitos
+    const listMatches = trimmed.match(/\b\d{2,8}\b/g);
+    if (listMatches) {
+        for (const num of listMatches) {
+            const cleanNum = num.replace(/^0+/, '') || num;
+            found.add(num);
+            found.add(cleanNum);
+        }
     }
 
-    // 4. Numérico puro: "4911"
-    if (/^\d{2,8}$/.test(trimmed)) {
-        found.add(trimmed);
+    // 4. String puramente numérica ou com hashtag/qid (#17499, 17499)
+    const stripped = trimmed.replace(/^[#\s\-_:qQidID]+|[#\s\-_:qQidID]+$/gi, '');
+    if (/^\d{2,8}$/.test(stripped)) {
+        found.add(stripped);
+        const cleanNum = stripped.replace(/^0+/, '') || stripped;
+        found.add(cleanNum);
     }
 
     return Array.from(found);
+}
+
+function extrairQidsDeTag(tag) {
+    return extrairQidsDeTexto(tag);
 }
 
 function rebuildExtensionCardsIndex(cards) {
@@ -1268,38 +1280,68 @@ function rebuildExtensionCardsIndex(cards) {
     cachedExtensionCardsCatalog = cards;
     cachedExtensionCardsIndex = new Map();
 
-    for (let i = 0; i < cards.length; i++) {
-        const card = cards[i];
-        if (!card) continue;
-        const qids = new Set();
+    const addCardToQid = (card, qidVal) => {
+        if (!qidVal) return;
+        const qStr = qidVal.toString().trim();
+        const cleanQid = qStr.replace(/^(?:qid|id|q|#)[:\-_]*/i, '').trim();
+        if (!cleanQid) return;
+        const numQid = cleanQid.replace(/^0+/, '') || cleanQid;
 
-        if (card.questionId) {
-            const clean = card.questionId.toString().replace(/^qid[:\-_]*/i, '').trim();
-            if (clean) qids.add(clean);
-        }
-
-        if (card.qids && Array.isArray(card.qids)) {
-            card.qids.forEach(q => {
-                if (q) {
-                    const clean = q.toString().replace(/^qid[:\-_]*/i, '').trim();
-                    if (clean) qids.add(clean);
-                }
-            });
-        }
-
-        if (card.tags && Array.isArray(card.tags)) {
-            for (const tag of card.tags) {
-                const extracted = extrairQidsDeTag(tag);
-                extracted.forEach(q => qids.add(q));
-            }
-        }
-
-        qids.forEach(q => {
+        [cleanQid, numQid, qStr].forEach(q => {
+            if (!q) return;
             if (!cachedExtensionCardsIndex.has(q)) {
                 cachedExtensionCardsIndex.set(q, []);
             }
-            cachedExtensionCardsIndex.get(q).push(card);
+            const list = cachedExtensionCardsIndex.get(q);
+            if (!list.includes(card)) {
+                list.push(card);
+            }
         });
+    };
+
+    for (let i = 0; i < cards.length; i++) {
+        const card = cards[i];
+        if (!card) continue;
+
+        // 1. Direct questionId and sourceQuestionId
+        if (card.questionId) addCardToQid(card, card.questionId);
+        if (card.sourceQuestionId) addCardToQid(card, card.sourceQuestionId);
+
+        // 2. Array qids
+        if (card.qids && Array.isArray(card.qids)) {
+            card.qids.forEach(q => addCardToQid(card, q));
+        }
+
+        // 3. Tags (hierárquicas AnKing, platform tags, hashtags, números)
+        if (card.tags && Array.isArray(card.tags)) {
+            for (const tag of card.tags) {
+                const extracted = extrairQidsDeTexto(tag);
+                extracted.forEach(q => addCardToQid(card, q));
+            }
+        }
+
+        // 4. Deck Name (subdecks e hierarquia como "AnKing::Step 1::#UWorld::17499")
+        if (card.deckName) {
+            const extracted = extrairQidsDeTexto(card.deckName);
+            extracted.forEach(q => addCardToQid(card, q));
+        }
+
+        // 5. Card Fields (UWorld QIDs, AMBOSS, Question ID)
+        if (Array.isArray(card.fields)) {
+            for (const f of card.fields) {
+                if (f && f.value) {
+                    const extracted = extrairQidsDeTexto(f.value);
+                    extracted.forEach(q => addCardToQid(card, q));
+                }
+            }
+        }
+
+        // 6. Texto do Front / Back / Details
+        const fullTxt = `${card.frontPreview || card.front || ''} ${card.backPreview || card.back || ''} ${card.details || ''}`;
+        const embeddedMatches = fullTxt.matchAll(/(?:Question\s*ID|Dados da Questão|QID|UWorld(?:\s*ID)?)[:\s\-_#]*\(?(?:ID:\s*)?(\d{2,8})\)?/gi);
+        for (const m of embeddedMatches) {
+            if (m[1]) addCardToQid(card, m[1]);
+        }
     }
 }
 
@@ -1331,13 +1373,58 @@ function initExtensionCardsSync() {
             if (!event.data) return;
             if (event.data.type === 'USMLE_CARDS_CATALOG_SYNC' && Array.isArray(event.data.cards)) {
                 rebuildExtensionCardsIndex(event.data.cards);
+                if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+                    chrome.storage.local.set({ cardblocks_qbank_cards: event.data.cards, last_connected_app_url: window.location.origin });
+                }
                 renderizarCardsSugeridosQuestao();
             }
         };
     } catch (e) {}
 
-    // 3. Busca inicial no servidor local se disponível
-    fetch('/api/imported-questions').catch(() => null);
+    // 3. Listener para eventos diretos de janela emitidos pela aba do app
+    window.addEventListener('message', (event) => {
+        if (event.data && event.data.type === 'USMLE_CARDS_CATALOG_SYNC' && Array.isArray(event.data.cards)) {
+            rebuildExtensionCardsIndex(event.data.cards);
+            if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+                chrome.storage.local.set({ cardblocks_qbank_cards: event.data.cards, last_connected_app_url: window.location.origin });
+            }
+            if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+                try {
+                    chrome.runtime.sendMessage({
+                        type: 'STORE_CARDS_CATALOG',
+                        cards: event.data.cards,
+                        appUrl: window.location.origin
+                    }, () => {});
+                } catch(e) {}
+            }
+            renderizarCardsSugeridosQuestao();
+        }
+    });
+
+    window.addEventListener('usmle_cards_catalog_sync', (event) => {
+        const detail = event.detail;
+        if (detail && Array.isArray(detail.cards)) {
+            rebuildExtensionCardsIndex(detail.cards);
+            if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+                chrome.storage.local.set({ cardblocks_qbank_cards: detail.cards, last_connected_app_url: window.location.origin });
+            }
+            renderizarCardsSugeridosQuestao();
+        }
+    });
+
+    // 4. Se o catálogo local estiver vazio, pede ao background worker
+    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+        setTimeout(() => {
+            if (cachedExtensionCardsCatalog.length === 0) {
+                chrome.runtime.sendMessage({ type: 'FETCH_MATCHING_CARDS', qid: extrairIdQuestaoAtual() }, (resp) => {
+                    if (resp && resp.cards && resp.cards.length > 0) {
+                        rebuildExtensionCardsIndex(resp.cards);
+                        renderizarCardsSugeridosQuestao();
+                    }
+                });
+            }
+        }, 500);
+    }
 }
 
 initExtensionCardsSync();
@@ -1346,8 +1433,9 @@ async function renderizarCardsSugeridosQuestao(overrideQid) {
     const container = document.getElementById('drawer-suggested-cards-section');
     if (!container) return;
 
-    const rawQid = overrideQid || extrairIdQuestaoAtual();
-    const cleanQid = (rawQid || '').toString().replace(/^qid[:\-_]*/i, '').trim();
+    const rawQid = (overrideQid || extrairIdQuestaoAtual() || '').toString().trim();
+    const cleanQid = rawQid.replace(/^(?:qid|id|q|#)[:\-_]*/i, '').trim();
+    const numQid = cleanQid.replace(/^0+/, '') || cleanQid;
 
     if (!cleanQid) {
         container.innerHTML = '';
@@ -1355,17 +1443,46 @@ async function renderizarCardsSugeridosQuestao(overrideQid) {
     }
 
     // 1. Busca no índice local de alta performance
-    let matching = cachedExtensionCardsIndex.get(cleanQid) || [];
+    let matchedSet = new Set();
+    const list1 = cachedExtensionCardsIndex.get(cleanQid);
+    if (list1) list1.forEach(c => matchedSet.add(c));
 
-    // 2. Se vazio no índice local, tenta consultar a API do servidor
-    if (matching.length === 0) {
+    if (numQid !== cleanQid) {
+        const list2 = cachedExtensionCardsIndex.get(numQid);
+        if (list2) list2.forEach(c => matchedSet.add(c));
+    }
+
+    const listRaw = cachedExtensionCardsIndex.get(rawQid);
+    if (listRaw) listRaw.forEach(c => matchedSet.add(c));
+
+    // 2. Se vazio no índice, faz varredura linear de fallback
+    if (matchedSet.size === 0 && cachedExtensionCardsCatalog.length > 0) {
+        for (const c of cachedExtensionCardsCatalog) {
+            const dn = (c.deckName || '').toLowerCase();
+            const qStr = (c.questionId || '').toString();
+            const tags = (c.tags || []).join(' ');
+            if (
+                dn.includes(cleanQid.toLowerCase()) ||
+                dn.includes(numQid.toLowerCase()) ||
+                qStr.includes(cleanQid) ||
+                tags.includes(cleanQid) ||
+                tags.includes(numQid)
+            ) {
+                matchedSet.add(c);
+            }
+        }
+    }
+
+    let matching = Array.from(matchedSet);
+
+    // 3. Se ainda vazio, consulta o background service worker / backend
+    if (matching.length === 0 && typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
         try {
-            const res = await fetch(`/api/qbank-matching-cards?qid=${encodeURIComponent(cleanQid)}`);
-            if (res.ok) {
-                const data = await res.json();
-                if (data && Array.isArray(data.cards) && data.cards.length > 0) {
-                    matching = data.cards;
-                }
+            const resp = await new Promise(resolve => {
+                chrome.runtime.sendMessage({ type: 'FETCH_MATCHING_CARDS', qid: cleanQid }, resolve);
+            });
+            if (resp && Array.isArray(resp.cards) && resp.cards.length > 0) {
+                matching = resp.cards;
             }
         } catch (e) {}
     }
@@ -1402,7 +1519,7 @@ async function renderizarCardsSugeridosQuestao(overrideQid) {
             </div>
 
             <div style="font-size: 10px; color: #94a3b8; margin-bottom: 10px; line-height: 1.4;">
-                Estes flashcards possuem tags ou associação direta com a questão <b>#${cleanQid}</b> (AnKing / Banco).
+                Estes flashcards possuem tags, baralho ou associação direta com a questão <b>#${cleanQid}</b> (AnKing / Banco).
             </div>
 
             ${matching.length > 1 ? `
@@ -1536,7 +1653,15 @@ function executarAcaoCardDrawer(cardId, action, qid) {
         rebuildExtensionCardsIndex(cachedExtensionCardsCatalog);
     }
 
-    // 2. BroadcastChannel para a aba do CardBlocks
+    // 2. Notifica Background Service Worker da extensão
+    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime.sendMessage({
+            type: 'DISPATCH_CARD_ACTION',
+            payload: { cardId, action, qid }
+        }, () => {});
+    }
+
+    // 3. BroadcastChannel para abas no mesmo domínio
     try {
         const bc = new BroadcastChannel('usmle_flashcards_sync');
         bc.postMessage({
@@ -1546,12 +1671,10 @@ function executarAcaoCardDrawer(cardId, action, qid) {
         setTimeout(() => bc.close(), 1000);
     } catch (e) {}
 
-    // 3. Chamada para a API backend
-    fetch('/api/update-card-status', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cardId, action, qid })
-    }).catch(() => {});
+    // 4. Salva no chrome.storage.local
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.set({ cardblocks_qbank_cards: cachedExtensionCardsCatalog });
+    }
 }
 
 function executarGeracaoFlashcard() {

@@ -154,7 +154,7 @@ export const NotebookDashboard: React.FC<{ onNavigate?: (p: Page) => void }> = (
   const availableAreas = Array.from(new Set(historyQuestions.filter(q => (selectedSubjects.length === 0 || selectedSubjects.includes(q!.subject)) && (selectedSpecialties.length === 0 || selectedSpecialties.includes(q!.specialty||''))).map(q => q!.area).filter(Boolean)));
   const availableTopics = Array.from(new Set(historyQuestions.filter(q => selectedAreas.length === 0 || selectedAreas.includes(q!.area)).map(q => q!.topic).filter(Boolean)));
   const availableSubTopics = Array.from(new Set(historyQuestions.filter(q => selectedTopics.length === 0 || selectedTopics.includes(q!.topic||'')).map(q => q!.subTopic).filter(Boolean)));
-  const availableTags = Array.from(new Set(historyQuestions.flatMap(q => q!.tags).filter(Boolean)));
+  const availableTags = Array.from(new Set(historyQuestions.flatMap(q => q!.tags).filter(Boolean))).filter(t => !t.trim().startsWith('#'));
 
   return (
     <div className="space-y-6 pt-4 mb-10">

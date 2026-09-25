@@ -10,6 +10,17 @@ async function startServer() {
   const app = express();
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
+  // Enable CORS for Chrome Extension and cross-origin sync
+  app.use((_req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
+    if (_req.method === "OPTIONS") {
+      return res.sendStatus(200);
+    }
+    next();
+  });
+
   app.use(express.json({ limit: "50mb" }));
 
   // Health check
@@ -85,21 +96,74 @@ async function startServer() {
       if (!qid) {
         return res.json({ cards: [] });
       }
-      const cleanQid = qid.replace(/^qid[:\-_]*/i, '').trim();
+      const rawQid = qid;
+      const cleanQid = rawQid.replace(/^(?:qid|id|q|#)[:\-_]*/i, '').trim();
+      const numericQid = cleanQid.replace(/^0+/, '') || cleanQid;
+
       const matches = cardsCatalog.filter((c: any) => {
         if (!c) return false;
-        if (c.qids && Array.isArray(c.qids) && c.qids.includes(cleanQid)) return true;
-        if (c.questionId && c.questionId.toString().replace(/^qid[:\-_]*/i, '').trim() === cleanQid) return true;
+
+        // 1. Direct match in card.qids array
+        if (c.qids && Array.isArray(c.qids)) {
+          if (
+            c.qids.includes(cleanQid) ||
+            c.qids.includes(numericQid) ||
+            c.qids.includes(rawQid)
+          ) {
+            return true;
+          }
+        }
+
+        // 2. Direct questionId match
+        if (c.questionId) {
+          const cQid = c.questionId.toString().replace(/^(?:qid|id|q|#)[:\-_]*/i, '').trim();
+          if (cQid === cleanQid || cQid === numericQid) return true;
+        }
+
+        // 3. Deck Name match (hierarchical deck e.g. "AnKing::Step 1::#UWorld::17499")
+        if (c.deckName && typeof c.deckName === 'string') {
+          const dLower = c.deckName.toLowerCase();
+          if (
+            dLower.includes(cleanQid.toLowerCase()) ||
+            dLower.includes(numericQid.toLowerCase())
+          ) {
+            return true;
+          }
+        }
+
+        // 4. Tags match (AnKing hierarchical tags, platform tags, created tags)
         if (c.tags && Array.isArray(c.tags)) {
           return c.tags.some((t: string) => {
-            if (!t) return false;
-            if (t.includes('::')) {
-              const segs = t.split('::');
-              return segs[segs.length - 1] === cleanQid;
+            if (!t || typeof t !== 'string') return false;
+            const tClean = t.trim();
+            if (tClean.includes('::')) {
+              const segs = tClean.split('::').map(s => s.trim());
+              return segs.some(seg => {
+                const sClean = seg.replace(/^(?:qid|id|uworld|amboss|step|#)[:\-_]*/i, '').trim();
+                return sClean === cleanQid || sClean === numericQid || seg === cleanQid;
+              });
             }
-            return t === `qid:${cleanQid}` || t === cleanQid;
+            const directClean = tClean.replace(/^(?:qid|id|uworld|amboss|#)[:\-_]*/i, '').trim();
+            return (
+              directClean === cleanQid ||
+              directClean === numericQid ||
+              tClean === `qid:${cleanQid}` ||
+              tClean === cleanQid
+            );
           });
         }
+
+        // 5. Front or back text match if contains explicit QID pattern
+        const fullText = `${c.frontPreview || c.front || ''} ${c.backPreview || c.back || ''}`;
+        if (
+          fullText.includes(`ID: ${cleanQid}`) ||
+          fullText.includes(`ID:${cleanQid}`) ||
+          fullText.includes(`QID: ${cleanQid}`) ||
+          fullText.includes(`QID:${cleanQid}`)
+        ) {
+          return true;
+        }
+
         return false;
       });
       res.json({ cards: matches });

@@ -10,7 +10,7 @@ import contentJs from './content.js?raw';
 import backgroundJs from './background.js?raw';
 import readmeTxt from './README.txt?raw';
 
-export const EXTENSION_VERSION = "2.2";
+export const EXTENSION_VERSION = "2.3";
 export const EXTENSION_NAME = "Assistente de Questões por Voz + Pacer & QBank Sync";
 
 export { manifestJson, popupHtml, popupJs, contentJs, backgroundJs, readmeTxt };
