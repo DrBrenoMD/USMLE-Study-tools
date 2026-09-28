@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useDeferredValue } from 'react';
+import { Virtuoso } from 'react-virtuoso';
 import { useStore, Flashcard } from '../store/useStore';
 import { Page } from '../App';
 import {
@@ -95,17 +96,29 @@ export const BrowseView: React.FC<{ onNavigate: (p: Page) => void }> = ({ onNavi
   const [selectedFlag, setSelectedFlag] = useState<string>('all');
   const [filterState, setFilterState] = useState<'all' | 'new' | 'due' | 'suspended'>('all');
   const [search, setSearch] = useState('');
+  
+  // Use deferred value for silky-smooth non-blocking search filtering over tens of thousands of cards
+  const deferredSearch = useDeferredValue(search);
 
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
   const [isAddCardOpen, setIsAddCardOpen] = useState(false);
 
-  // Extrai tags gerais puras para o dropdown de tags (removendo tags com # do AnKing, IDs, subject e system para evitar poluição visual)
+  // Deck Lookup Map for O(1) deck name resolution
+  const deckMap = useMemo(() => {
+    const map = new Map<string, string>();
+    decks.forEach(d => map.set(d.id, d.name));
+    return map;
+  }, [decks]);
+
+  // Extrai tags gerais puras para o dropdown de tags (limita a top 250 mais frequentes para evitar sobrecarga do DOM no <select>)
   const allGeneralTags = useMemo(() => {
-    const set = new Set<string>();
-    cards.forEach(c => {
-      c.tags?.forEach(t => {
-        const clean = t.trim();
+    const freqMap = new Map<string, number>();
+    for (let i = 0; i < cards.length; i++) {
+      const c = cards[i];
+      if (!c.tags || c.tags.length === 0) continue;
+      for (let j = 0; j < c.tags.length; j++) {
+        const clean = c.tags[j].trim();
         if (
           clean &&
           !clean.startsWith('#') &&
@@ -114,19 +127,24 @@ export const BrowseView: React.FC<{ onNavigate: (p: Page) => void }> = ({ onNavi
           !isSubjectTag(clean) &&
           !isSystemTag(clean)
         ) {
-          set.add(clean);
+          freqMap.set(clean, (freqMap.get(clean) || 0) + 1);
         }
-      });
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
+      }
+    }
+    return Array.from(freqMap.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 250)
+      .map(([tag]) => tag)
+      .sort((a, b) => a.localeCompare(b));
   }, [cards]);
 
-  // Mapeamento hierárquico Subject -> Systems (as tags System são filhas das tags Subject)
+  // Mapeamento hierárquico Subject -> Systems
   const { subjectList, systemsBySubject, allSystemsList } = useMemo(() => {
     const subjectsMap = new Map<string, { label: string; systems: Map<string, string>; count: number }>();
     const allSysMap = new Map<string, { label: string; count: number }>();
 
-    cards.forEach(c => {
+    for (let i = 0; i < cards.length; i++) {
+      const c = cards[i];
       const sub = getCardSubject(c);
       const sys = getCardSystem(c);
 
@@ -150,7 +168,7 @@ export const BrowseView: React.FC<{ onNavigate: (p: Page) => void }> = ({ onNavi
           subData.systems.set(sys.key, sys.label);
         }
       }
-    });
+    }
 
     const subjectList = Array.from(subjectsMap.entries()).map(([key, data]) => ({
       key,
@@ -176,7 +194,7 @@ export const BrowseView: React.FC<{ onNavigate: (p: Page) => void }> = ({ onNavi
     return { subjectList, systemsBySubject, allSystemsList };
   }, [cards]);
 
-  // Gerencia a mudança de Subject resetando ou preservando o System de acordo com a hierarquia
+  // Gerencia a mudança de Subject resetando ou preservando o System
   const handleSubjectChange = (newSubjectKey: string) => {
     setSelectedSubject(newSubjectKey);
     if (newSubjectKey === 'all') {
@@ -190,7 +208,7 @@ export const BrowseView: React.FC<{ onNavigate: (p: Page) => void }> = ({ onNavi
     }
   };
 
-  // Systems disponíveis para o Subject atualmente selecionado (Hierarquia Subject -> System)
+  // Systems disponíveis para o Subject atualmente selecionado
   const availableSystems = useMemo(() => {
     if (selectedSubject === 'all') {
       return allSystemsList;
@@ -202,14 +220,18 @@ export const BrowseView: React.FC<{ onNavigate: (p: Page) => void }> = ({ onNavi
     return subjectList.find(s => s.key === selectedSubject);
   }, [subjectList, selectedSubject]);
 
-  // Filter cards
+  // Fast Filter cards
   const filteredCards = useMemo(() => {
+    const now = Date.now();
+    const query = deferredSearch.toLowerCase().trim();
+    const cleanQueryId = query ? query.replace(/^#|^qid:|^qid-|^id:|^id-/i, '').trim() : '';
+
     return cards.filter(c => {
       if (selectedDeckId !== 'all' && c.deckId !== selectedDeckId) return false;
       if (selectedFlag !== 'all' && c.flag !== selectedFlag) return false;
 
       if (filterState === 'new' && c.repetition > 0) return false;
-      if (filterState === 'due' && (c.repetition === 0 || c.nextReviewDate > Date.now())) return false;
+      if (filterState === 'due' && (c.repetition === 0 || c.nextReviewDate > now)) return false;
       if (filterState === 'suspended' && !c.isSuspended) return false;
 
       // Filtro por Subject
@@ -218,57 +240,38 @@ export const BrowseView: React.FC<{ onNavigate: (p: Page) => void }> = ({ onNavi
         if (!sub || sub.key !== selectedSubject) return false;
       }
 
-      // Filtro por System (filho de Subject)
+      // Filtro por System
       if (selectedSystem !== 'all') {
         const sys = getCardSystem(c);
         if (!sys || sys.key !== selectedSystem) return false;
       }
 
-      // Filtro por Tags Gerais (sem tags de ID, subject ou system)
+      // Filtro por Tags Gerais
       if (selectedTag !== 'all' && !c.tags?.includes(selectedTag)) return false;
 
-      // Barra de Pesquisa (IDs, Decks, Tags e Campos podem ser pesquisados diretamente aqui!)
-      if (search.trim()) {
-        const query = search.toLowerCase().trim();
-        const cleanQueryId = query.replace(/^#|^qid:|^qid-|^id:|^id-/i, '').trim();
-
-        const deckObj = decks.find(d => d.id === c.deckId);
-        const deckNameText = (deckObj?.name || '').toLowerCase();
-        const fText = (c.front || '').toLowerCase();
-        const bText = (c.back || '').toLowerCase();
-        const tText = (c.tags || []).join(' ').toLowerCase();
-        const sText = (c.subject || c.subjective || '').toLowerCase();
-        const sysText = (c.system || '').toLowerCase();
-        const qidText = (c.questionId || '').toLowerCase();
-        const stemText = (c.questionStem || '').toLowerCase();
-        const choicesText = (c.questionChoices || '').toLowerCase();
-        const expText = (c.explanation || '').toLowerCase();
-        const objText = (c.educationalObjective || '').toLowerCase();
-        const fieldsText = (c.fields || []).map(f => `${f.name} ${f.value}`).join(' ').toLowerCase();
-
-        const matches =
-          deckNameText.includes(query) ||
-          fText.includes(query) ||
-          bText.includes(query) ||
-          tText.includes(query) ||
-          sText.includes(query) ||
-          sysText.includes(query) ||
-          qidText.includes(query) ||
-          (cleanQueryId && qidText.includes(cleanQueryId)) ||
-          stemText.includes(query) ||
-          choicesText.includes(query) ||
-          expText.includes(query) ||
-          objText.includes(query) ||
-          fieldsText.includes(query);
-
-        if (!matches) {
-          return false;
+      // Pesquisa rápida e otimizada
+      if (query) {
+        const deckName = deckMap.get(c.deckId) || '';
+        if (deckName && deckName.toLowerCase().includes(query)) return true;
+        if (c.questionId) {
+          const qidLower = c.questionId.toLowerCase();
+          if (qidLower.includes(query) || (cleanQueryId && qidLower.includes(cleanQueryId))) return true;
         }
+        if (c.front && c.front.toLowerCase().includes(query)) return true;
+        if (c.back && c.back.toLowerCase().includes(query)) return true;
+        if (c.tags && c.tags.some(t => t.toLowerCase().includes(query))) return true;
+        if (c.subject && c.subject.toLowerCase().includes(query)) return true;
+        if (c.system && c.system.toLowerCase().includes(query)) return true;
+        if (c.questionStem && c.questionStem.toLowerCase().includes(query)) return true;
+        if (c.educationalObjective && c.educationalObjective.toLowerCase().includes(query)) return true;
+        if (c.explanation && c.explanation.toLowerCase().includes(query)) return true;
+        if (c.fields && c.fields.some(f => (f.name && f.name.toLowerCase().includes(query)) || (f.value && f.value.toLowerCase().includes(query)))) return true;
+        return false;
       }
 
       return true;
     });
-  }, [cards, selectedDeckId, selectedSubject, selectedSystem, selectedTag, selectedFlag, filterState, search]);
+  }, [cards, selectedDeckId, selectedSubject, selectedSystem, selectedTag, selectedFlag, filterState, deferredSearch, deckMap]);
 
   const hasActiveFilters = selectedDeckId !== 'all' || selectedSubject !== 'all' || selectedSystem !== 'all' || selectedTag !== 'all' || selectedFlag !== 'all' || filterState !== 'all' || search.trim() !== '';
 
@@ -282,7 +285,14 @@ export const BrowseView: React.FC<{ onNavigate: (p: Page) => void }> = ({ onNavi
     setSearch('');
   };
 
-  const activeCard = cards.find(c => c.id === activeCardId) || filteredCards[0] || null;
+  // Memoized active card
+  const activeCard = useMemo(() => {
+    if (activeCardId) {
+      const found = cards.find(c => c.id === activeCardId);
+      if (found) return found;
+    }
+    return filteredCards[0] || null;
+  }, [activeCardId, cards, filteredCards]);
 
   const toggleSelectCard = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -338,7 +348,7 @@ export const BrowseView: React.FC<{ onNavigate: (p: Page) => void }> = ({ onNavi
               <Search className="w-5 h-5 text-blue-600 dark:text-blue-400" />
               Navegador de Cartões (Browse)
             </h2>
-            <p className="text-xs text-gray-500">{filteredCards.length} de {cards.length} cartões encontrados</p>
+            <p className="text-xs text-gray-500">{filteredCards.length.toLocaleString('pt-BR')} de {cards.length.toLocaleString('pt-BR')} cartões encontrados</p>
           </div>
         </div>
 
@@ -399,7 +409,7 @@ export const BrowseView: React.FC<{ onNavigate: (p: Page) => void }> = ({ onNavi
           className="px-3 py-1.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-xs text-gray-800 dark:text-gray-200 font-semibold"
           title="Filtrar por Baralho"
         >
-          <option value="all">Todos os Baralhos</option>
+          <option value="all">Todos os Baralhos ({decks.length})</option>
           {decks.map(d => (
             <option key={d.id} value={d.id}>{d.name}</option>
           ))}
@@ -429,7 +439,7 @@ export const BrowseView: React.FC<{ onNavigate: (p: Page) => void }> = ({ onNavi
           </div>
         )}
 
-        {/* Filtro Dedicado de System (Filho de Subject) */}
+        {/* Filtro Dedicado de System */}
         {(allSystemsList.length > 0 || availableSystems.length > 0) && (
           <div className="relative">
             <select
@@ -461,7 +471,7 @@ export const BrowseView: React.FC<{ onNavigate: (p: Page) => void }> = ({ onNavi
           </div>
         )}
 
-        {/* Filtro de Tags Gerais (IDs, Subject e System foram removidos para despoluir) */}
+        {/* Filtro de Tags Gerais (Top frequentes para máxima velocidade) */}
         {allGeneralTags.length > 0 && (
           <select
             value={selectedTag}
@@ -497,7 +507,7 @@ export const BrowseView: React.FC<{ onNavigate: (p: Page) => void }> = ({ onNavi
         {hasActiveFilters && (
           <button
             onClick={handleResetFilters}
-            className="px-2.5 py-1.5 text-xs text-gray-500 hover:text-red-600 dark:hover:text-red-400 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 rounded-xl font-medium flex items-center gap-1 transition-colors"
+            className="px-2.5 py-1.5 text-xs text-gray-500 hover:text-red-600 dark:hover:text-red-400 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 rounded-xl font-medium flex items-center gap-1 transition-colors cursor-pointer"
             title="Limpar todos os filtros"
           >
             <RotateCcw className="w-3 h-3" />
@@ -507,9 +517,9 @@ export const BrowseView: React.FC<{ onNavigate: (p: Page) => void }> = ({ onNavi
       </div>
 
       {/* Main Split Layout: Cards List (Left) + Detail Editor (Right) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 min-h-[500px]">
-        {/* Table / List View */}
-        <div className="lg:col-span-7 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-xs overflow-hidden flex flex-col">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 min-h-[600px]">
+        {/* Table / List View Virtualized with Virtuoso */}
+        <div className="lg:col-span-7 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-xs overflow-hidden flex flex-col h-[700px]">
           <div className="p-3 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between text-xs font-semibold text-gray-500 bg-gray-50/50 dark:bg-gray-800/30">
             <div className="flex items-center gap-2">
               <button
@@ -524,109 +534,115 @@ export const BrowseView: React.FC<{ onNavigate: (p: Page) => void }> = ({ onNavi
                   <Square className="w-4 h-4" />
                 )}
               </button>
-              <span>Frente / Enunciado</span>
+              <span>Frente / Enunciado ({filteredCards.length.toLocaleString('pt-BR')})</span>
             </div>
             <span>Status / Baralho</span>
           </div>
 
-          <div className="divide-y divide-gray-100 dark:divide-gray-800 overflow-y-auto max-h-[600px] flex-1">
-            {filteredCards.map((card) => {
-              const isSelected = selectedCardIds.includes(card.id);
-              const isActive = (activeCard?.id === card.id);
-              const deckName = decks.find(d => d.id === card.deckId)?.name || 'Geral';
-              const cardSub = getCardSubject(card);
-              const cardSys = getCardSystem(card);
-              const cardGeneralTags = (card.tags || []).filter(t => !isIdTag(t) && !isSubjectTag(t) && !isSystemTag(t));
+          <div className="flex-1 w-full relative">
+            {filteredCards.length === 0 ? (
+              <div className="p-12 text-center text-gray-400 text-xs flex flex-col items-center justify-center h-full">
+                <Search className="w-8 h-8 text-gray-300 dark:text-gray-700 mb-2" />
+                <span>Nenhum cartão encontrado com os filtros selecionados.</span>
+              </div>
+            ) : (
+              <Virtuoso
+                style={{ height: '100%', width: '100%' }}
+                totalCount={filteredCards.length}
+                data={filteredCards}
+                itemContent={(index, card) => {
+                  const isSelected = selectedCardIds.includes(card.id);
+                  const isActive = activeCard?.id === card.id;
+                  const deckName = deckMap.get(card.deckId) || 'Geral';
+                  const cardSub = getCardSubject(card);
+                  const cardSys = getCardSystem(card);
+                  const cardGeneralTags = (card.tags || []).filter(t => !isIdTag(t) && !isSubjectTag(t) && !isSystemTag(t));
 
-              return (
-                <div
-                  key={card.id}
-                  onClick={() => setActiveCardId(card.id)}
-                  className={cn(
-                    "p-3.5 flex items-start justify-between gap-3 cursor-pointer transition-colors text-xs",
-                    isActive
-                      ? "bg-blue-50/60 dark:bg-blue-950/40"
-                      : "hover:bg-gray-50/80 dark:hover:bg-gray-800/40"
-                  )}
-                >
-                  <div className="flex items-start gap-2.5 flex-1 min-w-0">
-                    <button
-                      type="button"
-                      onClick={(e) => toggleSelectCard(card.id, e)}
-                      className="mt-0.5 text-gray-400 hover:text-blue-600 transition-colors shrink-0"
-                    >
-                      {isSelected ? (
-                        <CheckSquare className="w-4 h-4 text-blue-600" />
-                      ) : (
-                        <Square className="w-4 h-4" />
+                  return (
+                    <div
+                      key={card.id}
+                      onClick={() => setActiveCardId(card.id)}
+                      className={cn(
+                        "p-3.5 flex items-start justify-between gap-3 cursor-pointer transition-colors text-xs border-b border-gray-100 dark:border-gray-800/60",
+                        isActive
+                          ? "bg-blue-50/80 dark:bg-blue-950/50 border-l-4 border-l-blue-600"
+                          : "hover:bg-gray-50/80 dark:hover:bg-gray-800/40"
                       )}
-                    </button>
-                    <div className="flex-1 min-w-0">
-                      <div
-                        className="font-medium text-gray-900 dark:text-gray-100 line-clamp-2"
-                        dangerouslySetInnerHTML={{ __html: sanitizeHtml(renderCardText(card.front, false)) }}
-                      />
-                      <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                        {extractCardQids(card, deckName).map(qid => (
-                          <span
-                            key={qid}
-                            className="text-[10px] bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 font-bold px-1.5 py-0.5 rounded-md border border-blue-200 dark:border-blue-900/40"
-                          >
-                            QID: {qid}
+                    >
+                      <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                        <button
+                          type="button"
+                          onClick={(e) => toggleSelectCard(card.id, e)}
+                          className="mt-0.5 text-gray-400 hover:text-blue-600 transition-colors shrink-0"
+                        >
+                          {isSelected ? (
+                            <CheckSquare className="w-4 h-4 text-blue-600" />
+                          ) : (
+                            <Square className="w-4 h-4" />
+                          )}
+                        </button>
+                        <div className="flex-1 min-w-0">
+                          <div
+                            className="font-medium text-gray-900 dark:text-gray-100 line-clamp-2 leading-relaxed"
+                            dangerouslySetInnerHTML={{ __html: sanitizeHtml(renderCardText(card.front, false)) }}
+                          />
+                          <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                            {extractCardQids(card, deckName).map(qid => (
+                              <span
+                                key={qid}
+                                className="text-[10px] bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 font-bold px-1.5 py-0.5 rounded-md border border-blue-200 dark:border-blue-900/40"
+                              >
+                                QID: {qid}
+                              </span>
+                            ))}
+                            {cardSub && (
+                              <span className="text-[10px] bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-300 font-semibold px-1.5 py-0.5 rounded-md border border-purple-200 dark:border-purple-900/40">
+                                📚 {cardSub.label}
+                              </span>
+                            )}
+                            {cardSys && (
+                              <span className="text-[10px] bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-300 font-semibold px-1.5 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-900/40">
+                                🩺 {cardSys.label}
+                              </span>
+                            )}
+                            {cardGeneralTags.slice(0, 2).map(tag => (
+                              <span
+                                key={tag}
+                                className="text-[10px] bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 px-1.5 py-0.5 rounded-md"
+                              >
+                                #{tag}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-right shrink-0 flex flex-col items-end gap-1 pl-2">
+                        <span className="text-[11px] text-gray-500 font-medium max-w-[110px] truncate">{deckName}</span>
+                        {card.isSuspended ? (
+                          <span className="text-[10px] bg-amber-50 dark:bg-amber-950/50 text-amber-600 px-1.5 py-0.5 rounded-md font-semibold">
+                            Suspenso
                           </span>
-                        ))}
-                        {cardSub && (
-                          <span className="text-[10px] bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-300 font-semibold px-1.5 py-0.5 rounded-md border border-purple-200 dark:border-purple-900/40">
-                            📚 {cardSub.label}
+                        ) : card.repetition === 0 ? (
+                          <span className="text-[10px] bg-blue-50 dark:bg-blue-950/50 text-blue-600 px-1.5 py-0.5 rounded-md font-semibold">
+                            Novo
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-gray-400">
+                            {card.nextReviewDate <= Date.now() ? 'Pendente' : format(card.nextReviewDate, 'dd/MM')}
                           </span>
                         )}
-                        {cardSys && (
-                          <span className="text-[10px] bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-300 font-semibold px-1.5 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-900/40">
-                            🩺 {cardSys.label}
-                          </span>
-                        )}
-                        {cardGeneralTags.slice(0, 3).map(tag => (
-                          <span
-                            key={tag}
-                            className="text-[10px] bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 px-1.5 py-0.5 rounded-md"
-                          >
-                            #{tag}
-                          </span>
-                        ))}
                       </div>
                     </div>
-                  </div>
-
-                  <div className="text-right shrink-0 flex flex-col items-end gap-1">
-                    <span className="text-[11px] text-gray-500 font-medium">{deckName}</span>
-                    {card.isSuspended ? (
-                      <span className="text-[10px] bg-amber-50 dark:bg-amber-950/50 text-amber-600 px-1.5 py-0.5 rounded-md font-semibold">
-                        Suspenso
-                      </span>
-                    ) : card.repetition === 0 ? (
-                      <span className="text-[10px] bg-blue-50 dark:bg-blue-950/50 text-blue-600 px-1.5 py-0.5 rounded-md font-semibold">
-                        Novo
-                      </span>
-                    ) : (
-                      <span className="text-[10px] text-gray-400">
-                        {card.nextReviewDate <= Date.now() ? 'Pendente' : format(card.nextReviewDate, 'dd/MM')}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-
-            {filteredCards.length === 0 && (
-              <div className="p-12 text-center text-gray-400 text-xs">
-                Nenhum cartão encontrado com os filtros selecionados.
-              </div>
+                  );
+                }}
+              />
             )}
           </div>
         </div>
 
         {/* Right Editor Preview Panel */}
-        <div className="lg:col-span-5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5 shadow-xs flex flex-col">
+        <div className="lg:col-span-5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5 shadow-xs flex flex-col h-[700px] overflow-y-auto">
           {activeCard ? (
             <div className="flex-1 flex flex-col space-y-4">
               <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-2">
@@ -640,7 +656,7 @@ export const BrowseView: React.FC<{ onNavigate: (p: Page) => void }> = ({ onNavi
                       setActiveCardId(null);
                     }
                   }}
-                  className="p-1 text-gray-400 hover:text-red-600 rounded-lg transition-colors"
+                  className="p-1 text-gray-400 hover:text-red-600 rounded-lg transition-colors cursor-pointer"
                   title="Excluir cartão"
                 >
                   <Trash2 className="w-4 h-4" />

@@ -1,4 +1,4 @@
-import { useState, FormEvent, useRef, ChangeEvent, MouseEvent } from 'react';
+import { useState, useMemo, FormEvent, useRef, ChangeEvent, MouseEvent } from 'react';
 import { useStore, Deck, Flashcard } from '../store/useStore';
 import { Page } from '../App';
 import {
@@ -257,27 +257,69 @@ export function Home({ onNavigate }: HomeProps) {
     setDeckToDelete(null);
   };
 
-  const getDueCardsCount = (deckId: string) => {
+  const deckStatsMap = useMemo(() => {
     const now = Date.now();
-    const getSubdecks = (id: string): string[] => {
-      const children = decks.filter(d => d.parentId === id).map(d => d.id);
-      let all = [...children];
-      children.forEach(child => all = [...all, ...getSubdecks(child)]);
-      return all;
+    const directCounts = new Map<string, { total: number; due: number; newCount: number }>();
+    for (let i = 0; i < decks.length; i++) {
+      directCounts.set(decks[i].id, { total: 0, due: 0, newCount: 0 });
+    }
+
+    for (let i = 0; i < cards.length; i++) {
+      const c = cards[i];
+      const entry = directCounts.get(c.deckId);
+      if (entry) {
+        entry.total++;
+        if (!c.isSuspended && !c.isBuried && c.nextReviewDate <= now) {
+          entry.due++;
+        }
+        if (c.repetition === 0) {
+          entry.newCount++;
+        }
+      }
+    }
+
+    const childrenMap = new Map<string, string[]>();
+    for (let i = 0; i < decks.length; i++) {
+      const d = decks[i];
+      if (d.parentId) {
+        const arr = childrenMap.get(d.parentId) || [];
+        arr.push(d.id);
+        childrenMap.set(d.parentId, arr);
+      }
+    }
+
+    const aggregated = new Map<string, { total: number; due: number; newCount: number }>();
+    const getAggregated = (id: string): { total: number; due: number; newCount: number } => {
+      if (aggregated.has(id)) return aggregated.get(id)!;
+      const direct = directCounts.get(id) || { total: 0, due: 0, newCount: 0 };
+      let total = direct.total;
+      let due = direct.due;
+      let newCount = direct.newCount;
+      const kids = childrenMap.get(id) || [];
+      for (let j = 0; j < kids.length; j++) {
+        const sub = getAggregated(kids[j]);
+        total += sub.total;
+        due += sub.due;
+        newCount += sub.newCount;
+      }
+      const res = { total, due, newCount };
+      aggregated.set(id, res);
+      return res;
     };
-    const allIds = [deckId, ...getSubdecks(deckId)];
-    return cards.filter(c => allIds.includes(c.deckId) && c.nextReviewDate <= now && !c.isSuspended && !c.isBuried).length;
+
+    for (let i = 0; i < decks.length; i++) {
+      getAggregated(decks[i].id);
+    }
+
+    return aggregated;
+  }, [decks, cards]);
+
+  const getDueCardsCount = (deckId: string) => {
+    return deckStatsMap.get(deckId)?.due || 0;
   };
 
   const getTotalCount = (deckId: string) => {
-    const getSubdecks = (id: string): string[] => {
-      const children = decks.filter(d => d.parentId === id).map(d => d.id);
-      let all = [...children];
-      children.forEach(child => all = [...all, ...getSubdecks(child)]);
-      return all;
-    };
-    const allIds = [deckId, ...getSubdecks(deckId)];
-    return cards.filter(c => allIds.includes(c.deckId)).length;
+    return deckStatsMap.get(deckId)?.total || 0;
   };
 
   const toggleExpand = (id: string) => {
