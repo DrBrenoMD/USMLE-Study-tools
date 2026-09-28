@@ -23,9 +23,29 @@ export const cloudSyncService = {
   gatherLocalData() {
     // 1. Flashcards, Cadernos, Questões e Configurações (CardBlocks)
     const cardStore = useStore.getState();
+    const allDecks = cardStore.decks || [];
+    const allCards = cardStore.cards || [];
+
+    // Helper to determine if a deck (or any of its parents) is marked as offline-only
+    const isDeckOffline = (deck: any): boolean => {
+      if (!deck) return false;
+      if (deck.isOffline) return true;
+      if (deck.parentId) {
+        const parent = allDecks.find(d => d.id === deck.parentId);
+        if (parent) return isDeckOffline(parent);
+      }
+      return false;
+    };
+
+    const offlineDeckIds = new Set(allDecks.filter(d => isDeckOffline(d)).map(d => d.id));
+
+    // Exclude offline-only decks and their cards from cloud backup payload to avoid bloating Firestore
+    const onlineDecks = allDecks.filter(d => !offlineDeckIds.has(d.id));
+    const onlineCards = allCards.filter(c => !offlineDeckIds.has(c.deckId));
+
     const cardblocksData = {
-      decks: cardStore.decks || [],
-      cards: cardStore.cards || [],
+      decks: onlineDecks,
+      cards: onlineCards,
       reviewHistory: cardStore.reviewHistory || [],
       reviewLog: cardStore.reviewLog || [],
       questions: cardStore.questions || [],

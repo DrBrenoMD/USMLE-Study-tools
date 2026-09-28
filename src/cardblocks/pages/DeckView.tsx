@@ -21,7 +21,8 @@ import {
   AlertTriangle,
   Play,
   RotateCcw,
-  Image as ImageIcon
+  Image as ImageIcon,
+  CloudOff
 } from 'lucide-react';
 import { sanitizeHtml, renderCardText, cn } from '../lib/utils';
 import { RichEditor } from '../components/RichEditor';
@@ -46,6 +47,7 @@ export function DeckView({ deckId, onNavigate }: DeckViewProps) {
     exportDeckSet,
     importDeckSet,
     updateDeckSettings,
+    toggleDeckOffline,
     settings: globalSettings
   } = useStore();
 
@@ -295,9 +297,17 @@ export function DeckView({ deckId, onNavigate }: DeckViewProps) {
 
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5 sm:p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-gray-900 dark:text-gray-100">
-              {deck.name}
-            </h1>
+            <div className="flex items-center gap-2.5">
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-gray-900 dark:text-gray-100">
+                {deck.name}
+              </h1>
+              {deck.isOffline && (
+                <span className="px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800 text-xs font-bold flex items-center gap-1">
+                  <CloudOff className="w-3.5 h-3.5" />
+                  Apenas Offline
+                </span>
+              )}
+            </div>
             <div className="flex flex-wrap items-center gap-2 mt-2 text-xs">
               <span className="px-2.5 py-1 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 font-semibold">
                 Total: {deckCards.length} cartões
@@ -487,6 +497,30 @@ export function DeckView({ deckId, onNavigate }: DeckViewProps) {
                 onChange={(e) => handleUpdateDeckSettings('easyMultiplier', Number(e.target.value))}
                 className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
+            </div>
+
+            <div className="col-span-full p-3.5 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-xl flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <CloudOff className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
+                <div>
+                  <div className="text-xs font-bold text-gray-900 dark:text-white">Modo Apenas Offline</div>
+                  <div className="text-[11px] text-gray-500 dark:text-gray-400">Mantém este baralho armazenado localmente no IndexedDB sem enviar para o backup da nuvem.</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  toggleDeckOffline(deck.id);
+                  showToast(deck.isOffline ? 'Baralho agora será sincronizado na nuvem.' : 'Baralho configurado como apenas offline.');
+                }}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  deck.isOffline
+                    ? 'bg-amber-600 text-white hover:bg-amber-500 shadow-xs'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300'
+                }`}
+              >
+                {deck.isOffline ? '✓ Apenas Offline' : 'Sincronizar na Nuvem'}
+              </button>
             </div>
           </div>
 

@@ -151,6 +151,9 @@ function detectarDadosQuestaoQBank() {
 }
 
 function notificarPacer(isNext, isSubmit, isPrev, explicitQIndex = null) {
+    // Só notifica o Pacer se a página atual for comprovadamente uma sessão de resolução do Q-Bank
+    if (!isPaginaResolucaoQBank()) return;
+
     const now = Date.now();
     if (now - pacerLastTrigger > 300) {
         pacerLastTrigger = now;
@@ -170,7 +173,10 @@ function notificarPacer(isNext, isSubmit, isPrev, explicitQIndex = null) {
             totalQuestions: qData.totalQuestions,
             phase: phase,
             qId: qData.qId,
-            ts: now
+            ts: now,
+            isQBankSession: true,
+            sourceOrigin: window.location.origin,
+            sourceHref: window.location.href
         };
 
         // 1. Canal direto via janela aberta
@@ -197,6 +203,7 @@ function notificarPacer(isNext, isSubmit, isPrev, explicitQIndex = null) {
 }
 
 function atualizarPacerEmbutido(isNext, isSubmit, isPrev) {
+    if (!isPaginaResolucaoQBank()) return;
     if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) return;
     chrome.storage.local.get(['pacer_state'], function(res) {
         let pState = res.pacer_state;
@@ -414,15 +421,36 @@ let flashcardWindowRef = null;
 let currentQNumberExt = 1;
 let lastImportedQId = null;
 
+// Verifica se a página atual é o próprio aplicativo USMLE Study Tools / CardBlocks
+function isPaginaApplet() {
+    try {
+        const host = (window.location.host || '').toLowerCase();
+        const path = (window.location.pathname || '').toLowerCase();
+        const title = (document.title || '').toLowerCase();
+        if (host.includes('localhost') || host.includes('run.app') || host.includes('webcontainer') || host.includes('127.0.0.1')) {
+            if (path.includes('/flashcards') || path.includes('/pacer') || path.includes('/tracker') || path.includes('/calculator') || path.includes('/predictor') || path.includes('/questions') || path.includes('/extensao') || path === '/' || title.includes('usmle') || title.includes('cardblocks')) {
+                return true;
+            }
+        }
+        if (document.getElementById('root') && (title.includes('usmle') || title.includes('cardblocks') || document.querySelector('header, nav, [class*="brand"]'))) {
+            return true;
+        }
+    } catch (e) {}
+    return false;
+}
+
 // Verifica estritamente se a página atual é uma página de resolução de questões do Q-Bank
 function isPaginaResolucaoQBank() {
+    // Nunca executa na página do próprio aplicativo para não interferir nas abas internas
+    if (isPaginaApplet()) return false;
+
     // 1. Containers típicos de enunciado / stem de caso clínico
     const hasStemEl = Boolean(
-        document.querySelector('[id*="question-id"], [class*="question-id"], [data-question-id], .question-stem, .q-stem, .stem, [class*="questionBody"], [class*="question-content"], .max-w-5xl, div[class*="case-study"], [id*="qStem"]')
+        document.querySelector('[id*="question-id"], [class*="question-id"], [data-question-id], .question-stem, .q-stem, [class*="questionBody"], [class*="question-content"], div[class*="case-study"], [id*="qStem"]')
     );
     // 2. Alternativas / opções de múltipla escolha
     const hasChoicesEl = Boolean(
-        document.querySelector('.choices-container, .answer-choices, table.choices, .choice-row, input[type="radio"][name*="question"], input[type="radio"][name*="choice"], tr.cursor-pointer, .option-text, [class*="alternative"]')
+        document.querySelector('.choices-container, .answer-choices, table.choices, .choice-row, input[type="radio"][name*="question"], input[type="radio"][name*="choice"], tr.cursor-pointer:has(input), .option-text')
     );
     // 3. Botões de navegação e resolução
     const hasNavButtons = Boolean(
@@ -2705,7 +2733,15 @@ function acionarBotao(acao) {
 
 // --- Cliques Manuais na Tela ---
 document.addEventListener('click', (e) => {
-    // 1. Notifica o Pacer quando botões são clicados manualmente na tela
+    // Só processa cliques de navegação do Pacer se a página atual for um Q-Bank ativo
+    if (!isPaginaResolucaoQBank()) return;
+
+    // Ignora cliques que ocorreram dentro da interface flutuante da própria extensão
+    if (e.target.closest('#qbankly-card-drawer, #qbankly-card-launcher, #qbankly-tts-bar, #qbankly-tts-launcher, #drawer-feedback')) {
+        return;
+    }
+
+    // 1. Notifica o Pacer quando botões de resolução/navegação são clicados manualmente na tela
     const btn = e.target.closest("button, a, [role='button'], .submit-btn, input[type='submit'], input[type='button']");
     if (btn) {
         const title = (btn.getAttribute("title") || "").toLowerCase();

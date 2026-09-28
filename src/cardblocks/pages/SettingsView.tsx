@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useStore } from '../store/useStore';
 import { Page } from '../App';
-import { ArrowLeft, Save, Download, Upload, RotateCcw, AlertTriangle, Settings as SettingsIcon } from 'lucide-react';
+import { ArrowLeft, Save, Download, Upload, RotateCcw, AlertTriangle, Settings as SettingsIcon, HardDrive, Folder } from 'lucide-react';
 import { useTranslation } from '../lib/i18n';
 import { formatShortcutEvent } from '../lib/utils';
+import { StorageManagerModal } from '../components/StorageManagerModal';
 
 interface SettingsViewProps {
   onNavigate: (page: Page) => void;
@@ -12,6 +13,7 @@ interface SettingsViewProps {
 export function SettingsView({ onNavigate }: SettingsViewProps) {
   const { settings, updateSettings, importProfile, resetSettings, resetAllData, decks, cards } = useStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showStorageModal, setShowStorageModal] = useState(false);
   const { t } = useTranslation();
   
   const [theme, setTheme] = useState(settings.theme || 'ocean');
@@ -240,6 +242,31 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
         </div>
       </div>
 
+      {/* Armazenamento & Pastas Offline */}
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 space-y-4 shadow-xs">
+        <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-800 pb-2">
+          <div>
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+              <HardDrive className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+              Armazenamento & Pastas Offline
+            </h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Gerencie decks gigantes (8GB+), arquivos offline e pastas personalizadas de mídia no seu computador.
+            </p>
+          </div>
+          <button
+            onClick={() => setShowStorageModal(true)}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-xl shadow-xs transition-colors flex items-center gap-1.5"
+          >
+            <Folder className="w-3.5 h-3.5" />
+            <span>Gerenciar Pastas & Cache</span>
+          </button>
+        </div>
+        <p className="text-xs text-gray-600 dark:text-gray-400">
+          Os cards são armazenados com segurança no <b>IndexedDB do navegador</b>. Você pode vincular diretamente a pasta <code className="font-mono text-xs bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded">collection.media</code> do Anki para leitura direta sem ocupar memória extra.
+        </p>
+      </div>
+
       {/* Backup & Data */}
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 space-y-6 shadow-xs">
         <h3 className="text-base font-semibold text-gray-900 dark:text-white border-b border-gray-200 dark:border-gray-800 pb-2">
@@ -279,6 +306,11 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
           </button>
         </div>
       </div>
+
+      <StorageManagerModal
+        isOpen={showStorageModal}
+        onClose={() => setShowStorageModal(false)}
+      />
     </div>
   );
 }

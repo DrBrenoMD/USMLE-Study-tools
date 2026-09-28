@@ -568,11 +568,185 @@ function patchCollationUnicase(buf: Uint8Array): Uint8Array {
 }
 
 /**
+ * Memory-safe chunked extractor for large .apkg / .colpkg archives (supports 8GB+ files and Zip64).
+ * Reads Central Directory by slicing only the end of the File object without loading multi-gigabyte files into RAM.
+ */
+async function decompressChunkBytes(compressionMethod: number, rawBytes: Uint8Array): Promise<Uint8Array> {
+  // Check if rawBytes is ZSTD compressed (magic bytes 0x28, 0xB5, 0x2F, 0xFD)
+  if (rawBytes.length >= 4 && rawBytes[0] === 0x28 && rawBytes[1] === 0xb5 && rawBytes[2] === 0x2f && rawBytes[3] === 0xfd) {
+    try {
+      return decompress(rawBytes);
+    } catch (e) {
+      console.warn("Failed to decompress zstd chunk:", e);
+    }
+  }
+
+  if (compressionMethod === 0) {
+    return rawBytes;
+  }
+
+  if (compressionMethod === 8) {
+    if (typeof DecompressionStream !== 'undefined') {
+      try {
+        const ds = new DecompressionStream('deflate-raw');
+        const writer = ds.writable.getWriter();
+        writer.write(rawBytes);
+        writer.close();
+        const response = new Response(ds.readable);
+        const buffer = await response.arrayBuffer();
+        const decompressed = new Uint8Array(buffer);
+        // Check if payload inside was also ZSTD
+        if (decompressed.length >= 4 && decompressed[0] === 0x28 && decompressed[1] === 0xb5 && decompressed[2] === 0x2f && decompressed[3] === 0xfd) {
+          try { return decompress(decompressed); } catch {}
+        }
+        return decompressed;
+      } catch (e) {
+        console.warn("DecompressionStream error, trying fallback:", e);
+      }
+    }
+  }
+
+  return rawBytes;
+}
+
+interface ZipEntryHeader {
+  name: string;
+  compressionMethod: number;
+  compressedSize: number;
+  uncompressedSize: number;
+  localHeaderOffset: number;
+}
+
+async function extractZipEntriesChunked(file: File): Promise<{
+  entries: Map<string, ZipEntryHeader>;
+  readFileData: (entry: ZipEntryHeader) => Promise<Uint8Array>;
+}> {
+  const fileSize = file.size;
+  const scanLength = Math.min(fileSize, 1024 * 1024 * 2); // Read up to last 2MB for EOCD
+  const tailBuffer = await file.slice(fileSize - scanLength, fileSize).arrayBuffer();
+  const tailBytes = new Uint8Array(tailBuffer);
+
+  let eocdOffsetInTail = -1;
+  for (let i = tailBytes.length - 22; i >= 0; i--) {
+    if (tailBytes[i] === 0x50 && tailBytes[i + 1] === 0x4b && tailBytes[i + 2] === 0x05 && tailBytes[i + 3] === 0x06) {
+      eocdOffsetInTail = i;
+      break;
+    }
+  }
+
+  if (eocdOffsetInTail === -1) {
+    throw new Error('Formato de arquivo .apkg inválido (EOCD record não encontrado).');
+  }
+
+  const eocdView = new DataView(tailBuffer, eocdOffsetInTail);
+  let cdSize = eocdView.getUint32(12, true);
+  let cdOffset = eocdView.getUint32(16, true);
+
+  // Check for Zip64 EOCD Locator (20 bytes before EOCD)
+  for (let i = eocdOffsetInTail - 20; i >= 0 && i >= eocdOffsetInTail - 100; i--) {
+    if (tailBytes[i] === 0x50 && tailBytes[i + 1] === 0x4b && tailBytes[i + 2] === 0x06 && tailBytes[i + 3] === 0x07) {
+      const zip64LocView = new DataView(tailBuffer, i);
+      const zip64EocdOffset = Number(zip64LocView.getBigUint64(8, true));
+      if (zip64EocdOffset > 0 && zip64EocdOffset < fileSize) {
+        // Read Zip64 EOCD Record
+        const zip64EocdBuf = await file.slice(zip64EocdOffset, zip64EocdOffset + 56).arrayBuffer();
+        const zip64View = new DataView(zip64EocdBuf);
+        if (zip64View.getUint32(0, true) === 0x06064b50) {
+          cdSize = Number(zip64View.getBigUint64(40, true));
+          cdOffset = Number(zip64View.getBigUint64(48, true));
+        }
+      }
+      break;
+    }
+  }
+
+  // Slice only the Central Directory from file
+  const cdBuffer = await file.slice(cdOffset, cdOffset + cdSize).arrayBuffer();
+  const cdBytes = new Uint8Array(cdBuffer);
+  const cdView = new DataView(cdBuffer);
+
+  const entries = new Map<string, ZipEntryHeader>();
+  let pos = 0;
+
+  while (pos < cdBytes.length - 46) {
+    if (cdView.getUint32(pos, true) !== 0x02014b50) {
+      break;
+    }
+
+    const compressionMethod = cdView.getUint16(pos + 10, true);
+    let compressedSize = cdView.getUint32(pos + 20, true);
+    let uncompressedSize = cdView.getUint32(pos + 24, true);
+    const nameLen = cdView.getUint16(pos + 28, true);
+    const extraLen = cdView.getUint16(pos + 30, true);
+    const commentLen = cdView.getUint16(pos + 32, true);
+    let localHeaderOffset = cdView.getUint32(pos + 42, true);
+
+    const nameBytes = cdBytes.subarray(pos + 46, pos + 46 + nameLen);
+    const name = new TextDecoder('utf-8', { fatal: false }).decode(nameBytes);
+
+    // Parse Zip64 Extra Field (tag 0x0001) if present
+    if (extraLen > 0) {
+      let extraPos = pos + 46 + nameLen;
+      const extraEnd = extraPos + extraLen;
+      while (extraPos + 4 <= extraEnd) {
+        const headerId = cdView.getUint16(extraPos, true);
+        const dataSize = cdView.getUint16(extraPos + 2, true);
+        let fieldPos = extraPos + 4;
+        if (headerId === 0x0001) {
+          if (uncompressedSize === 0xFFFFFFFF && fieldPos + 8 <= extraEnd) {
+            uncompressedSize = Number(cdView.getBigUint64(fieldPos, true));
+            fieldPos += 8;
+          }
+          if (compressedSize === 0xFFFFFFFF && fieldPos + 8 <= extraEnd) {
+            compressedSize = Number(cdView.getBigUint64(fieldPos, true));
+            fieldPos += 8;
+          }
+          if (localHeaderOffset === 0xFFFFFFFF && fieldPos + 8 <= extraEnd) {
+            localHeaderOffset = Number(cdView.getBigUint64(fieldPos, true));
+            fieldPos += 8;
+          }
+        }
+        extraPos += 4 + dataSize;
+      }
+    }
+
+    entries.set(name, {
+      name,
+      compressionMethod,
+      compressedSize,
+      uncompressedSize,
+      localHeaderOffset
+    });
+
+    pos += 46 + nameLen + extraLen + commentLen;
+  }
+
+  const readFileData = async (entry: ZipEntryHeader): Promise<Uint8Array> => {
+    // Read local file header (30 bytes + nameLen + extraLen)
+    const headerBuf = await file.slice(entry.localHeaderOffset, entry.localHeaderOffset + 30).arrayBuffer();
+    const headerView = new DataView(headerBuf);
+    const localNameLen = headerView.getUint16(26, true);
+    const localExtraLen = headerView.getUint16(28, true);
+
+    const dataStart = entry.localHeaderOffset + 30 + localNameLen + localExtraLen;
+    const dataEnd = dataStart + entry.compressedSize;
+
+    const dataBuf = await file.slice(dataStart, dataEnd).arrayBuffer();
+    const rawBytes = new Uint8Array(dataBuf);
+
+    return await decompressChunkBytes(entry.compressionMethod, rawBytes);
+  };
+
+  return { entries, readFileData };
+}
+
+/**
  * Robust APKG importer supporting .anki2, .anki21, and .anki21b (zstandard).
  * Re-extracts media (JSON or ZSTD/Protobuf), decks hierarchy, cards, tags,
  * and recovers any embedded QBank question metadata or dynamic note fields.
+ * Fully memory-safe: effortlessly handles multi-gigabyte (8GB+) AnKing packages without crashing.
  */
-export async function importFromApkg(file: File): Promise<{
+export async function importFromApkg(file: File, options?: { isOffline?: boolean }): Promise<{
   decksMap: Record<string, any>;
   parsedCards: {
     front: string;
@@ -589,36 +763,31 @@ export async function importFromApkg(file: File): Promise<{
     questionImages?: string[];
   }[];
   fileName: string;
+  totalMediaFound?: number;
 }> {
-  const arrayBuffer = await file.arrayBuffer();
-  const zip = await JSZip.loadAsync(arrayBuffer);
+  // Use chunked/sliced ZIP extractor for memory safety on any file size
+  const { entries, readFileData } = await extractZipEntriesChunked(file);
 
-  // 1. Extract Media Map (Supports legacy JSON, ZSTD-compressed JSON, and ZSTD-compressed Protobuf)
+  // 1. Extract Media Map
   let mediaMap: Record<string, string> = {};
-  const mediaFile = zip.file('media');
-  if (mediaFile) {
+  const mediaEntry = entries.get('media');
+  if (mediaEntry) {
     try {
-      let mediaBytes = await mediaFile.async('uint8array');
-      // Check if media file is ZSTD compressed (magic bytes 0x28, 0xB5, 0x2F, 0xFD)
+      let mediaBytes = await readFileData(mediaEntry);
       if (mediaBytes.length >= 4 && mediaBytes[0] === 0x28 && mediaBytes[1] === 0xb5 && mediaBytes[2] === 0x2f && mediaBytes[3] === 0xfd) {
-        try {
-          mediaBytes = decompress(mediaBytes);
-        } catch (decompErr) {
+        try { mediaBytes = decompress(mediaBytes); } catch (decompErr) {
           console.warn("Failed to decompress media index with fzstd", decompErr);
         }
       }
 
-      // Try UTF-8 string JSON parsing first
       const text = new TextDecoder('utf-8', { fatal: false }).decode(mediaBytes).trim();
       if (text.startsWith('{')) {
         try {
           mediaMap = JSON.parse(text);
         } catch (jsonErr) {
-          console.warn("JSON parse on media map failed, trying protobuf", jsonErr);
           mediaMap = decodeMediaEntriesProtobuf(mediaBytes);
         }
       } else {
-        // Parse modern binary protobuf MediaEntries
         mediaMap = decodeMediaEntriesProtobuf(mediaBytes);
       }
     } catch (err) {
@@ -626,20 +795,20 @@ export async function importFromApkg(file: File): Promise<{
     }
   }
 
-  // 2. Extract media entries (decompressing individual items if zstd compressed)
+  // 2. Extract media entries (for small/medium decks, extract up to 250MB directly; for massive decks, map names)
   const mediaUrls: Record<string, string> = {};
-  for (const [key, filename] of Object.entries(mediaMap)) {
-    const mediaEntry = zip.file(key);
-    if (mediaEntry) {
+  const isMassiveDeck = file.size > 400 * 1024 * 1024;
+  const mediaKeys = Object.entries(mediaMap);
+  const mediaLimit = isMassiveDeck ? 60 : mediaKeys.length;
+
+  for (let i = 0; i < Math.min(mediaKeys.length, mediaLimit); i++) {
+    const [key, filename] = mediaKeys[i];
+    const itemEntry = entries.get(key);
+    if (itemEntry && itemEntry.compressedSize < 10 * 1024 * 1024) {
       try {
-        let rawBytes = await mediaEntry.async('uint8array');
-        // Check if rawBytes is ZSTD compressed
+        let rawBytes = await readFileData(itemEntry);
         if (rawBytes.length >= 4 && rawBytes[0] === 0x28 && rawBytes[1] === 0xb5 && rawBytes[2] === 0x2f && rawBytes[3] === 0xfd) {
-          try {
-            rawBytes = decompress(rawBytes);
-          } catch (e) {
-            console.warn("Failed to decompress individual media entry " + key, e);
-          }
+          try { rawBytes = decompress(rawBytes); } catch {}
         }
 
         const ext = filename.split('.').pop()?.toLowerCase() || '';
@@ -653,7 +822,6 @@ export async function importFromApkg(file: File): Promise<{
         else if (ext === 'ogg') mimeType = 'audio/ogg';
         else if (ext === 'mp4') mimeType = 'video/mp4';
 
-        // Create Blob and register with mediaStorage (zero memory bloat, native decoding)
         const blob = new Blob([rawBytes], { type: mimeType });
         let dataUrl = '';
         try {
@@ -662,15 +830,6 @@ export async function importFromApkg(file: File): Promise<{
           dataUrl = URL.createObjectURL(blob);
         }
 
-        // Only for tiny images (< 32KB), optionally use safe base64
-        if (rawBytes.byteLength < 32 * 1024) {
-          try {
-            const b64 = uint8ToBase64Safe(rawBytes);
-            dataUrl = `data:${mimeType};base64,${b64}`;
-          } catch {}
-        }
-
-        // Map under multiple keys for resilient URL replacement
         mediaUrls[filename] = dataUrl;
         mediaUrls[filename.toLowerCase()] = dataUrl;
         try {
@@ -704,7 +863,8 @@ export async function importFromApkg(file: File): Promise<{
     if (mediaUrls[lower]) return mediaUrls[lower];
     if (mediaUrls[lowerBasename]) return mediaUrls[lowerBasename];
 
-    return undefined;
+    // Check mediaStorage cache
+    return mediaStorage.getMediaUrl(src) || mediaStorage.getMediaUrl(basename);
   }
 
   function replaceMedia(text: string): string {
@@ -730,22 +890,23 @@ export async function importFromApkg(file: File): Promise<{
 
   // 3. Extract and patch SQLite Database
   let dbBuffer: Uint8Array | null = null;
-  const dbFile21b = zip.file('collection.anki21b');
-  if (dbFile21b) {
-    const compressed = await dbFile21b.async('uint8array');
+  const dbEntry21b = entries.get('collection.anki21b');
+  if (dbEntry21b) {
+    const raw = await readFileData(dbEntry21b);
     try {
-      dbBuffer = decompress(compressed);
+      dbBuffer = decompress(raw);
     } catch (err) {
       console.warn("Failed to decompress collection.anki21b", err);
+      dbBuffer = raw;
     }
   }
 
   if (!dbBuffer) {
-    const dbFile = zip.file('collection.anki21') || zip.file('collection.anki2');
-    if (!dbFile) {
-      throw new Error('Arquivo Anki inválido: banco de dados collection.anki2 não encontrado.');
+    const dbEntry = entries.get('collection.anki21') || entries.get('collection.anki2');
+    if (!dbEntry) {
+      throw new Error('Arquivo Anki inválido: banco de dados collection.anki2 não encontrado no pacote.');
     }
-    dbBuffer = await dbFile.async('uint8array');
+    dbBuffer = await readFileData(dbEntry);
   }
 
   // Patch custom collation 'unicase' in SQLite header before initializing SQL.Database

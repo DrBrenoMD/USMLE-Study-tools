@@ -16,6 +16,7 @@ export interface Deck {
   order?: number;
   settings?: any;
   createdAt?: number;
+  isOffline?: boolean;
 }
 
 export interface FlashcardField {
@@ -213,11 +214,13 @@ export interface StoreState {
   settings: Settings;
 
   // Deck Actions
-  createDeck: (name: string, parentId?: string | null) => string;
+  createDeck: (name: string, parentId?: string | null, isOffline?: boolean) => string;
   updateDeck: (id: string, updates: Partial<Deck>) => void;
   deleteDeck: (id: string) => void;
   moveDeck: (deckId: string, targetParentId: string | null) => void;
   updateDeckSettings: (deckId: string, settings: any) => void;
+  toggleDeckOffline: (deckId: string) => void;
+  setDeckOffline: (deckId: string, isOffline: boolean) => void;
   exportDeckSet: (deckId: string) => string;
   importDeckSet: (json: string, targetParentId?: string) => void;
 
@@ -348,10 +351,10 @@ export const useStore = create<StoreState>()(
         notes: [],
         settings: DEFAULT_SETTINGS,
 
-        createDeck: (name, parentId = null) => {
+        createDeck: (name, parentId = null, isOffline = false) => {
           const id = 'deck-' + Math.random().toString(36).substring(2, 9);
           set(state => ({
-            decks: [...state.decks, { id, name, parentId, createdAt: Date.now(), settings: {} }]
+            decks: [...state.decks, { id, name, parentId, isOffline: Boolean(isOffline), createdAt: Date.now(), settings: {} }]
           }));
           return id;
         },
@@ -365,6 +368,18 @@ export const useStore = create<StoreState>()(
         updateDeckSettings: (deckId, settings) => {
           set(state => ({
             decks: state.decks.map(d => d.id === deckId ? { ...d, settings: { ...d.settings, ...settings } } : d)
+          }));
+        },
+
+        toggleDeckOffline: (deckId) => {
+          set(state => ({
+            decks: state.decks.map(d => d.id === deckId ? { ...d, isOffline: !d.isOffline } : d)
+          }));
+        },
+
+        setDeckOffline: (deckId, isOffline) => {
+          set(state => ({
+            decks: state.decks.map(d => d.id === deckId ? { ...d, isOffline } : d)
           }));
         },
 

@@ -371,6 +371,13 @@ export function QuestionPacer({ className }: { className?: string }) {
 
       if (!isPacerEvent) return;
 
+      // Se a mensagem vier de uma página que não é uma sessão real de Q-Bank, ignora para evitar avanço acidental por cliques em outras abas
+      if (data.sourceOrigin && typeof window !== 'undefined' && data.sourceOrigin === window.location.origin) {
+        if (!data.isQBankSession && data.type === 'PACER_BTN_CLICK') {
+          return;
+        }
+      }
+
       // Desduplicação estrita: se a mesma ação já foi recebida ou se disparada a menos de 300ms, descarta
       const actionId = data.actionId || data.id || (data.ts ? `${data.type}-${data.ts}` : '');
       const now = Date.now();

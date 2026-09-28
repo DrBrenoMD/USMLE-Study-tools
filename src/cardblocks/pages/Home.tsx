@@ -16,11 +16,14 @@ import {
   X,
   AlertTriangle,
   Layers,
-  Download
+  Download,
+  HardDrive,
+  CloudOff
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Heatmap } from '../components/Heatmap';
 import { useTranslation } from '../lib/i18n';
+import { StorageManagerModal } from '../components/StorageManagerModal';
 
 interface HomeProps {
   onNavigate: (page: Page) => void;
@@ -29,10 +32,13 @@ interface HomeProps {
 export function Home({ onNavigate }: HomeProps) {
   const { decks, cards, createDeck, deleteDeck, moveDeck, importApkgCards } = useStore();
   const [newDeckName, setNewDeckName] = useState('');
+  const [newDeckIsOffline, setNewDeckIsOffline] = useState(false);
   const [expandedDecks, setExpandedDecks] = useState<Record<string, boolean>>({});
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showStorageModal, setShowStorageModal] = useState(false);
   const [subdeckTarget, setSubdeckTarget] = useState<Deck | null>(null);
   const [subdeckName, setSubdeckName] = useState('');
+  const [subdeckIsOffline, setSubdeckIsOffline] = useState(false);
   const [deckToDelete, setDeckToDelete] = useState<Deck | null>(null);
   const [importing, setImporting] = useState(false);
   const [importNotice, setImportNotice] = useState<string | null>(null);
@@ -228,18 +234,21 @@ export function Home({ onNavigate }: HomeProps) {
   const handleCreate = (e: FormEvent) => {
     e.preventDefault();
     if (!newDeckName.trim()) return;
-    createDeck(newDeckName.trim(), null);
+    createDeck(newDeckName.trim(), null, newDeckIsOffline);
     setNewDeckName('');
+    setNewDeckIsOffline(false);
     setShowCreateModal(false);
   };
 
   const handleCreateSubdeck = (e: FormEvent) => {
     e.preventDefault();
     if (!subdeckTarget || !subdeckName.trim()) return;
-    createDeck(subdeckName.trim(), subdeckTarget.id);
+    const isParentOffline = Boolean(subdeckTarget.isOffline);
+    createDeck(subdeckName.trim(), subdeckTarget.id, subdeckIsOffline || isParentOffline);
     setExpandedDecks(prev => ({ ...prev, [subdeckTarget.id]: true }));
     setSubdeckName('');
     setSubdeckTarget(null);
+    setSubdeckIsOffline(false);
   };
 
   const confirmDeleteDeck = () => {
@@ -339,13 +348,21 @@ export function Home({ onNavigate }: HomeProps) {
                </button>
 
                <div className="min-w-0">
-                 <h3 
-                   onClick={() => onNavigate({ type: 'deck', deckId: deck.id })}
-                   className="font-bold text-sm sm:text-base text-gray-900 dark:text-gray-100 truncate cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 transition-colors" 
-                   title={deck.name}
-                 >
-                   {deck.name}
-                 </h3>
+                 <div className="flex items-center gap-2">
+                   <h3 
+                     onClick={() => onNavigate({ type: 'deck', deckId: deck.id })}
+                     className="font-bold text-sm sm:text-base text-gray-900 dark:text-gray-100 truncate cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 transition-colors" 
+                     title={deck.name}
+                   >
+                     {deck.name}
+                   </h3>
+                   {deck.isOffline && (
+                     <span className="px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800 text-[10px] font-bold shrink-0 flex items-center gap-1" title="Baralho Apenas Offline (não enviado para a nuvem)">
+                       <CloudOff className="w-3 h-3" />
+                       Offline
+                     </span>
+                   )}
+                 </div>
                  <span className="text-xs text-gray-500 dark:text-gray-400 hidden sm:inline">
                    {hasChildren ? 'Baralho principal com subdivisões' : 'Baralho padrão'}
                  </span>
@@ -459,6 +476,15 @@ export function Home({ onNavigate }: HomeProps) {
         
         <div className="flex flex-wrap items-center gap-2.5">
           <button 
+            onClick={() => setShowStorageModal(true)}
+            className="bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 px-3.5 py-2.5 rounded-xl font-semibold text-xs sm:text-sm flex items-center gap-2 transition-colors shadow-2xs"
+            title="Gerenciar armazenamento, mídias e pastas offline"
+          >
+            <HardDrive className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            <span>Armazenamento & Pastas</span>
+          </button>
+
+          <button 
             onClick={() => apkgInputRef.current?.click()}
             disabled={importing}
             className="bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 px-4 py-2.5 rounded-xl font-semibold text-xs sm:text-sm flex items-center gap-2 transition-colors shadow-2xs"
@@ -562,6 +588,19 @@ export function Home({ onNavigate }: HomeProps) {
                   />
                 </div>
 
+                <div className="p-3 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-xl flex items-start gap-2.5">
+                  <input
+                    type="checkbox"
+                    id="offline-deck-create"
+                    checked={newDeckIsOffline}
+                    onChange={(e) => setNewDeckIsOffline(e.target.checked)}
+                    className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 w-4 h-4"
+                  />
+                  <label htmlFor="offline-deck-create" className="text-xs text-amber-900 dark:text-amber-200 cursor-pointer">
+                    <span className="font-bold">Manter este baralho apenas offline</span> (Salvo localmente no navegador, sem fazer upload para a nuvem. Recomendado para decks muito grandes como AnKing).
+                  </label>
+                </div>
+
                 <div className="flex items-center justify-end gap-2 pt-2">
                   <button
                     type="button"
@@ -599,7 +638,7 @@ export function Home({ onNavigate }: HomeProps) {
                   <span>{importing ? "Importando..." : "Importar Arquivo (.apkg, .csv, .json)"}</span>
                 </button>
                 <p className="text-xs text-gray-500 dark:text-gray-400 text-center mt-2">
-                  Suporta baralhos completos do Anki com tags, imagens e estruturas de subdecks.
+                  Suporta baralhos gigantes (8GB+) do Anki com tags, imagens e estruturas de subdecks.
                 </p>
               </div>
             </div>
@@ -642,6 +681,19 @@ export function Home({ onNavigate }: HomeProps) {
                   autoFocus
                   className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all"
                 />
+              </div>
+
+              <div className="p-3 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-xl flex items-start gap-2.5">
+                <input
+                  type="checkbox"
+                  id="offline-subdeck-create"
+                  checked={subdeckIsOffline || Boolean(subdeckTarget.isOffline)}
+                  onChange={(e) => setSubdeckIsOffline(e.target.checked)}
+                  className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 w-4 h-4"
+                />
+                <label htmlFor="offline-subdeck-create" className="text-xs text-amber-900 dark:text-amber-200 cursor-pointer">
+                  <span className="font-bold">Manter sub-baralho apenas offline</span>
+                </label>
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2">
@@ -697,6 +749,12 @@ export function Home({ onNavigate }: HomeProps) {
           </div>
         </div>
       )}
+
+      {/* Storage & Offline Folder Manager Modal */}
+      <StorageManagerModal 
+        isOpen={showStorageModal} 
+        onClose={() => setShowStorageModal(false)} 
+      />
     </div>
   );
 }
