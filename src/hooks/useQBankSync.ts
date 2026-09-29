@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { useStore, QuestionAlternative } from '../cardblocks/store/useStore';
 import { toCompactCardSummary } from '../utils/qbankCardMatcher';
+import { useTimerStore } from '../store/useTimerStore';
+import { audioManager } from '../services/audioManager';
 
 export function useQBankSync() {
   const {
@@ -351,6 +353,112 @@ export function useQBankSync() {
       };
     } catch (e) {}
 
+    // Helper para processar ações de navegação do Pacer recebidas da extensão ou outras abas
+    let lastGlobalPacerActionId = '';
+    let lastGlobalPacerActionTime = 0;
+
+    const handlePacerAction = (rawAction: any) => {
+      if (!rawAction) return;
+      const data = rawAction.action || rawAction.payload || rawAction;
+      const actionTypeStr = data.type || data.action;
+
+      const isPacerEvt =
+        actionTypeStr === 'PACER_NEXT' ||
+        actionTypeStr === 'PACER_PREV' ||
+        actionTypeStr === 'PACER_SUBMIT' ||
+        actionTypeStr === 'PACER_BTN_CLICK' ||
+        actionTypeStr === 'PACER_SYNC_STATE';
+
+      if (!isPacerEvt) return;
+
+      const actionId = data.actionId || data.id || (data.ts ? `${actionTypeStr}-${data.ts}` : '');
+      const now = Date.now();
+
+      if (actionId && lastGlobalPacerActionId === actionId) return;
+      if (now - lastGlobalPacerActionTime < 280) return;
+
+      lastGlobalPacerActionId = actionId;
+      lastGlobalPacerActionTime = now;
+
+      const timerStore = useTimerStore.getState();
+
+      // Sincroniza total de questões se informado
+      if (data.totalQuestions && typeof data.totalQuestions === 'number' && data.totalQuestions > 0) {
+        if (data.totalQuestions !== timerStore.pacerTotalQuestions) {
+          timerStore.setPacerState({ pacerTotalQuestions: data.totalQuestions });
+        }
+      }
+
+      // Auto-inicia o Pacer se estiver inativo
+      if (!timerStore.pacerIsActive) {
+        audioManager.init();
+        const settings = timerStore.pacerSoundSettings || { master: true, keepAliveAudio: true };
+        if (settings.master && settings.keepAliveAudio !== false) {
+          audioManager.startKeepAlive();
+        }
+        timerStore.setPacerState({
+          pacerCurrentQuestionTime: 0,
+          pacerCurrentReviewTime: 0,
+          pacerCompletedQuestionsTime: [],
+          pacerCompletedReviewTimes: [],
+          pacerTutoredPhase: 'solve',
+          pacerIsActive: true,
+        });
+        timerStore.setTimerState('running');
+      }
+
+      let shouldNext = Boolean(data.isNext || actionTypeStr === 'PACER_NEXT');
+      let shouldSubmit = Boolean(data.isSubmit || actionTypeStr === 'PACER_SUBMIT');
+      let shouldPrev = Boolean(data.isPrev || actionTypeStr === 'PACER_PREV');
+
+      if (timerStore.pacerQBankMode !== 'tutored' && actionTypeStr === 'PACER_BTN_CLICK') {
+        const trigger = timerStore.pacerTriggerButton || 'both';
+        shouldNext = (trigger === 'next' && data.isNext) || (trigger === 'submit' && data.isSubmit) || (trigger === 'both' && (data.isNext || data.isSubmit));
+        shouldSubmit = false;
+      }
+
+      if (timerStore.phase !== 'rest') {
+        const actionResult = timerStore.syncPacerQuestion({
+          targetQuestion: data.questionIndex,
+          targetPhase: data.phase,
+          isNext: shouldNext,
+          isSubmit: shouldSubmit,
+          isPrev: shouldPrev,
+          totalQuestions: data.totalQuestions,
+        });
+
+        const soundSettings = timerStore.pacerSoundSettings || {
+          master: true,
+          solveAlarm: true,
+          reviewAlarm: true,
+          nextQuestion: true,
+          submitQuestion: true,
+          prevQuestion: true,
+          cycleAlarm: true,
+          volume: 0.5,
+        };
+        const vol = soundSettings.volume ?? 0.5;
+
+        if (soundSettings.master) {
+          if (actionResult === 'submit' && soundSettings.submitQuestion !== false) {
+            audioManager.playActionBeep('submit', vol);
+          } else if (actionResult === 'next' && soundSettings.nextQuestion !== false) {
+            audioManager.playActionBeep('next', vol);
+          } else if (actionResult === 'prev' && soundSettings.prevQuestion !== false) {
+            audioManager.playActionBeep('prev', vol);
+          }
+        }
+      }
+    };
+
+    let bcPacer: BroadcastChannel | null = null;
+    try {
+      bcPacer = new BroadcastChannel('usmle_pacer_sync');
+      bcPacer.onmessage = (event) => {
+        if (event.data) handlePacerAction(event.data);
+      };
+    } catch (e) {}
+
     // 6. Polling no servidor para importações cross-origin via background / extension
     const checkServerQueue = async () => {
       try {
@@ -375,17 +483,37 @@ export function useQBankSync() {
             await fetch('/api/pending-card-actions', { method: 'DELETE' }).catch(() => {});
           }
         }
+
+        const pacerRes = await fetch('/api/pending-pacer-actions').catch(() => null);
+        if (pacerRes && pacerRes.ok) {
+          const pacerData = await pacerRes.json();
+          if (pacerData && Array.isArray(pacerData.actions) && pacerData.actions.length > 0) {
+            for (const item of pacerData.actions) {
+              handlePacerAction(item);
+            }
+            await fetch('/api/pending-pacer-actions', { method: 'DELETE' }).catch(() => {});
+          }
+        }
       } catch (e) {}
     };
 
     checkServerQueue();
-    const serverInterval = setInterval(checkServerQueue, 2500);
+    const serverInterval = setInterval(checkServerQueue, 2000);
+
+    const onPacerCustomEvent = (e: any) => {
+      if (e.detail) {
+        handlePacerAction(e.detail);
+      }
+    };
+    window.addEventListener('pacer_action', onPacerCustomEvent as EventListener);
 
     return () => {
       if (bcQuestions) bcQuestions.close();
       if (bcCards) bcCards.close();
+      if (bcPacer) bcPacer.close();
       window.removeEventListener('message', onWindowMessage);
       window.removeEventListener('usmle_import_question', onCustomEvent as EventListener);
+      window.removeEventListener('pacer_action', onPacerCustomEvent as EventListener);
       window.removeEventListener('storage', onStorage);
       clearInterval(serverInterval);
     };

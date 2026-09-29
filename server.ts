@@ -30,6 +30,34 @@ async function startServer() {
 
   // Cross-Tab / Cross-Origin Q-Bank Question Import Sync Queue
   let importedQuestionsQueue: any[] = [];
+  let pendingPacerActionsQueue: any[] = [];
+
+  app.post("/api/pacer-action", (req, res) => {
+    try {
+      const action = req.body;
+      if (action) {
+        pendingPacerActionsQueue.push({
+          ...action,
+          serverTimestamp: Date.now(),
+        });
+        if (pendingPacerActionsQueue.length > 50) {
+          pendingPacerActionsQueue = pendingPacerActionsQueue.slice(-50);
+        }
+      }
+      res.json({ success: true, count: pendingPacerActionsQueue.length });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/pending-pacer-actions", (_req, res) => {
+    res.json({ actions: pendingPacerActionsQueue });
+  });
+
+  app.delete("/api/pending-pacer-actions", (_req, res) => {
+    pendingPacerActionsQueue = [];
+    res.json({ success: true });
+  });
 
   app.post("/api/import-question", (req, res) => {
     try {

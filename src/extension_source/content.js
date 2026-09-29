@@ -184,12 +184,24 @@ function notificarPacer(isNext, isSubmit, isPrev, explicitQIndex = null) {
             try { pacerWindow.postMessage(payload, "*"); } catch(e) {}
         }
 
-        // 2. Canal Universal via Storage da Extensão (repassa para abas do applet)
+        // 2. BroadcastChannel para comunicação instantânea entre abas
+        try {
+            const bc = new BroadcastChannel('usmle_pacer_sync');
+            bc.postMessage(payload);
+            setTimeout(() => bc.close(), 1000);
+        } catch(e) {}
+
+        // 3. Canal Universal via Storage da Extensão e LocalStorage
         if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
             chrome.storage.local.set({ pacer_action: payload });
         }
+        try {
+            localStorage.setItem('pacer_action', JSON.stringify(payload));
+            window.dispatchEvent(new CustomEvent('pacer_action', { detail: payload }));
+            window.postMessage(payload, '*');
+        } catch(e) {}
 
-        // 3. Notificar Background Worker para injetar e repassar a todas as abas abertas da aplicação
+        // 4. Notificar Background Worker para injetar e repassar a todas as abas abertas da aplicação
         if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
             chrome.runtime.sendMessage({
                 type: 'DISPATCH_PACER_ACTION',
@@ -197,7 +209,7 @@ function notificarPacer(isNext, isSubmit, isPrev, explicitQIndex = null) {
             }, () => {});
         }
 
-        // 4. Atualizar Pacer embutido da Extensão em segundo plano
+        // 5. Atualizar Pacer embutido da Extensão em segundo plano
         atualizarPacerEmbutido(isNext, isSubmit, isPrev);
     }
 }
@@ -1862,6 +1874,16 @@ function verificarMudancaEstadoQuestao() {
                 if (pacerWindow && !pacerWindow.closed) {
                     try { pacerWindow.postMessage(payload, "*"); } catch(e) {}
                 }
+                try {
+                    const bc = new BroadcastChannel('usmle_pacer_sync');
+                    bc.postMessage(payload);
+                    setTimeout(() => bc.close(), 1000);
+                } catch(e) {}
+                try {
+                    localStorage.setItem('pacer_action', JSON.stringify(payload));
+                    window.dispatchEvent(new CustomEvent('pacer_action', { detail: payload }));
+                    window.postMessage(payload, '*');
+                } catch(e) {}
                 if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
                     chrome.storage.local.set({ pacer_action: payload });
                 }

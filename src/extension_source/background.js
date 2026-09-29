@@ -4,6 +4,83 @@
 // =========================================================================
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  // 0. Sincronização e Ação do Pacer de Questões
+  if (request.type === 'DISPATCH_PACER_ACTION') {
+    const actionPayload = request.action || request.payload || {};
+
+    // Salva no storage local da extensão
+    chrome.storage.local.set({
+      pacer_action: actionPayload,
+      last_pacer_action_timestamp: Date.now()
+    });
+
+    // Procura abas abertas da aplicação (Pacer, Tracker, Flashcards, Hubs, etc.)
+    chrome.tabs.query({}, (tabs) => {
+      const appTabs = tabs.filter(t => {
+        if (!t.url) return false;
+        const u = t.url.toLowerCase();
+        const title = (t.title || '').toLowerCase();
+        return (
+          u.includes('/pacer') ||
+          u.includes('/tracker') ||
+          u.includes('/questions') ||
+          u.includes('/questoes') ||
+          u.includes('/flashcards') ||
+          u.includes('localhost:') ||
+          u.includes('.run.app') ||
+          u.includes('.web.app') ||
+          u.includes('aistudio.google.com') ||
+          title.includes('usmle') ||
+          title.includes('study tools') ||
+          title.includes('pacer') ||
+          title.includes('cardblocks')
+        );
+      });
+
+      // Injeta evento em todas as abas abertas do applet
+      appTabs.forEach(tab => {
+        if (tab.id) {
+          try {
+            chrome.scripting.executeScript({
+              target: { tabId: tab.id },
+              func: (actData) => {
+                window.postMessage(actData, '*');
+                window.dispatchEvent(new CustomEvent('pacer_action', { detail: actData }));
+                try {
+                  localStorage.setItem('pacer_action', JSON.stringify(actData));
+                } catch(e) {}
+                try {
+                  const bc = new BroadcastChannel('usmle_pacer_sync');
+                  bc.postMessage(actData);
+                  setTimeout(() => bc.close(), 1000);
+                } catch(e) {}
+              },
+              args: [actionPayload]
+            }).catch(() => {});
+          } catch(e) {}
+        }
+      });
+
+      // Tenta enviar também via HTTP para o backend se disponível
+      chrome.storage.local.get(['last_connected_app_url'], (store) => {
+        if (store.last_connected_app_url) {
+          try {
+            const origin = new URL(store.last_connected_app_url).origin;
+            fetch(`${origin}/api/pacer-action`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(actionPayload)
+            }).catch(() => {});
+          } catch(e) {}
+        }
+      });
+
+      sendResponse({ success: true, count: appTabs.length });
+    });
+
+    return true;
+  }
+
   // 1. Sincronização e Importação de Questões
   if (request.type === 'DISPATCH_QUESTION_DATA') {
     const questionData = request.questionData || {};
