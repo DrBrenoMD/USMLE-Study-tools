@@ -950,9 +950,12 @@ function despacharDadosParaFlashcards(cardData) {
     return true;
 }
 
+let lastImportedQuestionSignatures = new Map();
+
 // Auto-importação durante a navegação pelas questões:
-// Cada questão pela qual o usuário passar só é importada se TODOS os dados estiverem disponíveis
-function autoImportarQuestaoSeNavegou() {
+// Cada questão pela qual o usuário passar é importada. Se for respondida ou dados forem revelados posteriormente (modo Tutored),
+// uma nova captura é realizada automaticamente garantindo a integridade dos dados (enunciado, alternativas com gabarito, explicação e educational objective).
+function autoImportarQuestaoSeNavegou(force = false) {
     if (!isPaginaResolucaoQBank()) return;
     const currentQId = extrairIdQuestaoAtual();
     if (!currentQId) return;
@@ -960,12 +963,28 @@ function autoImportarQuestaoSeNavegou() {
     const cardData = extrairDadosCompletosQuestao();
     const val = validarDadosCompletosQuestao(cardData);
 
-    // Regra estrita: Se dados estiverem incompletos, não importa e alerta o usuário
+    // Regra: Não importa se a questão for completamente ilegível
     if (!val.completo) {
         return;
     }
 
-    if (currentQId === lastImportedQId) return;
+    // Calcula assinatura de completude dos dados (detecta se resposta/explicação/objective foi liberada no modo Tutored)
+    const hasExp = Boolean(cardData.explanation && cardData.explanation.length > 15 && cardData.explanation !== 'Explanation not found.');
+    const hasObj = Boolean(cardData.educationalObjective && cardData.educationalObjective.length > 10 && cardData.educationalObjective !== 'Educational objective not found.');
+    const hasCorrect = Boolean(cardData.alternatives && cardData.alternatives.some(a => a.isCorrect));
+    const imgCount = (cardData.questionImages || []).length;
+    const sys = (cardData.system || '').replace(/click\s*to\s*show/i, '').trim();
+    const sub = (cardData.subject || '').replace(/click\s*to\s*show/i, '').trim();
+    const signature = `qid:${currentQId}|exp:${hasExp ? cardData.explanation.length : 0}|obj:${hasObj ? cardData.educationalObjective.length : 0}|corr:${hasCorrect}|img:${imgCount}|sys:${sys}|sub:${sub}`;
+
+    const prevSignature = lastImportedQuestionSignatures.get(currentQId);
+
+    // Se já foi importada com exatamente essa mesma assinatura e não foi forçado, não reimporta
+    if (!force && prevSignature === signature) {
+        return;
+    }
+
+    lastImportedQuestionSignatures.set(currentQId, signature);
     lastImportedQId = currentQId;
 
     // Obtém o banco de destino configurado pelo usuário no popup
@@ -1020,7 +1039,7 @@ function autoImportarQuestaoSeNavegou() {
             }));
         } catch(e) {}
 
-        mostrarFeedbackDrawer(`✅ Questão #${currentQNumberExt} (QID: ${currentQId}) importada com sucesso!`);
+        mostrarFeedbackDrawer(`✅ Questão #${currentQNumberExt} (QID: ${currentQId}) ${hasExp ? 'completa sincronizada' : 'sincronizada'}!`);
     };
 
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
@@ -1833,6 +1852,29 @@ function agendarImportacaoRapida() {
     });
 }
 
+// Mecanismo específico para captura enriquecida pós-resposta no modo Tutored:
+// Quando o usuário clica em Submit, a explicação, educational objective e gabarito são renderizados no DOM.
+// Este agendador executa múltiplas varreduras e força a atualização dos dados completos no applet/storage sem precisar voltar à questão.
+let activeSubmitSyncTimers = [];
+function agendarCapturaAposSubmit() {
+    activeSubmitSyncTimers.forEach(t => clearTimeout(t));
+    activeSubmitSyncTimers = [];
+
+    const submitDelays = [80, 200, 450, 800, 1300, 2000, 3200, 5000];
+    submitDelays.forEach(d => {
+        const timer = setTimeout(() => {
+            if (isPaginaResolucaoQBank()) {
+                revelarCamposOcultos();
+                autoImportarQuestaoSeNavegou(true);
+                if (typeof atualizarStatusCardQuestaoAtual === 'function') {
+                    atualizarStatusCardQuestaoAtual();
+                }
+            }
+        }, d);
+        activeSubmitSyncTimers.push(timer);
+    });
+}
+
 function verificarMudancaEstadoQuestao() {
     if (!isPaginaResolucaoQBank()) return;
     const qData = detectarDadosQuestaoQBank();
@@ -1844,6 +1886,11 @@ function verificarMudancaEstadoQuestao() {
 
     const qChanged = qData.qId !== lastDetectedQId || (qData.questionIndex && qData.questionIndex !== lastDetectedQIndex);
     const phaseChanged = qData.phase !== lastDetectedPhase;
+
+    if (phaseChanged && qData.phase === 'review') {
+        // Entrou em modo de revisão/gabarito revelado no modo Tutored: dispara captura completa imediata!
+        agendarCapturaAposSubmit();
+    }
 
     if (qChanged || phaseChanged) {
         const isFirst = lastDetectedQId === null && lastDetectedQIndex === null;
@@ -1906,11 +1953,38 @@ setInterval(() => {
     }
 }, 400);
 
-// Observador de mutações no DOM para capturar imediatamente mudanças de questão
+// Observador de mutações no DOM para capturar imediatamente mudanças de questão e revelação de respostas/explicações
 try {
-    const domObserver = new MutationObserver(() => {
+    const domObserver = new MutationObserver((mutations) => {
         if (!isPaginaResolucaoQBank()) return;
         verificarMudancaEstadoQuestao();
+
+        // Detecta inserção de novos blocos de explicação, alerta de resposta ou gabarito
+        for (const mutation of mutations) {
+            if (mutation.addedNodes.length > 0) {
+                for (const node of mutation.addedNodes) {
+                    if (node.nodeType === 1) {
+                        const el = node;
+                        const txt = (el.innerText || el.textContent || '').toLowerCase();
+                        const cls = (el.className || '').toString().toLowerCase();
+                        if (
+                            cls.includes('explanation') ||
+                            cls.includes('educational') ||
+                            cls.includes('result') ||
+                            cls.includes('alert') ||
+                            txt.includes('educational objective') ||
+                            txt.includes('explanation') ||
+                            txt.includes('gabarito') ||
+                            txt.includes('correct') ||
+                            txt.includes('incorrect')
+                        ) {
+                            agendarCapturaAposSubmit();
+                            break;
+                        }
+                    }
+                }
+            }
+        }
     });
 
     if (document.body) {
@@ -1955,6 +2029,7 @@ document.addEventListener('keydown', (e) => {
         agendarImportacaoRapida();
     } else if (e.key === 'Enter' || (e.altKey && (e.key === 's' || e.key === 'S'))) {
         notificarPacer(false, true, false);
+        agendarCapturaAposSubmit();
         agendarImportacaoRapida();
     } else if (e.key === 'n' || e.key === 'p') {
         if (!e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -2696,8 +2771,8 @@ function lerQuestaoCompleta() { iniciarFila([...extrairEnunciadoParaFila(), ...e
 
 // --- Automação ---
 function processarSubmit() {
-    const botoes = Array.from(document.querySelectorAll('button'));
-    const btnSubmit = botoes.find(b => b.textContent.trim() === 'Submit');
+    const botoes = Array.from(document.querySelectorAll('button, [role="button"], input[type="submit"]'));
+    const btnSubmit = botoes.find(b => /^(?:Submit|Confirm|Confirmar|Responder|Check\s*Answer)$/i.test((b.textContent || b.getAttribute('value') || '').trim()));
     if (btnSubmit && !btnSubmit.disabled) {
         const currentText = extrairEnunciadoParaFila().map(i => i.text).join(" ");
         btnSubmit.click();
@@ -2705,12 +2780,16 @@ function processarSubmit() {
         // Notifica o Pacer
         notificarPacer(false, true, false);
 
+        // Dispara captura enriquecida da questão após responder (Modo Tutored)
+        agendarCapturaAposSubmit();
+
         let tentativas = 0;
         const checkInterval = setInterval(() => {
             tentativas++;
-            const alertDiv = document.querySelector('div[role="alert"]');
+            const alertDiv = document.querySelector('div[role="alert"], [class*="border-l-red"], [class*="border-l-green"], .result-banner');
             if (alertDiv) {
                 clearInterval(checkInterval);
+                agendarCapturaAposSubmit();
                 const resultText = alertDiv.innerText.toLowerCase();
                 if (resultText.includes('correct') && !resultText.includes('incorrect')) falarFeedback("Você acertou a questão.");
                 else if (resultText.includes('incorrect')) falarFeedback("Você errou a questão.");
@@ -2720,19 +2799,23 @@ function processarSubmit() {
             const newText = extrairEnunciadoParaFila().map(i => i.text).join(" ");
             if (newText !== currentText && newText !== "Question text not found.") {
                 clearInterval(checkInterval); playBeep(true);
+                agendarCapturaAposSubmit();
                 if (configAtual.autoRead) setTimeout(() => lerQuestaoCompleta(), 1500);
                 return;
             }
-            if (tentativas > 25) clearInterval(checkInterval); 
+            if (tentativas > 25) {
+                clearInterval(checkInterval);
+                agendarCapturaAposSubmit();
+            }
         }, 200);
     } else falarFeedback("Selecione uma alternativa antes de enviar.");
 }
 
 function selecionarAlternativa(letraDesejada) {
-    const linhasAlternativas = document.querySelectorAll('tr.cursor-pointer');
+    const linhasAlternativas = document.querySelectorAll('tr.cursor-pointer, [role="radio"], .choice-row');
     let encontrou = false;
     linhasAlternativas.forEach(linha => {
-        const spanLetra = linha.querySelector('span.font-normal');
+        const spanLetra = linha.querySelector('span.font-normal, [class*="letter"], b, strong');
         if (spanLetra && spanLetra.innerText.toLowerCase().includes(letraDesejada)) {
             linha.click(); playBeep(true); encontrou = true;
         }
@@ -2783,6 +2866,10 @@ document.addEventListener('click', (e) => {
         const isNext = combined.includes("next") || combined.includes("próxim") || combined.includes("proxim") || combined.includes("forward");
         const isSubmit = combined.includes("submit") || combined.includes("enviar") || combined.includes("confirm") || combined.includes("responder") || combined.includes("check answer");
         const isPrev = combined.includes("prev") || combined.includes("anterior") || combined.includes("backward") || combined.includes("back");
+
+        if (isSubmit) {
+            agendarCapturaAposSubmit();
+        }
 
         if (isNext || isSubmit || isPrev) {
             notificarPacer(isNext, isSubmit, isPrev);
