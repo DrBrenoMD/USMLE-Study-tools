@@ -10,6 +10,7 @@ export const cardblocksDataStore = localforage.createInstance({
 export interface Deck {
   id: string;
   name: string;
+  description?: string;
   parentId?: string | null;
   icon?: string;
   color?: string;
@@ -214,7 +215,7 @@ export interface StoreState {
   settings: Settings;
 
   // Deck Actions
-  createDeck: (name: string, parentId?: string | null, isOffline?: boolean) => string;
+  createDeck: (name: string, parentId?: string | null, isOffline?: boolean, description?: string) => string;
   updateDeck: (id: string, updates: Partial<Deck>) => void;
   deleteDeck: (id: string) => void;
   moveDeck: (deckId: string, targetParentId: string | null) => void;
@@ -351,10 +352,10 @@ export const useStore = create<StoreState>()(
         notes: [],
         settings: DEFAULT_SETTINGS,
 
-        createDeck: (name, parentId = null, isOffline = false) => {
+        createDeck: (name, parentId = null, isOffline = false, description = '') => {
           const id = 'deck-' + Math.random().toString(36).substring(2, 9);
           set(state => ({
-            decks: [...state.decks, { id, name, parentId, isOffline: Boolean(isOffline), createdAt: Date.now(), settings: {} }]
+            decks: [...state.decks, { id, name, parentId, isOffline: Boolean(isOffline), description: description || undefined, createdAt: Date.now(), settings: {} }]
           }));
           return id;
         },
@@ -409,7 +410,8 @@ export const useStore = create<StoreState>()(
             if (data.deck && Array.isArray(data.cards)) {
               const deckToImport = {
                 ...data.deck,
-                parentId: targetParentId !== undefined ? targetParentId : data.deck.parentId
+                parentId: targetParentId !== undefined ? targetParentId : data.deck.parentId,
+                isOffline: true, // Baralhos importados iniciam offline por padrão
               };
               set(state => ({
                 decks: [...state.decks, deckToImport],
@@ -829,7 +831,7 @@ export const useStore = create<StoreState>()(
           let targetDeckId = deck?.id;
           if (!targetDeckId) {
             targetDeckId = 'deck-' + Math.random().toString(36).substring(2, 9);
-            state.decks.push({ id: targetDeckId, name: deckIdOrName, parentId: null, settings: {} });
+            state.decks.push({ id: targetDeckId, name: deckIdOrName, parentId: null, isOffline: true, settings: {} });
           }
 
           const newCards: Flashcard[] = importedCards.map(c => ({
@@ -1234,63 +1236,99 @@ export const useStore = create<StoreState>()(
         mergeProfile: (data) => {
           if (!data) return;
           set((state) => {
-            // 1. Decks merge (Union by deck.id)
+            // 1. Decks merge (Preserve all local decks, merge attributes from cloud)
             const deckMap = new Map<string, Deck>();
-            (state.decks || []).forEach(d => deckMap.set(d.id, d));
+            (state.decks || []).forEach(d => deckMap.set(d.id, { ...d }));
             (data.decks || []).forEach((d: Deck) => {
-              if (d && d.id && !deckMap.has(d.id)) {
-                deckMap.set(d.id, d);
+              if (d && d.id) {
+                if (!deckMap.has(d.id)) {
+                  deckMap.set(d.id, d);
+                } else {
+                  const local = deckMap.get(d.id)!;
+                  deckMap.set(d.id, {
+                    ...d,
+                    ...local, // Preserve local name, description, isOffline if modified locally
+                    settings: { ...(d.settings || {}), ...(local.settings || {}) },
+                  });
+                }
               }
             });
 
             // 2. Cards merge (Preserve all local cards + add any unique cloud cards)
             const cardMap = new Map<string, Flashcard>();
             (state.cards || []).forEach(c => {
-              if (c && c.id) cardMap.set(c.id, c);
+              if (c && c.id) cardMap.set(c.id, { ...c });
             });
             (data.cards || []).forEach((c: Flashcard) => {
               if (c && c.id) {
                 if (!cardMap.has(c.id)) {
                   cardMap.set(c.id, c);
                 } else {
-                  // If incoming card has review history while local is unreviewed, update scheduling
                   const localCard = cardMap.get(c.id)!;
-                  if ((c.repetition || 0) > (localCard.repetition || 0)) {
+                  // If cloud card has higher repetition or was reviewed more recently, take scheduling
+                  if ((c.repetition || 0) > (localCard.repetition || 0) || (c.nextReviewDate && c.nextReviewDate > (localCard.nextReviewDate || 0))) {
                     cardMap.set(c.id, { ...localCard, ...c });
                   }
                 }
               }
             });
 
-            // 3. Questions merge (Union by qid or id)
+            // 3. Questions merge (Union by qid or id, preserving local resolution stats & user notes)
             const qMap = new Map<string, Question>();
             (state.questions || []).forEach(q => {
-              if (q) qMap.set(q.id || q.qid, q);
+              if (q) qMap.set(q.id || q.qid, { ...q });
             });
             (data.questions || []).forEach((q: Question) => {
               if (q) {
                 const key = q.id || q.qid;
-                if (key && !qMap.has(key)) {
-                  qMap.set(key, q);
+                if (key) {
+                  if (!qMap.has(key)) {
+                    qMap.set(key, q);
+                  } else {
+                    const localQ = qMap.get(key)!;
+                    const mergedAttempts = [...(localQ.attempts || []), ...(q.attempts || [])];
+                    const uniqueAttempts = Array.from(
+                      new Map(mergedAttempts.map(a => [a.timestamp, a])).values()
+                    ).sort((a, b) => b.timestamp - a.timestamp);
+
+                    qMap.set(key, {
+                      ...q,
+                      ...localQ,
+                      attempts: uniqueAttempts,
+                      status: localQ.status !== 'unused' ? localQ.status : (q.status || localQ.status),
+                      userNotes: localQ.userNotes || q.userNotes,
+                      isFlagged: localQ.isFlagged ?? q.isFlagged,
+                    });
+                  }
                 }
               }
             });
 
-            // 4. Question Banks merge
+            // 4. Question Banks merge (Preserve local name & description)
             const bankMap = new Map<string, QuestionBank>();
             (state.questionBanks || []).forEach(b => {
-              if (b && b.id) bankMap.set(b.id, b);
+              if (b && b.id) bankMap.set(b.id, { ...b });
             });
             (data.questionBanks || []).forEach((b: QuestionBank) => {
-              if (b && b.id && !bankMap.has(b.id)) {
-                bankMap.set(b.id, b);
+              if (b && b.id) {
+                if (!bankMap.has(b.id)) {
+                  bankMap.set(b.id, b);
+                } else {
+                  const localBank = bankMap.get(b.id)!;
+                  bankMap.set(b.id, {
+                    ...b,
+                    ...localBank,
+                    name: localBank.name || b.name,
+                    description: localBank.description !== undefined ? localBank.description : b.description,
+                  });
+                }
               }
             });
 
             // 5. Notebooks merge
             const nbMap = new Map<string, Notebook>();
             (state.notebooks || []).forEach(nb => {
-              if (nb && nb.id) nbMap.set(nb.id, nb);
+              if (nb && nb.id) nbMap.set(nb.id, { ...nb });
             });
             (data.notebooks || []).forEach((nb: Notebook) => {
               if (nb && nb.id && !nbMap.has(nb.id)) {
@@ -1298,10 +1336,33 @@ export const useStore = create<StoreState>()(
               }
             });
 
-            // 6. Notes merge
+            // 6. Notebook History merge
+            const nbHistoryMap = new Map<string, NotebookHistory>();
+            (state.notebookHistory || []).forEach(h => {
+              if (h && h.id) nbHistoryMap.set(h.id, h);
+            });
+            (data.notebookHistory || []).forEach((h: NotebookHistory) => {
+              if (h && h.id && !nbHistoryMap.has(h.id)) {
+                nbHistoryMap.set(h.id, h);
+              }
+            });
+
+            // 7. Review Logs & History merge
+            const reviewLogMap = new Map<string, ReviewLog>();
+            (state.reviewLog || state.reviewHistory || []).forEach(rl => {
+              if (rl && rl.id) reviewLogMap.set(rl.id, rl);
+            });
+            (data.reviewLog || data.reviewHistory || []).forEach((rl: ReviewLog) => {
+              if (rl && rl.id && !reviewLogMap.has(rl.id)) {
+                reviewLogMap.set(rl.id, rl);
+              }
+            });
+            const mergedReviewLogs = Array.from(reviewLogMap.values()).sort((a, b) => (b.reviewDate || 0) - (a.reviewDate || 0));
+
+            // 8. Notes merge
             const noteMap = new Map<string, Note>();
             (state.notes || []).forEach(n => {
-              if (n && n.id) noteMap.set(n.id, n);
+              if (n && n.id) noteMap.set(n.id, { ...n });
             });
             (data.notes || []).forEach((n: Note) => {
               if (n && n.id && !noteMap.has(n.id)) {
@@ -1315,8 +1376,11 @@ export const useStore = create<StoreState>()(
               questions: Array.from(qMap.values()),
               questionBanks: Array.from(bankMap.values()),
               notebooks: Array.from(nbMap.values()),
+              notebookHistory: Array.from(nbHistoryMap.values()),
+              reviewLog: mergedReviewLogs,
+              reviewHistory: mergedReviewLogs,
               notes: Array.from(noteMap.values()),
-              settings: { ...DEFAULT_SETTINGS, ...(state.settings || {}), ...(data.settings || {}) },
+              settings: { ...DEFAULT_SETTINGS, ...(data.settings || {}), ...(state.settings || {}) },
             };
           });
         },

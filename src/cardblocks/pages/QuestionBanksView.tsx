@@ -5,10 +5,13 @@ import { Plus, Archive, Trash2, Edit2, ChevronRight, Upload, HelpCircle } from '
 import { ImportBankModal } from '../components/ImportBankModal';
 
 export const QuestionBanksView: React.FC<{ onNavigate: (p: Page) => void }> = ({ onNavigate }) => {
-  const { questionBanks, createQuestionBank, deleteQuestionBank, questions } = useStore();
+  const { questionBanks, createQuestionBank, updateQuestionBank, deleteQuestionBank, questions } = useStore();
   const [newBankName, setNewBankName] = useState('');
   const [newBankDesc, setNewBankDesc] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+  const [editingBank, setEditingBank] = useState<any | null>(null);
+  const [editBankName, setEditBankName] = useState('');
+  const [editBankDesc, setEditBankDesc] = useState('');
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   const handleCreate = (e: React.FormEvent) => {
@@ -18,6 +21,20 @@ export const QuestionBanksView: React.FC<{ onNavigate: (p: Page) => void }> = ({
     setNewBankName('');
     setNewBankDesc('');
     setIsCreating(false);
+  };
+
+  const handleStartEdit = (bank: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingBank(bank);
+    setEditBankName(bank.name);
+    setEditBankDesc(bank.description || '');
+  };
+
+  const handleSaveEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingBank || !editBankName.trim()) return;
+    updateQuestionBank(editingBank.id, editBankName.trim(), editBankDesc.trim());
+    setEditingBank(null);
   };
 
   return (
@@ -108,17 +125,27 @@ export const QuestionBanksView: React.FC<{ onNavigate: (p: Page) => void }> = ({
                       )}
                     </div>
                   </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (confirm(`Excluir banco "${bank.name}" e todas as suas questões?`)) {
-                        deleteQuestionBank(bank.id);
-                      }
-                    }}
-                    className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={(e) => handleStartEdit(bank, e)}
+                      className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors"
+                      title="Editar Nome e Descrição"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (confirm(`Excluir banco "${bank.name}" e todas as suas questões?`)) {
+                          deleteQuestionBank(bank.id);
+                        }
+                      }}
+                      className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                      title="Excluir Banco"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -143,6 +170,70 @@ export const QuestionBanksView: React.FC<{ onNavigate: (p: Page) => void }> = ({
 
       {isImportModalOpen && (
         <ImportBankModal onClose={() => setIsImportModalOpen(false)} />
+      )}
+
+      {editingBank && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <form onSubmit={handleSaveEdit} className="bg-white dark:bg-gray-900 border border-blue-200 dark:border-blue-900/60 rounded-2xl p-6 shadow-2xl space-y-4 max-w-md w-full animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-3">
+              <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <Edit2 className="w-4 h-4 text-blue-600" />
+                <span>Editar Banco de Questões</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditingBank(null)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-sm font-bold"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Nome do Banco *
+                </label>
+                <input
+                  type="text"
+                  placeholder="Nome do banco..."
+                  value={editBankName}
+                  onChange={(e) => setEditBankName(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  autoFocus
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Descrição do Banco
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="Descrição ou notas..."
+                  value={editBankDesc}
+                  onChange={(e) => setEditBankDesc(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setEditingBank(null)}
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-semibold transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={!editBankName.trim()}
+                className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-xs disabled:opacity-50"
+              >
+                Salvar Alterações
+              </button>
+            </div>
+          </form>
+        </div>
       )}
     </div>
   );

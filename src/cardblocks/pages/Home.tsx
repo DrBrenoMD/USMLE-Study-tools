@@ -18,7 +18,9 @@ import {
   Layers,
   Download,
   HardDrive,
-  CloudOff
+  CloudOff,
+  Cloud,
+  Edit2
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Heatmap } from '../components/Heatmap';
@@ -30,14 +32,20 @@ interface HomeProps {
 }
 
 export function Home({ onNavigate }: HomeProps) {
-  const { decks, cards, createDeck, deleteDeck, moveDeck, importApkgCards } = useStore();
+  const { decks, cards, createDeck, updateDeck, deleteDeck, moveDeck, importCardsBatch } = useStore();
   const [newDeckName, setNewDeckName] = useState('');
+  const [newDeckDesc, setNewDeckDesc] = useState('');
   const [newDeckIsOffline, setNewDeckIsOffline] = useState(false);
+  const [editingDeck, setEditingDeck] = useState<Deck | null>(null);
+  const [editDeckName, setEditDeckName] = useState('');
+  const [editDeckDesc, setEditDeckDesc] = useState('');
+  const [editDeckIsOffline, setEditDeckIsOffline] = useState(false);
   const [expandedDecks, setExpandedDecks] = useState<Record<string, boolean>>({});
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showStorageModal, setShowStorageModal] = useState(false);
   const [subdeckTarget, setSubdeckTarget] = useState<Deck | null>(null);
   const [subdeckName, setSubdeckName] = useState('');
+  const [subdeckDesc, setSubdeckDesc] = useState('');
   const [subdeckIsOffline, setSubdeckIsOffline] = useState(false);
   const [deckToDelete, setDeckToDelete] = useState<Deck | null>(null);
   const [importing, setImporting] = useState(false);
@@ -121,11 +129,10 @@ export function Home({ onNavigate }: HomeProps) {
       }
       
       const createdDecksByName: Record<string, string> = {};
-      const { createDeck, importCardsBatch } = useStore.getState();
 
       const rootDeckName = (fileName || file.name.replace(/\.[^/.]+$/, "") || "Baralho Importado").trim();
-      // Cria o novo baralho com o nome do arquivo importado na raiz
-      const rootFileDeckId = createDeck(rootDeckName, null);
+      // Cria o novo baralho com o nome do arquivo importado na raiz (inicia offline por padrão)
+      const rootFileDeckId = createDeck(rootDeckName, null, true);
       createdDecksByName[rootDeckName.toLowerCase()] = rootFileDeckId;
 
       const getOrCreateDeckByPath = (path: string): string => {
@@ -141,7 +148,6 @@ export function Home({ onNavigate }: HomeProps) {
         let parts = normalizedPath.split('::').map(p => p.trim()).filter(Boolean);
         if (parts.length === 0) return rootFileDeckId;
 
-        // Se o primeiro segmento for o próprio nome do arquivo/baralho raiz, remove para evitar repetição (ex: File.apkg -> File::Subdeck)
         if (parts[0].toLowerCase() === rootDeckName.toLowerCase()) {
           parts = parts.slice(1);
           if (parts.length === 0) {
@@ -162,7 +168,8 @@ export function Home({ onNavigate }: HomeProps) {
             if (existing) {
               createdDecksByName[currentKey] = existing.id;
             } else {
-              const newId = createDeck(part, parentId);
+              // Todos os subdecks importados também iniciam offline por padrão
+              const newId = createDeck(part, parentId, true);
               createdDecksByName[currentKey] = newId;
             }
           }
@@ -173,7 +180,6 @@ export function Home({ onNavigate }: HomeProps) {
         return parentId;
       };
 
-      // Pré-cria todas as hierarquias de baralhos importados como filhos do baralho do arquivo
       for (const dName of Object.values(deckNamesByAnkiId)) {
         if (dName && dName.toLowerCase() !== 'default') {
           getOrCreateDeckByPath(dName);
@@ -220,8 +226,8 @@ export function Home({ onNavigate }: HomeProps) {
       }
       
       setExpandedDecks(prev => ({ ...prev, [rootFileDeckId]: true }));
-      setImportNotice(`Sucesso: ${importCount} flashcards importados com êxito!`);
-      setTimeout(() => setImportNotice(null), 5000);
+      setImportNotice(`Sucesso: ${importCount} flashcards importados com êxito (modo offline configurado por padrão)!`);
+      setTimeout(() => setImportNotice(null), 6000);
       setShowCreateModal(false);
     } catch (err: any) {
       setImportNotice(`Erro ao importar: ${err.message}`);
@@ -234,8 +240,9 @@ export function Home({ onNavigate }: HomeProps) {
   const handleCreate = (e: FormEvent) => {
     e.preventDefault();
     if (!newDeckName.trim()) return;
-    createDeck(newDeckName.trim(), null, newDeckIsOffline);
+    createDeck(newDeckName.trim(), null, newDeckIsOffline, newDeckDesc.trim());
     setNewDeckName('');
+    setNewDeckDesc('');
     setNewDeckIsOffline(false);
     setShowCreateModal(false);
   };
@@ -244,11 +251,31 @@ export function Home({ onNavigate }: HomeProps) {
     e.preventDefault();
     if (!subdeckTarget || !subdeckName.trim()) return;
     const isParentOffline = Boolean(subdeckTarget.isOffline);
-    createDeck(subdeckName.trim(), subdeckTarget.id, subdeckIsOffline || isParentOffline);
+    createDeck(subdeckName.trim(), subdeckTarget.id, subdeckIsOffline || isParentOffline, subdeckDesc.trim());
     setExpandedDecks(prev => ({ ...prev, [subdeckTarget.id]: true }));
     setSubdeckName('');
+    setSubdeckDesc('');
     setSubdeckTarget(null);
     setSubdeckIsOffline(false);
+  };
+
+  const handleStartEditDeck = (deck: Deck, e?: MouseEvent) => {
+    if (e) e.stopPropagation();
+    setEditingDeck(deck);
+    setEditDeckName(deck.name);
+    setEditDeckDesc(deck.description || '');
+    setEditDeckIsOffline(Boolean(deck.isOffline));
+  };
+
+  const handleSaveEditDeck = (e: FormEvent) => {
+    e.preventDefault();
+    if (!editingDeck || !editDeckName.trim()) return;
+    updateDeck(editingDeck.id, {
+      name: editDeckName.trim(),
+      description: editDeckDesc.trim() || undefined,
+      isOffline: editDeckIsOffline,
+    });
+    setEditingDeck(null);
   };
 
   const confirmDeleteDeck = () => {
@@ -398,16 +425,27 @@ export function Home({ onNavigate }: HomeProps) {
                    >
                      {deck.name}
                    </h3>
-                   {deck.isOffline && (
+                   {deck.isOffline ? (
                      <span className="px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800 text-[10px] font-bold shrink-0 flex items-center gap-1" title="Baralho Apenas Offline (não enviado para a nuvem)">
                        <CloudOff className="w-3 h-3" />
                        Offline
                      </span>
+                   ) : (
+                     <span className="px-1.5 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50 text-[10px] font-medium shrink-0 flex items-center gap-1" title="Sincronizado na Nuvem">
+                       <Cloud className="w-3 h-3" />
+                       Nuvem
+                     </span>
                    )}
                  </div>
-                 <span className="text-xs text-gray-500 dark:text-gray-400 hidden sm:inline">
-                   {hasChildren ? 'Baralho principal com subdivisões' : 'Baralho padrão'}
-                 </span>
+                 {deck.description ? (
+                   <span className="text-xs text-gray-500 dark:text-gray-400 line-clamp-1" title={deck.description}>
+                     {deck.description}
+                   </span>
+                 ) : (
+                   <span className="text-xs text-gray-500 dark:text-gray-400 hidden sm:inline">
+                     {hasChildren ? 'Baralho principal com subdivisões' : 'Baralho padrão'}
+                   </span>
+                 )}
                </div>
             </div>
             
@@ -426,12 +464,22 @@ export function Home({ onNavigate }: HomeProps) {
                    {totalCount} cartões
                  </span>
                </div>
+
+               <button 
+                 onClick={(e) => handleStartEditDeck(deck, e)}
+                 className="p-2 text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-xl transition-colors"
+                 title="Editar Nome, Descrição e Sincronização"
+               >
+                 <Edit2 className="w-4 h-4" />
+               </button>
                
                <button 
                  onClick={(e) => {
                    e.stopPropagation();
                    setSubdeckTarget(deck);
                    setSubdeckName('');
+                   setSubdeckDesc('');
+                   setSubdeckIsOffline(Boolean(deck.isOffline));
                  }}
                  className="p-2 text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-xl transition-colors"
                  title="Adicionar Sub-baralho"
@@ -618,7 +666,7 @@ export function Home({ onNavigate }: HomeProps) {
               <form onSubmit={handleCreate} className="space-y-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1.5">
-                    Nome do Baralho
+                    Nome do Baralho *
                   </label>
                   <input
                     type="text"
@@ -630,16 +678,29 @@ export function Home({ onNavigate }: HomeProps) {
                   />
                 </div>
 
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1.5">
+                    Descrição do Baralho (Opcional)
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={newDeckDesc}
+                    onChange={(e) => setNewDeckDesc(e.target.value)}
+                    placeholder="Ex: Cartões focados nos mecanismos de ação e toxicidades..."
+                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all resize-none"
+                  />
+                </div>
+
                 <div className="p-3 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-xl flex items-start gap-2.5">
                   <input
                     type="checkbox"
                     id="offline-deck-create"
                     checked={newDeckIsOffline}
                     onChange={(e) => setNewDeckIsOffline(e.target.checked)}
-                    className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 w-4 h-4"
+                    className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
                   />
                   <label htmlFor="offline-deck-create" className="text-xs text-amber-900 dark:text-amber-200 cursor-pointer">
-                    <span className="font-bold">Manter este baralho apenas offline</span> (Salvo localmente no navegador, sem fazer upload para a nuvem. Recomendado para decks muito grandes como AnKing).
+                    <span className="font-bold">Manter este baralho apenas offline</span> (Salvo localmente no IndexedDB, sem enviar para a nuvem. Recomendado para decks gigantes).
                   </label>
                 </div>
 
@@ -674,16 +735,114 @@ export function Home({ onNavigate }: HomeProps) {
                 <button
                   onClick={() => apkgInputRef.current?.click()}
                   disabled={importing}
-                  className="w-full bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-750 border border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-200 px-4 py-3 rounded-xl font-semibold text-sm disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
+                  className="w-full bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-750 border border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-200 px-4 py-3 rounded-xl font-semibold text-sm disabled:opacity-50 flex items-center justify-center gap-2 transition-colors cursor-pointer"
                 >
                   <Upload className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                   <span>{importing ? "Importando..." : "Importar Arquivo (.apkg, .csv, .json)"}</span>
                 </button>
                 <p className="text-xs text-gray-500 dark:text-gray-400 text-center mt-2">
-                  Suporta baralhos gigantes (8GB+) do Anki com tags, imagens e estruturas de subdecks.
+                  Baralhos importados são configurados como <strong>Apenas Offline</strong> por padrão para garantir total privacidade e performance.
                 </p>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Deck Modal */}
+      {editingDeck && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-800">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 rounded-xl">
+                  <Edit2 className="w-4 h-4" />
+                </div>
+                <h3 className="font-bold text-lg text-gray-900 dark:text-gray-100">Editar Baralho</h3>
+              </div>
+              <button 
+                onClick={() => setEditingDeck(null)}
+                className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 p-1.5 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleSaveEditDeck} className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1.5">
+                  Nome do Baralho *
+                </label>
+                <input
+                  type="text"
+                  value={editDeckName}
+                  onChange={(e) => setEditDeckName(e.target.value)}
+                  placeholder="Nome do baralho..."
+                  autoFocus
+                  className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1.5">
+                  Descrição do Baralho
+                </label>
+                <textarea
+                  rows={3}
+                  value={editDeckDesc}
+                  onChange={(e) => setEditDeckDesc(e.target.value)}
+                  placeholder="Descrição sobre o conteúdo ou notas de estudo..."
+                  className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all resize-none"
+                />
+              </div>
+
+              <div className="p-3.5 bg-gray-50 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 rounded-xl space-y-2">
+                <div className="text-xs font-bold text-gray-800 dark:text-gray-200">Sincronização na Nuvem</div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="edit-deck-offline-toggle"
+                    checked={editDeckIsOffline}
+                    onChange={(e) => setEditDeckIsOffline(e.target.checked)}
+                    className="rounded text-amber-600 focus:ring-amber-500 w-4 h-4 cursor-pointer"
+                  />
+                  <label htmlFor="edit-deck-offline-toggle" className="text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
+                    {editDeckIsOffline ? (
+                      <span className="font-bold text-amber-700 dark:text-amber-400 flex items-center gap-1">
+                        <CloudOff className="w-3.5 h-3.5" /> Modo Apenas Offline (não envia para nuvem)
+                      </span>
+                    ) : (
+                      <span className="font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                        <Cloud className="w-3.5 h-3.5" /> Sincronizar este baralho na Nuvem
+                      </span>
+                    )}
+                  </label>
+                </div>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                  {editDeckIsOffline
+                    ? "Este baralho fica guardado apenas no seu dispositivo. Ideal para baralhos grandes importados."
+                    : "As cartas e revisões deste baralho serão incluídas no backup em nuvem."}
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingDeck(null)}
+                  className="px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit"
+                  disabled={!editDeckName.trim()}
+                  className="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 rounded-xl text-sm font-semibold shadow-sm shadow-blue-500/20 disabled:opacity-50 transition-all cursor-pointer"
+                >
+                  Salvar Alterações
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -713,7 +872,7 @@ export function Home({ onNavigate }: HomeProps) {
                   Este sub-baralho será inserido dentro de <strong className="text-blue-600 dark:text-blue-400">{subdeckTarget.name}</strong>.
                 </p>
                 <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1.5">
-                  Nome do Sub-baralho
+                  Nome do Sub-baralho *
                 </label>
                 <input
                   type="text"
@@ -725,13 +884,26 @@ export function Home({ onNavigate }: HomeProps) {
                 />
               </div>
 
+              <div>
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1.5">
+                  Descrição do Sub-baralho (Opcional)
+                </label>
+                <textarea
+                  rows={2}
+                  value={subdeckDesc}
+                  onChange={(e) => setSubdeckDesc(e.target.value)}
+                  placeholder="Descrição opcional..."
+                  className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all resize-none"
+                />
+              </div>
+
               <div className="p-3 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-xl flex items-start gap-2.5">
                 <input
                   type="checkbox"
                   id="offline-subdeck-create"
                   checked={subdeckIsOffline || Boolean(subdeckTarget.isOffline)}
                   onChange={(e) => setSubdeckIsOffline(e.target.checked)}
-                  className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 w-4 h-4"
+                  className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
                 />
                 <label htmlFor="offline-subdeck-create" className="text-xs text-amber-900 dark:text-amber-200 cursor-pointer">
                   <span className="font-bold">Manter sub-baralho apenas offline</span>
