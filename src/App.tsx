@@ -12,7 +12,9 @@ import NBMECalculator from "./pages/NBMECalculator";
 import ScorePredictor from "./pages/ScorePredictor";
 import FlashcardsUnifiedHub from "./pages/FlashcardsUnifiedHub";
 import QuestionsHub from "./pages/QuestionsHub";
+import StudyNotebooksHub from "./pages/StudyNotebooksHub";
 import ExtensionDownload from "./pages/ExtensionDownload";
+import StudyDesk from "./pages/StudyDesk";
 import { TopBarTimer } from "./components/TopBarTimer";
 import { ChevronLeft, Palette, Menu } from "lucide-react";
 import { Sidebar } from "./components/Sidebar";
@@ -20,6 +22,7 @@ import { ThemeSelector, themes } from "./components/ThemeSelector";
 import { AuthProvider } from "./contexts/AuthContext";
 import { UserAuthWidget } from "./components/UserAuthWidget";
 import { useQBankSync } from "./hooks/useQBankSync";
+import { useGlobalUndoRedo } from "./cardblocks/hooks/useGlobalUndoRedo";
 
 function AppContent() {
   const location = useLocation();
@@ -27,6 +30,9 @@ function AppContent() {
   
   // Sincronização global contínua de questões e flashcards da extensão
   useQBankSync();
+
+  // Suporte global a Ctrl+Z e Ctrl+Shift+Z / Ctrl+Y para desfazer e refazer edições
+  useGlobalUndoRedo();
   
   const [activeTheme, setActiveTheme] = useState(() => {
     const saved = localStorage.getItem('app-theme-id');
@@ -97,15 +103,28 @@ function AppContent() {
       <div className="flex-1 flex flex-col">
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route path="/desk" element={<StudyDesk />} />
+          <Route path="/mesa" element={<StudyDesk />} />
+          <Route path="/mesa-de-estudos" element={<StudyDesk />} />
           <Route path="/tracker" element={<StudyTracker />} />
           <Route path="/pacer" element={<PacerPage />} />
           <Route path="/calculator" element={<NBMECalculator />} />
           <Route path="/predictor" element={<ScorePredictor />} />
+          <Route path="/browse/*" element={<FlashcardsUnifiedHub />} />
+          <Route path="/browse" element={<FlashcardsUnifiedHub />} />
+          <Route path="/heatmap" element={<StudyTracker initialTab="heatmap" />} />
+          <Route path="/dashboard" element={<StudyTracker initialTab="heatmap" />} />
           <Route path="/flashcards/*" element={<FlashcardsUnifiedHub />} />
           <Route path="/flashcards" element={<FlashcardsUnifiedHub />} />
           <Route path="/questions/*" element={<QuestionsHub />} />
           <Route path="/questions" element={<QuestionsHub />} />
           <Route path="/questoes" element={<QuestionsHub />} />
+          <Route path="/notebooks/*" element={<StudyNotebooksHub />} />
+          <Route path="/notebooks" element={<StudyNotebooksHub />} />
+          <Route path="/cadernos/*" element={<StudyNotebooksHub />} />
+          <Route path="/cadernos" element={<StudyNotebooksHub />} />
+          <Route path="/notes/*" element={<StudyNotebooksHub />} />
+          <Route path="/notes" element={<StudyNotebooksHub />} />
           <Route path="/extensao" element={<ExtensionDownload />} />
         </Routes>
       </div>

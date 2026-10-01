@@ -21,6 +21,7 @@ import { findCardsForQuestion } from '../../../utils/qbankCardMatcher';
 import { ImportBankModal } from '../../components/ImportBankModal';
 import { QBankDiagnosticModal } from '../../components/QBankDiagnosticModal';
 import { RichContentRenderer } from '../../components/RichContentRenderer';
+import { NoteAssociationModal } from '../../components/NoteAssociationModal';
 
 interface QuestionRepositoryViewProps {
   bankId: string;
@@ -33,7 +34,7 @@ export const QuestionRepositoryView: React.FC<QuestionRepositoryViewProps> = ({
   onBackToBanks,
   onOpenCardCreator,
 }) => {
-  const { questionBanks, questions, deleteQuestion, resetQuestionStats, cards } = useStore();
+  const { questionBanks, questions, deleteQuestion, resetQuestionStats, cards, studyNotes } = useStore();
   const bank = questionBanks.find(b => b.id === bankId) || questionBanks[0];
 
   const bankQuestions = useMemo(() => {
@@ -46,6 +47,7 @@ export const QuestionRepositoryView: React.FC<QuestionRepositoryViewProps> = ({
   const [selectedSubject, setSelectedSubject] = useState<string>('all');
   const [selectedSystem, setSelectedSystem] = useState<string>('all');
   const [activeModalQid, setActiveModalQid] = useState<string | null>(null);
+  const [activeNoteModalQ, setActiveNoteModalQ] = useState<Question | null>(null);
   const [expandedQuestionId, setExpandedQuestionId] = useState<string | null>(null);
 
   const subjects = useMemo(() => {
@@ -238,6 +240,27 @@ export const QuestionRepositoryView: React.FC<QuestionRepositoryViewProps> = ({
                       </span>
                     )}
 
+                    {/* Caderno de Estudos Button */}
+                    {(() => {
+                      const linkedNotes = studyNotes.filter(n => 
+                        n.associatedQuestionIds?.includes(q.qid) || n.associatedQuestionIds?.includes(q.id)
+                      );
+                      return (
+                        <button
+                          onClick={() => setActiveNoteModalQ(q)}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors ${
+                            linkedNotes.length > 0
+                              ? 'bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-100 text-blue-700 dark:text-blue-300'
+                              : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 text-gray-700 dark:text-gray-300'
+                          }`}
+                          title="Vincular a notas no Caderno de Estudos"
+                        >
+                          <BookOpen className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+                          <span>{linkedNotes.length > 0 ? `${linkedNotes.length} Nota(s)` : 'Caderno'}</span>
+                        </button>
+                      );
+                    })()}
+
                     {/* Card Link Badge / Button */}
                     {matchingCards.length > 0 ? (
                       <button
@@ -367,6 +390,22 @@ export const QuestionRepositoryView: React.FC<QuestionRepositoryViewProps> = ({
           onClose={() => setActiveModalQid(null)}
           qid={activeModalQid}
           cards={findCardsForQuestion(cards, activeModalQid)}
+        />
+      )}
+
+      {/* Modal de Notas Associadas (Caderno de Estudos) */}
+      {activeNoteModalQ && (
+        <NoteAssociationModal
+          targetType="question"
+          targetId={activeNoteModalQ.qid || activeNoteModalQ.id}
+          targetTitle={activeNoteModalQ.stem ? activeNoteModalQ.stem.replace(/<[^>]+>/g, '').substring(0, 70) : `Questão ${activeNoteModalQ.qid}`}
+          defaultStemOrFront={activeNoteModalQ.stem || activeNoteModalQ.text}
+          defaultExplanationOrBack={activeNoteModalQ.explanation}
+          onClose={() => setActiveNoteModalQ(null)}
+          onNavigateToNote={(noteId) => {
+            setActiveNoteModalQ(null);
+            window.location.href = `/notebooks?noteId=${noteId}`;
+          }}
         />
       )}
     </div>

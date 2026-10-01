@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams, useLocation } from "react-router-dom";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
@@ -32,6 +32,7 @@ import {
   Download,
   Upload,
   Flag,
+  Flame,
 } from "lucide-react";
 import { useStudyPlan } from "../hooks/useStudyPlan";
 import { cn } from "../lib/utils";
@@ -97,8 +98,27 @@ const CLEAN_STARTER_RESOURCES: Resource[] = [
   },
 ];
 
-export default function StudyTracker() {
-  const [activeTab, setActiveTab] = useState<'planner' | 'timeline' | 'heatmap'>('planner');
+export default function StudyTracker({ initialTab }: { initialTab?: 'planner' | 'timeline' | 'heatmap' }) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+
+  const [activeTab, setActiveTab] = useState<'planner' | 'timeline' | 'heatmap'>(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam === 'heatmap' || initialTab === 'heatmap' || window.location.pathname.startsWith('/heatmap')) return 'heatmap';
+    if (tabParam === 'timeline' || initialTab === 'timeline') return 'timeline';
+    return 'planner';
+  });
+
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam === 'heatmap' || initialTab === 'heatmap' || location.pathname.startsWith('/heatmap')) {
+      setActiveTab('heatmap');
+    } else if (tabParam === 'timeline' || initialTab === 'timeline') {
+      setActiveTab('timeline');
+    } else if (tabParam === 'planner') {
+      setActiveTab('planner');
+    }
+  }, [location.search, location.pathname, initialTab, searchParams]);
 
   // Recuperação de dados do localStorage ou padrões vazios/limpos
   const [mode, setMode] = useState<StudyMode>(() => {
@@ -427,7 +447,10 @@ export default function StudyTracker() {
           <nav className="flex space-x-6 sm:space-x-8 border-b border-gray-100 dark:border-gray-800 text-xs sm:text-sm">
             <button
               type="button"
-              onClick={() => setActiveTab('planner')}
+              onClick={() => {
+                setActiveTab('planner');
+                setSearchParams({});
+              }}
               className={cn(
                 "font-medium pb-3 transition-all flex items-center gap-2 cursor-pointer border-b-2",
                 activeTab === 'planner'
@@ -441,7 +464,10 @@ export default function StudyTracker() {
 
             <button
               type="button"
-              onClick={() => setActiveTab('timeline')}
+              onClick={() => {
+                setActiveTab('timeline');
+                setSearchParams({ tab: 'timeline' });
+              }}
               className={cn(
                 "font-medium pb-3 transition-all flex items-center gap-2 cursor-pointer border-b-2",
                 activeTab === 'timeline'
@@ -455,7 +481,10 @@ export default function StudyTracker() {
 
             <button
               type="button"
-              onClick={() => setActiveTab('heatmap')}
+              onClick={() => {
+                setActiveTab('heatmap');
+                setSearchParams({ tab: 'heatmap' });
+              }}
               className={cn(
                 "font-medium pb-3 transition-all flex items-center gap-2 cursor-pointer border-b-2",
                 activeTab === 'heatmap'
@@ -463,8 +492,8 @@ export default function StudyTracker() {
                   : "text-gray-500 dark:text-gray-400 border-transparent hover:text-gray-800 dark:text-gray-200"
               )}
             >
-              <Activity className="w-4 h-4" />
-              Heatmap & Lançamentos
+              <Flame className="w-4 h-4 text-orange-500" />
+              Heatmap de Consistência
             </button>
           </nav>
         </div>

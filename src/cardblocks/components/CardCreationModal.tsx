@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useStore, Question } from '../store/useStore';
-import { X, Save, Sparkles, PlusCircle, ChevronDown, ChevronUp, Copy, Image as ImageIcon, Trash2 } from 'lucide-react';
+import { X, Save, Sparkles, PlusCircle, ChevronDown, ChevronUp, Copy, Image as ImageIcon, Trash2, BookOpen } from 'lucide-react';
 import { RichEditor } from './RichEditor';
+import { NoteAssociationModal } from './NoteAssociationModal';
 
 export const CardCreationModal: React.FC<{ 
   onClose: () => void;
@@ -48,6 +49,7 @@ export const CardCreationModal: React.FC<{
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedCards, setGeneratedCards] = useState<{front: string, back: string}[]>([]);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState(false);
+  const [showNoteModal, setShowNoteModal] = useState(false);
 
   // Helper para deduplicar tags sem repetições
   const deduplicateTags = (existingStr: string, incomingList: string[] = []): string => {
@@ -642,10 +644,17 @@ export const CardCreationModal: React.FC<{
         </div>
 
         {/* Footer Actions */}
-        <div className="p-4 sm:p-5 border-t border-gray-200 dark:border-gray-800 flex justify-between items-center shrink-0 bg-gray-50/50 dark:bg-gray-900/50">
-          <p className="text-xs text-gray-500 dark:text-gray-400 hidden sm:inline">
-            O flashcard será salvo no baralho selecionado com suporte a Anki.
-          </p>
+        <div className="p-4 sm:p-5 border-t border-gray-200 dark:border-gray-800 flex flex-wrap justify-between items-center gap-3 shrink-0 bg-gray-50/50 dark:bg-gray-900/50">
+          <button
+            type="button"
+            onClick={() => setShowNoteModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/50 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60 rounded-xl text-xs font-bold transition-all cursor-pointer"
+            title="Vincular a uma nota no Caderno de Estudos"
+          >
+            <BookOpen className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+            <span>Associar a uma Nota</span>
+          </button>
+
           <div className="flex items-center gap-2 sm:gap-3 ml-auto">
             <button 
               type="button" 
@@ -666,6 +675,17 @@ export const CardCreationModal: React.FC<{
           </div>
         </div>
       </div>
+
+      {showNoteModal && (
+        <NoteAssociationModal
+          targetType={initialData?.questionId || sourceQuestion?.id ? 'question' : 'card'}
+          targetId={initialData?.questionId || sourceQuestion?.id || initialData?.id || 'new-card'}
+          targetTitle={front ? front.replace(/<[^>]+>/g, '').substring(0, 70) : undefined}
+          defaultStemOrFront={front || questionStem}
+          defaultExplanationOrBack={back || explanation}
+          onClose={() => setShowNoteModal(false)}
+        />
+      )}
     </div>
   );
 };

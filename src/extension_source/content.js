@@ -950,6 +950,43 @@ function despacharDadosParaFlashcards(cardData) {
     return true;
 }
 
+// Criação de Nota no Caderno de Estudos a partir da questão externa
+function executarCriacaoNota() {
+    const cardData = extrairDadosCompletosQuestao();
+    mostrarFeedbackDrawer('📝 Criando nota de estudo vinculada...');
+
+    // 1. BroadcastChannel para comunicação instantânea com abas abertas do app
+    try {
+        const bc = new BroadcastChannel('usmle_qbank_sync');
+        bc.postMessage({ type: 'CREATE_NOTE_FROM_QUESTION', question: cardData });
+        setTimeout(() => bc.close(), 1500);
+    } catch(e) {}
+
+    // 2. CustomEvent se estiver na mesma janela
+    try {
+        window.dispatchEvent(new CustomEvent('usmle_create_note', {
+            detail: { type: 'CREATE_NOTE_FROM_QUESTION', question: cardData }
+        }));
+    } catch(e) {}
+
+    // 3. Notificação via Background Worker
+    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+        chrome.runtime.sendMessage({
+            type: 'DISPATCH_NOTE_DATA',
+            questionData: cardData
+        }, (response) => {
+            if (response && response.openedNew === false) {
+                mostrarFeedbackDrawer('✅ Nota de estudo criada e focada no Caderno!');
+            } else {
+                mostrarFeedbackDrawer('🌐 Abrindo Cadernos de Estudo...');
+            }
+        });
+    }
+
+    mostrarToastFlutuante(`📝 <b>Nota Criada!</b> Vinculada à questão #${currentQNumberExt} (QID: ${cardData.questionId}).`, 'sucesso');
+    return true;
+}
+
 let lastImportedQuestionSignatures = new Map();
 
 // Auto-importação durante a navegação pelas questões:
@@ -1219,9 +1256,14 @@ function atualizarStatusCardQuestaoAtual() {
                 <div style="font-size: 11px; color: #cbd5e1; background: #0f172a; padding: 8px; border-radius: 8px; border: 1px solid #1e293b; margin-bottom: 10px; max-height: 80px; overflow: hidden; text-overflow: ellipsis;">
                     <b>Frente:</b> ${(cardExistente.front || '').replace(/<[^>]+>/g, '').substring(0, 100)}...
                 </div>
-                <button id="btn-gerar-card" style="width: 100%; padding: 9px 12px; border-radius: 8px; border: none; background: #2563eb; color: #fff; font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 2px 8px rgba(37,99,235,0.4);">
-                    ⚡ Abrir / Editar no App
-                </button>
+                <div style="display: flex; gap: 6px; margin-top: 8px;">
+                    <button id="btn-gerar-card" style="flex: 1; padding: 9px 12px; border-radius: 8px; border: none; background: #2563eb; color: #fff; font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 2px 8px rgba(37,99,235,0.4);">
+                        ⚡ Abrir Flashcard
+                    </button>
+                    <button id="btn-criar-nota" style="flex: 1; padding: 9px 12px; border-radius: 8px; border: 1px solid #3b82f6; background: rgba(59,130,246,0.15); color: #60a5fa; font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                        📝 Criar Nota
+                    </button>
+                </div>
             `;
         } else {
             statusCard.innerHTML = `
@@ -1242,11 +1284,14 @@ function atualizarStatusCardQuestaoAtual() {
                 <div style="display: flex; gap: 6px; margin-bottom: 8px;">
                     ${!val.status.system ? `
                         <button id="btn-revelar-campos" style="flex: 1; padding: 8px 10px; border-radius: 8px; border: 1px solid #475569; background: #1e293b; color: #38bdf8; font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;">
-                            🔍 Revelar 'Click to Show'
+                            🔍 Revelar
                         </button>
                     ` : ''}
                     <button id="btn-gerar-card" style="flex: 1; padding: 10px 12px; border-radius: 8px; border: none; background: ${val.completo ? 'linear-gradient(135deg, #2563eb, #4f46e5)' : '#334155'}; color: ${val.completo ? '#fff' : '#94a3b8'}; font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 4px 12px rgba(37,99,235,0.3);">
-                        ⚡ Criar Flashcard
+                        ⚡ Flashcard
+                    </button>
+                    <button id="btn-criar-nota" style="flex: 1; padding: 10px 12px; border-radius: 8px; border: 1px solid #3b82f6; background: rgba(59,130,246,0.2); color: #93c5fd; font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                        📝 Criar Nota
                     </button>
                 </div>
             `;
@@ -1267,6 +1312,11 @@ function atualizarStatusCardQuestaoAtual() {
         const btnGerar = document.getElementById('btn-gerar-card');
         if (btnGerar) {
             btnGerar.addEventListener('click', executarGeracaoFlashcard);
+        }
+
+        const btnCriarNota = document.getElementById('btn-criar-nota');
+        if (btnCriarNota) {
+            btnCriarNota.addEventListener('click', executarCriacaoNota);
         }
 
         // Renderiza cards sugeridos (AnKing / Criados) para a questão atual

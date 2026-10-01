@@ -42,6 +42,8 @@ export interface Flashcard {
   isSuspended?: boolean;
   isBuried?: boolean;
   sourceQuestionId?: string;
+  associatedQuestionIds?: string[];
+  associatedNoteIds?: string[];
 
   // Campos de integração com QBanks (opcionais e nativamente colapsados)
   questionId?: string;
@@ -109,6 +111,7 @@ export interface Question {
   attempts?: QuestionAttempt[];
   lastAnsweredAt?: number;
   userNotes?: string;
+  associatedNoteIds?: string[];
   isFlagged?: boolean;
   createdAt?: number;
   updatedAt?: number;
@@ -141,6 +144,94 @@ export interface NotebookHistory {
   total?: number;
 }
 
+// ==========================================
+// MÓDULO DE CADERNOS DE ESTUDO & NOTAS (NOTION-LIKE)
+// Hierarquia: Área (obrigatória) -> Sistema -> Matéria -> Tema -> Notas
+// ==========================================
+
+export interface NotebookArea {
+  id: string;
+  notebookId?: string;
+  name: string; // Ex: Pediatria, Ginecologia e Obstetrícia, Clínica Médica, Cirurgia, Preventiva
+  color: string; // Cor identificadora da área (Hex / Tailwind color)
+  description?: string;
+  order: number;
+  createdAt: number;
+}
+
+export interface NotebookSystem {
+  id: string;
+  areaId: string;
+  name: string; // Ex: Cardiovascular, Respiratório, Gastrointestinal, Neonatologia
+  order: number;
+  createdAt: number;
+}
+
+export interface NotebookSubject {
+  id: string;
+  areaId: string;
+  systemId?: string | null;
+  name: string; // Ex: Farmacologia, Fisiologia, Patologia, Semiologia
+  order: number;
+  createdAt: number;
+}
+
+export interface NotebookTopic {
+  id: string;
+  areaId: string;
+  systemId?: string | null;
+  subjectId?: string | null;
+  name: string; // Ex: Insuficiência Cardíaca, Asma, Choque Séptico, Pré-eclâmpsia
+  order: number;
+  createdAt: number;
+}
+
+export interface NoteMediaItem {
+  id: string;
+  type: 'video' | 'audio' | 'image' | 'code_sandbox';
+  url?: string;
+  title?: string;
+  caption?: string;
+  audioBlobUrl?: string;
+  codeHtml?: string;
+  codeCss?: string;
+  codeJs?: string;
+  createdAt?: number;
+}
+
+export interface StudyNote {
+  id: string;
+  notebookId: string;
+  areaId: string; // Obrigatória
+  systemId?: string | null; // Opcional
+  subjectId?: string | null; // Opcional
+  topicId?: string | null; // Opcional
+  title: string;
+  content: string; // Rich Text / HTML / Markdown
+  icon?: string;
+  coverImage?: string;
+  order: number;
+  isPinned?: boolean;
+  color?: string;
+  tags?: string[];
+  associatedQuestionIds?: string[]; // IDs/QIDs de questões associadas
+  associatedCardIds?: string[]; // IDs de flashcards associados
+  embeddedFlashcardIds?: string[]; // Flashcards embutidos diretamente para visualização/flip na nota
+  mediaItems?: NoteMediaItem[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface StudyNotebook {
+  id: string;
+  name: string;
+  description?: string;
+  icon?: string;
+  coverColor?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface Note {
   id: string;
   targetType: 'question' | 'card' | 'standalone';
@@ -149,6 +240,39 @@ export interface Note {
   content: string;
   createdAt: number;
   updatedAt: number;
+}
+
+// ==========================================
+// MÓDULO MESA DE ESTUDOS (STUDY DESK)
+// ==========================================
+export interface StudyDeskQuestionRecord {
+  qid: string;
+  questionId?: string;
+  selectedChoiceId?: string;
+  correctChoiceId?: string;
+  isCorrect: boolean;
+  resolutionTimeSeconds: number;
+  reviewTimeSeconds: number;
+  subject?: string;
+  system?: string;
+  answeredAt: number;
+}
+
+export interface StudyDeskSession {
+  id: string;
+  name: string;
+  bankId?: string;
+  startedAt: number;
+  endedAt?: number;
+  totalQuestions: number;
+  completedQuestions: number;
+  correctCount: number;
+  incorrectCount: number;
+  totalResolutionTimeSeconds: number;
+  totalReviewTimeSeconds: number;
+  targetResolutionTimeSeconds: number;
+  targetReviewTimeSeconds: number;
+  questionRecords: StudyDeskQuestionRecord[];
 }
 
 export interface Settings {
@@ -212,6 +336,19 @@ export interface StoreState {
   notebooks: Notebook[];
   notebookHistory: NotebookHistory[];
   notes: Note[];
+  
+  // Módulo Cadernos de Estudo
+  studyNotebooks: StudyNotebook[];
+  notebookAreas: NotebookArea[];
+  notebookSystems: NotebookSystem[];
+  notebookSubjects: NotebookSubject[];
+  notebookTopics: NotebookTopic[];
+  studyNotes: StudyNote[];
+
+  // Módulo Mesa de Estudos (Study Desk)
+  studyDeskSessions: StudyDeskSession[];
+  activeDeskSessionId: string | null;
+
   settings: Settings;
 
   // Deck Actions
@@ -283,16 +420,59 @@ export interface StoreState {
   updateQuestionNotes: (questionId: string, notes: string) => void;
   toggleQuestionFlag: (questionId: string) => void;
 
-  // Notebook Actions
+  // Legacy Notebook Actions
   createNotebook: (name: string, questionIds: string[], description?: string, timeLimitPerQuestion?: number, mode?: 'exam' | 'tutor') => string;
   deleteNotebook: (id: string) => void;
   addNotebookHistory: (history: any) => void;
   recordNotebookHistory: (notebookId: string, results: Record<string, boolean>, answers?: Record<string, string>) => void;
 
-  // Note Actions
+  // Legacy Note Actions
   createNote: (note: Omit<Note, 'id' | 'createdAt' | 'updatedAt'>) => string;
   updateNote: (id: string, content: string) => void;
   deleteNote: (id: string) => void;
+
+  // Study Notebooks Actions (Novo Módulo Notion-like)
+  createStudyNotebook: (name: string, description?: string, icon?: string, coverColor?: string) => string;
+  updateStudyNotebook: (id: string, updates: Partial<StudyNotebook>) => void;
+  deleteStudyNotebook: (id: string) => void;
+
+  createNotebookArea: (name: string, color: string, notebookId?: string, description?: string) => string;
+  updateNotebookArea: (id: string, updates: Partial<NotebookArea>) => void;
+  deleteNotebookArea: (id: string) => void;
+  reorderNotebookAreas: (areaIds: string[]) => void;
+
+  createNotebookSystem: (areaId: string, name: string) => string;
+  updateNotebookSystem: (id: string, updates: Partial<NotebookSystem>) => void;
+  deleteNotebookSystem: (id: string) => void;
+
+  createNotebookSubject: (areaId: string, name: string, systemId?: string | null) => string;
+  updateNotebookSubject: (id: string, updates: Partial<NotebookSubject>) => void;
+  deleteNotebookSubject: (id: string) => void;
+
+  createNotebookTopic: (areaId: string, name: string, systemId?: string | null, subjectId?: string | null) => string;
+  updateNotebookTopic: (id: string, updates: Partial<NotebookTopic>) => void;
+  deleteNotebookTopic: (id: string) => void;
+
+  createStudyNote: (noteData: Partial<StudyNote>) => string;
+  updateStudyNote: (id: string, updates: Partial<StudyNote>) => void;
+  deleteStudyNote: (id: string) => void;
+  reorderStudyNotes: (noteIds: string[]) => void;
+  moveStudyNote: (noteId: string, target: { areaId: string; systemId?: string | null; subjectId?: string | null; topicId?: string | null }) => void;
+
+  // Associações Bidirecionais: Notas <-> Questões <-> Flashcards
+  associateQuestionToNote: (noteId: string, questionId: string) => void;
+  dissociateQuestionFromNote: (noteId: string, questionId: string) => void;
+  associateCardToNote: (noteId: string, cardId: string) => void;
+  dissociateCardFromNote: (noteId: string, cardId: string) => void;
+  addFlashcardAsNote: (cardId: string, areaId: string, systemId?: string | null, customTitle?: string) => string;
+  createNoteFromQuestion: (questionData: any, areaId?: string, customTitle?: string) => string;
+
+  // Study Desk Actions
+  startDeskSession: (sessionData?: Partial<StudyDeskSession>) => string;
+  recordDeskQuestionAnswer: (data: { qid: string; questionId?: string; selectedChoiceId?: string; correctChoiceId?: string; isCorrect: boolean; resolutionTimeSeconds: number; reviewTimeSeconds: number; subject?: string; system?: string }) => void;
+  finishDeskSession: (sessionId?: string) => void;
+  deleteDeskSession: (sessionId: string) => void;
+  setActiveDeskSessionId: (sessionId: string | null) => void;
 
   // Settings Actions
   updateSettings: (settings: Partial<Settings>) => void;
@@ -350,6 +530,116 @@ export const useStore = create<StoreState>()(
         notebooks: [],
         notebookHistory: [],
         notes: [],
+
+        // Módulo Cadernos de Estudo (Notion-like) - Seed Inicial Rico
+        studyNotebooks: [
+          {
+            id: 'nb-principal',
+            name: 'Caderno de Estudos Geral',
+            description: 'Anotações estruturadas por Área, Sistema, Matéria e Tema com Flashcards e Questões vinculadas',
+            icon: '📚',
+            coverColor: '#3b82f6',
+            createdAt: Date.now(),
+            updatedAt: Date.now()
+          }
+        ],
+        notebookAreas: [
+          {
+            id: 'area-clinica',
+            notebookId: 'nb-principal',
+            name: 'Clínica Médica',
+            color: '#3b82f6', // Blue
+            description: 'Cardiologia, Pneumologia, Nefrologia, Gastro, Reumato, Infecto',
+            order: 0,
+            createdAt: Date.now()
+          },
+          {
+            id: 'area-pediatria',
+            notebookId: 'nb-principal',
+            name: 'Pediatria',
+            color: '#10b981', // Emerald
+            description: 'Puericultura, Neonatologia, Infectologia Pediátrica, Emergências',
+            order: 1,
+            createdAt: Date.now()
+          },
+          {
+            id: 'area-go',
+            notebookId: 'nb-principal',
+            name: 'Ginecologia e Obstetrícia',
+            color: '#ec4899', // Pink
+            description: 'Obstetrícia Geral, Alto Risco, Mastologia, Ginecologia Endócrina',
+            order: 2,
+            createdAt: Date.now()
+          },
+          {
+            id: 'area-cirurgia',
+            notebookId: 'nb-principal',
+            name: 'Cirurgia Geral',
+            color: '#f59e0b', // Amber
+            description: 'Trauma, Abdome Agudo, Pré e Pós-operatório, Urologia',
+            order: 3,
+            createdAt: Date.now()
+          },
+          {
+            id: 'area-preventiva',
+            notebookId: 'nb-principal',
+            name: 'Medicina Preventiva & SUS',
+            color: '#8b5cf6', // Violet
+            description: 'Epidemiologia, Bioestatística, Atenção Básica, SUS, Ética',
+            order: 4,
+            createdAt: Date.now()
+          }
+        ],
+        notebookSystems: [
+          { id: 'sys-cardio', areaId: 'area-clinica', name: 'Cardiovascular', order: 0, createdAt: Date.now() },
+          { id: 'sys-pneumo', areaId: 'area-clinica', name: 'Respiratório', order: 1, createdAt: Date.now() },
+          { id: 'sys-gastro', areaId: 'area-clinica', name: 'Gastrointestinal', order: 2, createdAt: Date.now() },
+          { id: 'sys-neonat', areaId: 'area-pediatria', name: 'Neonatologia', order: 0, createdAt: Date.now() },
+          { id: 'sys-obstetricia', areaId: 'area-go', name: 'Obstetrícia', order: 0, createdAt: Date.now() },
+          { id: 'sys-trauma', areaId: 'area-cirurgia', name: 'Trauma & Urgências', order: 0, createdAt: Date.now() }
+        ],
+        notebookSubjects: [
+          { id: 'subj-farmaco-cardio', areaId: 'area-clinica', systemId: 'sys-cardio', name: 'Farmacologia Cardíaca', order: 0, createdAt: Date.now() },
+          { id: 'subj-valvopatias', areaId: 'area-clinica', systemId: 'sys-cardio', name: 'Valvopatias & Miocárdio', order: 1, createdAt: Date.now() }
+        ],
+        notebookTopics: [
+          { id: 'topic-icfer', areaId: 'area-clinica', systemId: 'sys-cardio', subjectId: 'subj-farmaco-cardio', name: 'Insuficiência Cardíaca (ICFEr)', order: 0, createdAt: Date.now() },
+          { id: 'topic-est-aortica', areaId: 'area-clinica', systemId: 'sys-cardio', subjectId: 'subj-valvopatias', name: 'Estenose Aórtica', order: 1, createdAt: Date.now() }
+        ],
+        studyNotes: [
+          {
+            id: 'note-sample-ic',
+            notebookId: 'nb-principal',
+            areaId: 'area-clinica',
+            systemId: 'sys-cardio',
+            subjectId: 'subj-farmaco-cardio',
+            topicId: 'topic-icfer',
+            title: 'Manejo Farmacológico da ICFEr (Quádrupla Terapia)',
+            content: `<h3>Quádrupla Terapia Baseada em Evidências (Redução de Mortalidade):</h3>
+<p>Os 4 pilares fundamentais para o tratamento da Insuficiência Cardíaca com Fração de Ejeção Reduzida (ICFEr, FE &le; 40%):</p>
+<ol>
+  <li><b>iSGLT2 (Dapagliflozina ou Empagliflozina):</b> reduz hospitalização e morte cardiovascular independente do status de diabetes.</li>
+  <li><b>iECA / BRA / INRA (Sacubitril/Valsartana):</b> vasodilatação, inibição neuro-humoral e aumento de peptídeos natriuréticos.</li>
+  <li><b>Beta-bloqueadores (Carvedilol, Succinato de Metoprolol, Bisoprolol):</b> proteção miocárdica contra toxicidade adrenérgica.</li>
+  <li><b>Antagonista do Receptor Mineralocorticoide (Espironolactona / Eplerenona):</b> bloqueio da aldosterona e redução de fibrose.</li>
+</ol>
+<blockquote><p><b>Dica High-Yield:</b> Iniciar os 4 pilares precocemente em doses baixas e titular a cada 2 a 4 semanas.</p></blockquote>`,
+            icon: '❤️',
+            order: 0,
+            isPinned: true,
+            tags: ['cardio', 'icfer', 'farmacologia', 'high-yield'],
+            associatedCardIds: ['card-1'],
+            associatedQuestionIds: [],
+            embeddedFlashcardIds: ['card-1'],
+            mediaItems: [],
+            createdAt: Date.now() - 3600000,
+            updatedAt: Date.now()
+          }
+        ],
+
+        studyDeskSessions: [],
+        activeDeskSessionId: null,
+
         settings: DEFAULT_SETTINGS,
 
         createDeck: (name, parentId = null, isOffline = false, description = '') => {
@@ -1192,6 +1482,611 @@ export const useStore = create<StoreState>()(
           }));
         },
 
+        // ==========================================
+        // IMPLEMENTAÇÃO DO MÓDULO CADERNOS DE ESTUDO (NOTION-LIKE)
+        // ==========================================
+
+        createStudyNotebook: (name, description = '', icon = '📚', coverColor = '#3b82f6') => {
+          const id = 'nb-' + Math.random().toString(36).substring(2, 9);
+          const newNb: StudyNotebook = {
+            id,
+            name,
+            description,
+            icon,
+            coverColor,
+            createdAt: Date.now(),
+            updatedAt: Date.now()
+          };
+          set(state => ({ studyNotebooks: [...state.studyNotebooks, newNb] }));
+          return id;
+        },
+
+        updateStudyNotebook: (id, updates) => {
+          set(state => ({
+            studyNotebooks: state.studyNotebooks.map(nb => nb.id === id ? { ...nb, ...updates, updatedAt: Date.now() } : nb)
+          }));
+        },
+
+        deleteStudyNotebook: (id) => {
+          set(state => ({
+            studyNotebooks: state.studyNotebooks.filter(nb => nb.id !== id),
+            notebookAreas: state.notebookAreas.filter(a => a.notebookId !== id),
+            studyNotes: state.studyNotes.filter(n => n.notebookId !== id)
+          }));
+        },
+
+        createNotebookArea: (name, color = '#3b82f6', notebookId = 'nb-principal', description = '') => {
+          const id = 'area-' + Math.random().toString(36).substring(2, 9);
+          const currentAreas = get().notebookAreas || [];
+          const newArea: NotebookArea = {
+            id,
+            notebookId,
+            name,
+            color,
+            description,
+            order: currentAreas.length,
+            createdAt: Date.now()
+          };
+          set(state => ({ notebookAreas: [...state.notebookAreas, newArea] }));
+          return id;
+        },
+
+        updateNotebookArea: (id, updates) => {
+          set(state => ({
+            notebookAreas: state.notebookAreas.map(a => a.id === id ? { ...a, ...updates } : a)
+          }));
+        },
+
+        deleteNotebookArea: (id) => {
+          set(state => ({
+            notebookAreas: state.notebookAreas.filter(a => a.id !== id),
+            notebookSystems: state.notebookSystems.filter(s => s.areaId !== id),
+            notebookSubjects: state.notebookSubjects.filter(sub => sub.areaId !== id),
+            notebookTopics: state.notebookTopics.filter(t => t.areaId !== id),
+            studyNotes: state.studyNotes.filter(n => n.areaId !== id)
+          }));
+        },
+
+        reorderNotebookAreas: (areaIds) => {
+          set(state => {
+            const areaMap = new Map(state.notebookAreas.map(a => [a.id, a]));
+            const reordered: NotebookArea[] = [];
+            areaIds.forEach((id, idx) => {
+              const a = areaMap.get(id);
+              if (a) reordered.push({ ...a, order: idx });
+            });
+            // Adiciona áreas que não estavam no array
+            state.notebookAreas.forEach(a => {
+              if (!areaIds.includes(a.id)) reordered.push(a);
+            });
+            return { notebookAreas: reordered };
+          });
+        },
+
+        createNotebookSystem: (areaId, name) => {
+          const id = 'sys-' + Math.random().toString(36).substring(2, 9);
+          const currentSystems = (get().notebookSystems || []).filter(s => s.areaId === areaId);
+          const newSys: NotebookSystem = {
+            id,
+            areaId,
+            name,
+            order: currentSystems.length,
+            createdAt: Date.now()
+          };
+          set(state => ({ notebookSystems: [...state.notebookSystems, newSys] }));
+          return id;
+        },
+
+        updateNotebookSystem: (id, updates) => {
+          set(state => ({
+            notebookSystems: state.notebookSystems.map(s => s.id === id ? { ...s, ...updates } : s)
+          }));
+        },
+
+        deleteNotebookSystem: (id) => {
+          set(state => ({
+            notebookSystems: state.notebookSystems.filter(s => s.id !== id),
+            notebookSubjects: state.notebookSubjects.filter(sub => sub.systemId !== id),
+            notebookTopics: state.notebookTopics.filter(t => t.systemId !== id),
+            studyNotes: state.studyNotes.map(n => n.systemId === id ? { ...n, systemId: null, topicId: null } : n)
+          }));
+        },
+
+        createNotebookSubject: (areaId, name, systemId = null) => {
+          const id = 'subj-' + Math.random().toString(36).substring(2, 9);
+          const currentSubjects = (get().notebookSubjects || []).filter(s => s.areaId === areaId);
+          const newSubj: NotebookSubject = {
+            id,
+            areaId,
+            systemId,
+            name,
+            order: currentSubjects.length,
+            createdAt: Date.now()
+          };
+          set(state => ({ notebookSubjects: [...state.notebookSubjects, newSubj] }));
+          return id;
+        },
+
+        updateNotebookSubject: (id, updates) => {
+          set(state => ({
+            notebookSubjects: state.notebookSubjects.map(s => s.id === id ? { ...s, ...updates } : s)
+          }));
+        },
+
+        deleteNotebookSubject: (id) => {
+          set(state => ({
+            notebookSubjects: state.notebookSubjects.filter(s => s.id !== id),
+            notebookTopics: state.notebookTopics.filter(t => t.subjectId !== id),
+            studyNotes: state.studyNotes.map(n => n.subjectId === id ? { ...n, subjectId: null, topicId: null } : n)
+          }));
+        },
+
+        createNotebookTopic: (areaId, name, systemId = null, subjectId = null) => {
+          const id = 'topic-' + Math.random().toString(36).substring(2, 9);
+          const currentTopics = (get().notebookTopics || []).filter(t => t.areaId === areaId);
+          const newTopic: NotebookTopic = {
+            id,
+            areaId,
+            systemId,
+            subjectId,
+            name,
+            order: currentTopics.length,
+            createdAt: Date.now()
+          };
+          set(state => ({ notebookTopics: [...state.notebookTopics, newTopic] }));
+          return id;
+        },
+
+        updateNotebookTopic: (id, updates) => {
+          set(state => ({
+            notebookTopics: state.notebookTopics.map(t => t.id === id ? { ...t, ...updates } : t)
+          }));
+        },
+
+        deleteNotebookTopic: (id) => {
+          set(state => ({
+            notebookTopics: state.notebookTopics.filter(t => t.id !== id),
+            studyNotes: state.studyNotes.map(n => n.topicId === id ? { ...n, topicId: null } : n)
+          }));
+        },
+
+        createStudyNote: (noteData) => {
+          const id = 'snote-' + Math.random().toString(36).substring(2, 9);
+          const state = get();
+          let targetAreaId = noteData.areaId;
+          if (!targetAreaId) {
+            targetAreaId = state.notebookAreas[0]?.id || 'area-clinica';
+          }
+          const defaultNbId = state.studyNotebooks[0]?.id || 'nb-principal';
+
+          const newNote: StudyNote = {
+            id,
+            notebookId: noteData.notebookId || defaultNbId,
+            areaId: targetAreaId,
+            systemId: noteData.systemId || null,
+            subjectId: noteData.subjectId || null,
+            topicId: noteData.topicId || null,
+            title: noteData.title || 'Nova Nota de Estudo',
+            content: noteData.content || '',
+            icon: noteData.icon || '📝',
+            coverImage: noteData.coverImage || undefined,
+            order: state.studyNotes.length,
+            isPinned: Boolean(noteData.isPinned),
+            tags: noteData.tags || [],
+            associatedQuestionIds: noteData.associatedQuestionIds || [],
+            associatedCardIds: noteData.associatedCardIds || [],
+            embeddedFlashcardIds: noteData.embeddedFlashcardIds || [],
+            mediaItems: noteData.mediaItems || [],
+            createdAt: Date.now(),
+            updatedAt: Date.now()
+          };
+
+          // Sincroniza referências inversas nos flashcards e questões
+          const updatedCards = state.cards.map(c => {
+            if (newNote.associatedCardIds?.includes(c.id)) {
+              const currentNotes = c.associatedNoteIds || [];
+              if (!currentNotes.includes(id)) {
+                return { ...c, associatedNoteIds: [...currentNotes, id] };
+              }
+            }
+            return c;
+          });
+
+          const updatedQuestions = state.questions.map(q => {
+            if (newNote.associatedQuestionIds?.includes(q.id) || (q.qid && newNote.associatedQuestionIds?.includes(q.qid))) {
+              const currentNotes = q.associatedNoteIds || [];
+              if (!currentNotes.includes(id)) {
+                return { ...q, associatedNoteIds: [...currentNotes, id] };
+              }
+            }
+            return q;
+          });
+
+          set({
+            studyNotes: [newNote, ...state.studyNotes],
+            cards: updatedCards,
+            questions: updatedQuestions
+          });
+          return id;
+        },
+
+        updateStudyNote: (id, updates) => {
+          set(state => {
+            const currentNote = state.studyNotes.find(n => n.id === id);
+            if (!currentNote) return state;
+
+            const updatedNote: StudyNote = {
+              ...currentNote,
+              ...updates,
+              updatedAt: Date.now()
+            };
+
+            // Atualiza referências inversas de flashcards se association mudou
+            let updatedCards = state.cards;
+            if (updates.associatedCardIds) {
+              updatedCards = state.cards.map(c => {
+                const isLinked = updates.associatedCardIds!.includes(c.id);
+                const currentNotes = c.associatedNoteIds || [];
+                if (isLinked && !currentNotes.includes(id)) {
+                  return { ...c, associatedNoteIds: [...currentNotes, id] };
+                } else if (!isLinked && currentNotes.includes(id)) {
+                  return { ...c, associatedNoteIds: currentNotes.filter(nId => nId !== id) };
+                }
+                return c;
+              });
+            }
+
+            // Atualiza referências inversas de questões se association mudou
+            let updatedQuestions = state.questions;
+            if (updates.associatedQuestionIds) {
+              updatedQuestions = state.questions.map(q => {
+                const isLinked = updates.associatedQuestionIds!.includes(q.id) || (q.qid && updates.associatedQuestionIds!.includes(q.qid));
+                const currentNotes = q.associatedNoteIds || [];
+                if (isLinked && !currentNotes.includes(id)) {
+                  return { ...q, associatedNoteIds: [...currentNotes, id] };
+                } else if (!isLinked && currentNotes.includes(id)) {
+                  return { ...q, associatedNoteIds: currentNotes.filter(nId => nId !== id) };
+                }
+                return q;
+              });
+            }
+
+            return {
+              studyNotes: state.studyNotes.map(n => n.id === id ? updatedNote : n),
+              cards: updatedCards,
+              questions: updatedQuestions
+            };
+          });
+        },
+
+        deleteStudyNote: (id) => {
+          set(state => ({
+            studyNotes: state.studyNotes.filter(n => n.id !== id),
+            cards: state.cards.map(c => c.associatedNoteIds?.includes(id) ? { ...c, associatedNoteIds: c.associatedNoteIds.filter(nId => nId !== id) } : c),
+            questions: state.questions.map(q => q.associatedNoteIds?.includes(id) ? { ...q, associatedNoteIds: q.associatedNoteIds.filter(nId => nId !== id) } : q)
+          }));
+        },
+
+        reorderStudyNotes: (noteIds) => {
+          set(state => {
+            const noteMap = new Map(state.studyNotes.map(n => [n.id, n]));
+            const reordered: StudyNote[] = [];
+            noteIds.forEach((id, idx) => {
+              const n = noteMap.get(id);
+              if (n) reordered.push({ ...n, order: idx });
+            });
+            state.studyNotes.forEach(n => {
+              if (!noteIds.includes(n.id)) reordered.push(n);
+            });
+            return { studyNotes: reordered };
+          });
+        },
+
+        moveStudyNote: (noteId, target) => {
+          set(state => ({
+            studyNotes: state.studyNotes.map(n => n.id === noteId ? {
+              ...n,
+              areaId: target.areaId,
+              systemId: target.systemId !== undefined ? target.systemId : n.systemId,
+              subjectId: target.subjectId !== undefined ? target.subjectId : n.subjectId,
+              topicId: target.topicId !== undefined ? target.topicId : n.topicId,
+              updatedAt: Date.now()
+            } : n)
+          }));
+        },
+
+        associateQuestionToNote: (noteId, questionId) => {
+          set(state => {
+            const note = state.studyNotes.find(n => n.id === noteId);
+            if (!note) return state;
+
+            const currentQIds = note.associatedQuestionIds || [];
+            if (currentQIds.includes(questionId)) return state;
+
+            const updatedNotes = state.studyNotes.map(n => n.id === noteId ? {
+              ...n,
+              associatedQuestionIds: [...currentQIds, questionId],
+              updatedAt: Date.now()
+            } : n);
+
+            const updatedQuestions = state.questions.map(q => {
+              if (q.id === questionId || q.qid === questionId) {
+                const notes = q.associatedNoteIds || [];
+                if (!notes.includes(noteId)) {
+                  return { ...q, associatedNoteIds: [...notes, noteId] };
+                }
+              }
+              return q;
+            });
+
+            return { studyNotes: updatedNotes, questions: updatedQuestions };
+          });
+        },
+
+        dissociateQuestionFromNote: (noteId, questionId) => {
+          set(state => ({
+            studyNotes: state.studyNotes.map(n => n.id === noteId ? {
+              ...n,
+              associatedQuestionIds: (n.associatedQuestionIds || []).filter(qid => qid !== questionId),
+              updatedAt: Date.now()
+            } : n),
+            questions: state.questions.map(q => {
+              if (q.id === questionId || q.qid === questionId) {
+                return { ...q, associatedNoteIds: (q.associatedNoteIds || []).filter(nId => nId !== noteId) };
+              }
+              return q;
+            })
+          }));
+        },
+
+        associateCardToNote: (noteId, cardId) => {
+          set(state => {
+            const note = state.studyNotes.find(n => n.id === noteId);
+            if (!note) return state;
+
+            const currentCardIds = note.associatedCardIds || [];
+            if (currentCardIds.includes(cardId)) return state;
+
+            const updatedNotes = state.studyNotes.map(n => n.id === noteId ? {
+              ...n,
+              associatedCardIds: [...currentCardIds, cardId],
+              updatedAt: Date.now()
+            } : n);
+
+            const updatedCards = state.cards.map(c => {
+              if (c.id === cardId) {
+                const notes = c.associatedNoteIds || [];
+                if (!notes.includes(noteId)) {
+                  return { ...c, associatedNoteIds: [...notes, noteId] };
+                }
+              }
+              return c;
+            });
+
+            return { studyNotes: updatedNotes, cards: updatedCards };
+          });
+        },
+
+        dissociateCardFromNote: (noteId, cardId) => {
+          set(state => ({
+            studyNotes: state.studyNotes.map(n => n.id === noteId ? {
+              ...n,
+              associatedCardIds: (n.associatedCardIds || []).filter(cid => cid !== cardId),
+              embeddedFlashcardIds: (n.embeddedFlashcardIds || []).filter(cid => cid !== cardId),
+              updatedAt: Date.now()
+            } : n),
+            cards: state.cards.map(c => c.id === cardId ? {
+              ...c,
+              associatedNoteIds: (c.associatedNoteIds || []).filter(nId => nId !== noteId)
+            } : c)
+          }));
+        },
+
+        addFlashcardAsNote: (cardId, areaId, systemId = null, customTitle) => {
+          const state = get();
+          const card = state.cards.find(c => c.id === cardId);
+          if (!card) return '';
+
+          const targetArea = areaId || state.notebookAreas[0]?.id || 'area-clinica';
+          const defaultNbId = state.studyNotebooks[0]?.id || 'nb-principal';
+          const title = customTitle || card.front.replace(/<[^>]+>/g, '').trim().substring(0, 80) || 'Flashcard Nota';
+
+          const content = `<h3>${card.front}</h3>
+<hr/>
+<div class="p-3 bg-blue-50 dark:bg-blue-950/40 rounded-xl border border-blue-200 dark:border-blue-900/60 my-3">
+  <b>Resposta / Conteúdo:</b>
+  ${card.back}
+</div>
+${card.details ? `<p><i>Detalhes adicionais:</i> ${card.details}</p>` : ''}`;
+
+          const noteId = get().createStudyNote({
+            notebookId: defaultNbId,
+            areaId: targetArea,
+            systemId,
+            title,
+            content,
+            icon: '⚡',
+            associatedCardIds: [cardId],
+            embeddedFlashcardIds: [cardId],
+            tags: card.tags || []
+          });
+
+          return noteId;
+        },
+
+        createNoteFromQuestion: (questionData, areaId, customTitle) => {
+          const state = get();
+          const targetArea = areaId || state.notebookAreas[0]?.id || 'area-clinica';
+          const defaultNbId = state.studyNotebooks[0]?.id || 'nb-principal';
+
+          const qid = questionData.qid || questionData.questionId || questionData.id || '';
+          const stem = questionData.stem || questionData.text || questionData.questionStem || '';
+          const explanation = questionData.explanation || '';
+          const objective = questionData.educationalObjective || '';
+          const title = customTitle || (stem ? stem.replace(/<[^>]+>/g, '').trim().substring(0, 85) + '...' : `Nota sobre Questão ${qid}`);
+
+          let choicesHtml = '';
+          if (Array.isArray(questionData.alternatives) && questionData.alternatives.length > 0) {
+            choicesHtml = `<div class="my-3 space-y-1.5 font-sans">${questionData.alternatives.map((a: any) => `
+              <div class="p-2.5 rounded-lg border ${a.isCorrect ? 'bg-emerald-50 border-emerald-300 text-emerald-950 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-200 font-bold' : 'bg-gray-50 border-gray-200 text-gray-800 dark:bg-gray-800/60 dark:border-gray-700 dark:text-gray-200'}">
+                <b>${a.letter || ''}.</b> ${a.text} ${a.isCorrect ? ' <span class="text-xs text-emerald-600 dark:text-emerald-400 font-semibold">[Gabarito Correto]</span>' : ''}
+              </div>
+            `).join('')}</div>`;
+          }
+
+          const content = `<h3>Enunciado da Questão ${qid ? `(QID: ${qid})` : ''}:</h3>
+<div class="p-4 bg-gray-50 dark:bg-gray-800/80 rounded-xl border border-gray-200 dark:border-gray-700 text-sm leading-relaxed my-3">
+  ${stem}
+</div>
+${choicesHtml}
+${explanation ? `<h4>Explicação Comentada:</h4><div class="p-4 bg-blue-50/70 dark:bg-blue-950/30 rounded-xl border border-blue-200 dark:border-blue-900/60 text-sm leading-relaxed my-3">${explanation}</div>` : ''}
+${objective ? `<blockquote><p><b>Educational Objective:</b> ${objective}</p></blockquote>` : ''}`;
+
+          const noteId = get().createStudyNote({
+            notebookId: defaultNbId,
+            areaId: targetArea,
+            title,
+            content,
+            icon: '🎯',
+            associatedQuestionIds: qid ? [qid] : [],
+            tags: questionData.tags || (qid ? [`qid:${qid}`] : [])
+          });
+
+          return noteId;
+        },
+
+        // Study Desk Actions
+        startDeskSession: (sessionData = {}) => {
+          const id = 'desk-sess-' + Math.random().toString(36).substring(2, 9);
+          const newSession: StudyDeskSession = {
+            id,
+            name: sessionData.name || `Sessão de Estudos #${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`,
+            bankId: sessionData.bankId,
+            startedAt: Date.now(),
+            totalQuestions: sessionData.totalQuestions || 40,
+            completedQuestions: 0,
+            correctCount: 0,
+            incorrectCount: 0,
+            totalResolutionTimeSeconds: 0,
+            totalReviewTimeSeconds: 0,
+            targetResolutionTimeSeconds: sessionData.targetResolutionTimeSeconds || 75,
+            targetReviewTimeSeconds: sessionData.targetReviewTimeSeconds || 150,
+            questionRecords: [],
+            ...sessionData,
+          };
+
+          set(state => ({
+            studyDeskSessions: [newSession, ...(state.studyDeskSessions || [])],
+            activeDeskSessionId: id,
+          }));
+
+          return id;
+        },
+
+        setActiveDeskSessionId: (sessionId) => {
+          set({ activeDeskSessionId: sessionId });
+        },
+
+        recordDeskQuestionAnswer: (data) => {
+          const { qid, questionId, selectedChoiceId, correctChoiceId, isCorrect, resolutionTimeSeconds, reviewTimeSeconds, subject, system } = data;
+          
+          set(state => {
+            const activeId = state.activeDeskSessionId;
+            const sessions = state.studyDeskSessions || [];
+            const activeIdx = sessions.findIndex(s => s.id === activeId);
+
+            const record: StudyDeskQuestionRecord = {
+              qid,
+              questionId,
+              selectedChoiceId,
+              correctChoiceId,
+              isCorrect,
+              resolutionTimeSeconds: Math.max(1, Math.round(resolutionTimeSeconds || 0)),
+              reviewTimeSeconds: Math.max(0, Math.round(reviewTimeSeconds || 0)),
+              subject: subject || '',
+              system: system || '',
+              answeredAt: Date.now(),
+            };
+
+            let updatedSessions = sessions;
+            if (activeIdx !== -1) {
+              const current = sessions[activeIdx];
+              const prevRecords = current.questionRecords || [];
+              const withoutThis = prevRecords.filter(r => r.qid !== qid);
+              const updatedRecords = [...withoutThis, record];
+              
+              const correctCount = updatedRecords.filter(r => r.isCorrect).length;
+              const incorrectCount = updatedRecords.filter(r => !r.isCorrect).length;
+              const totalResolutionTimeSeconds = updatedRecords.reduce((acc, r) => acc + r.resolutionTimeSeconds, 0);
+              const totalReviewTimeSeconds = updatedRecords.reduce((acc, r) => acc + r.reviewTimeSeconds, 0);
+
+              const updatedSession: StudyDeskSession = {
+                ...current,
+                completedQuestions: updatedRecords.length,
+                correctCount,
+                incorrectCount,
+                totalResolutionTimeSeconds,
+                totalReviewTimeSeconds,
+                questionRecords: updatedRecords,
+              };
+
+              updatedSessions = [...sessions];
+              updatedSessions[activeIdx] = updatedSession;
+            }
+
+            // Atualiza também na questão correspondente no banco
+            const updatedQuestions = state.questions.map(q => {
+              if (q.id !== questionId && q.qid !== qid) return q;
+              const attempts = q.attempts || [];
+              const newAttempt = {
+                timestamp: Date.now(),
+                selectedChoiceId,
+                isCorrect,
+                resolutionTimeSeconds: record.resolutionTimeSeconds,
+                reviewTimeSeconds: record.reviewTimeSeconds,
+              };
+              return {
+                ...q,
+                status: isCorrect ? ('correct' as const) : ('incorrect' as const),
+                selectedChoiceId,
+                resolutionTimeSeconds: (q.resolutionTimeSeconds || 0) + record.resolutionTimeSeconds,
+                reviewTimeSeconds: (q.reviewTimeSeconds || 0) + record.reviewTimeSeconds,
+                attempts: [...attempts, newAttempt],
+                lastAnsweredAt: Date.now(),
+                subject: subject || q.subject,
+                system: system || q.system,
+                updatedAt: Date.now(),
+              };
+            });
+
+            return {
+              studyDeskSessions: updatedSessions,
+              questions: updatedQuestions,
+            };
+          });
+        },
+
+        finishDeskSession: (sessionId) => {
+          set(state => {
+            const targetId = sessionId || state.activeDeskSessionId;
+            if (!targetId) return {};
+            return {
+              studyDeskSessions: (state.studyDeskSessions || []).map(s => {
+                if (s.id !== targetId) return s;
+                return { ...s, endedAt: Date.now() };
+              }),
+              activeDeskSessionId: state.activeDeskSessionId === targetId ? null : state.activeDeskSessionId,
+            };
+          });
+        },
+
+        deleteDeskSession: (sessionId) => {
+          set(state => ({
+            studyDeskSessions: (state.studyDeskSessions || []).filter(s => s.id !== sessionId),
+            activeDeskSessionId: state.activeDeskSessionId === sessionId ? null : state.activeDeskSessionId,
+          }));
+        },
+
         updateSettings: (updates) => {
           set(state => ({
             settings: { ...state.settings, ...updates }
@@ -1213,6 +2108,22 @@ export const useStore = create<StoreState>()(
             notebooks: [],
             notebookHistory: [],
             notes: [],
+            studyNotebooks: [
+              { id: 'nb-principal', name: 'Caderno de Estudos Geral', description: 'Anotações estruturadas', icon: '📚', coverColor: '#3b82f6', createdAt: Date.now(), updatedAt: Date.now() }
+            ],
+            notebookAreas: [
+              { id: 'area-clinica', notebookId: 'nb-principal', name: 'Clínica Médica', color: '#3b82f6', order: 0, createdAt: Date.now() },
+              { id: 'area-pediatria', notebookId: 'nb-principal', name: 'Pediatria', color: '#10b981', order: 1, createdAt: Date.now() },
+              { id: 'area-go', notebookId: 'nb-principal', name: 'Ginecologia e Obstetrícia', color: '#ec4899', order: 2, createdAt: Date.now() },
+              { id: 'area-cirurgia', notebookId: 'nb-principal', name: 'Cirurgia Geral', color: '#f59e0b', order: 3, createdAt: Date.now() },
+              { id: 'area-preventiva', notebookId: 'nb-principal', name: 'Medicina Preventiva & SUS', color: '#8b5cf6', order: 4, createdAt: Date.now() }
+            ],
+            notebookSystems: [],
+            notebookSubjects: [],
+            notebookTopics: [],
+            studyNotes: [],
+            studyDeskSessions: [],
+            activeDeskSessionId: null,
             settings: DEFAULT_SETTINGS,
           });
         },
@@ -1229,6 +2140,12 @@ export const useStore = create<StoreState>()(
             notebooks: data.notebooks || [],
             notebookHistory: data.notebookHistory || [],
             notes: data.notes || [],
+            studyNotebooks: data.studyNotebooks || [],
+            notebookAreas: data.notebookAreas || [],
+            notebookSystems: data.notebookSystems || [],
+            notebookSubjects: data.notebookSubjects || [],
+            notebookTopics: data.notebookTopics || [],
+            studyNotes: data.studyNotes || [],
             settings: { ...DEFAULT_SETTINGS, ...(data.settings || {}) },
           });
         },
@@ -1298,6 +2215,7 @@ export const useStore = create<StoreState>()(
                       status: localQ.status !== 'unused' ? localQ.status : (q.status || localQ.status),
                       userNotes: localQ.userNotes || q.userNotes,
                       isFlagged: localQ.isFlagged ?? q.isFlagged,
+                      associatedNoteIds: Array.from(new Set([...(localQ.associatedNoteIds || []), ...(q.associatedNoteIds || [])]))
                     });
                   }
                 }
@@ -1359,7 +2277,7 @@ export const useStore = create<StoreState>()(
             });
             const mergedReviewLogs = Array.from(reviewLogMap.values()).sort((a, b) => (b.reviewDate || 0) - (a.reviewDate || 0));
 
-            // 8. Notes merge
+            // 8. Legacy Notes merge
             const noteMap = new Map<string, Note>();
             (state.notes || []).forEach(n => {
               if (n && n.id) noteMap.set(n.id, { ...n });
@@ -1367,6 +2285,64 @@ export const useStore = create<StoreState>()(
             (data.notes || []).forEach((n: Note) => {
               if (n && n.id && !noteMap.has(n.id)) {
                 noteMap.set(n.id, n);
+              }
+            });
+
+            // 9. Study Notebooks merge
+            const snbMap = new Map<string, StudyNotebook>();
+            (state.studyNotebooks || []).forEach(s => { if (s?.id) snbMap.set(s.id, { ...s }); });
+            (data.studyNotebooks || []).forEach((s: StudyNotebook) => {
+              if (s?.id && !snbMap.has(s.id)) snbMap.set(s.id, s);
+            });
+
+            // 10. Notebook Areas merge
+            const areaMap = new Map<string, NotebookArea>();
+            (state.notebookAreas || []).forEach(a => { if (a?.id) areaMap.set(a.id, { ...a }); });
+            (data.notebookAreas || []).forEach((a: NotebookArea) => {
+              if (a?.id) {
+                if (!areaMap.has(a.id)) {
+                  areaMap.set(a.id, a);
+                } else {
+                  const local = areaMap.get(a.id)!;
+                  areaMap.set(a.id, { ...a, ...local });
+                }
+              }
+            });
+
+            // 11. Notebook Systems merge
+            const sysMap = new Map<string, NotebookSystem>();
+            (state.notebookSystems || []).forEach(s => { if (s?.id) sysMap.set(s.id, { ...s }); });
+            (data.notebookSystems || []).forEach((s: NotebookSystem) => {
+              if (s?.id && !sysMap.has(s.id)) sysMap.set(s.id, s);
+            });
+
+            // 12. Notebook Subjects merge
+            const subjMap = new Map<string, NotebookSubject>();
+            (state.notebookSubjects || []).forEach(s => { if (s?.id) subjMap.set(s.id, { ...s }); });
+            (data.notebookSubjects || []).forEach((s: NotebookSubject) => {
+              if (s?.id && !subjMap.has(s.id)) subjMap.set(s.id, s);
+            });
+
+            // 13. Notebook Topics merge
+            const topMap = new Map<string, NotebookTopic>();
+            (state.notebookTopics || []).forEach(t => { if (t?.id) topMap.set(t.id, { ...t }); });
+            (data.notebookTopics || []).forEach((t: NotebookTopic) => {
+              if (t?.id && !topMap.has(t.id)) topMap.set(t.id, t);
+            });
+
+            // 14. Study Notes merge (Preserve newer edits)
+            const sNotesMap = new Map<string, StudyNote>();
+            (state.studyNotes || []).forEach(n => { if (n?.id) sNotesMap.set(n.id, { ...n }); });
+            (data.studyNotes || []).forEach((n: StudyNote) => {
+              if (n?.id) {
+                if (!sNotesMap.has(n.id)) {
+                  sNotesMap.set(n.id, n);
+                } else {
+                  const local = sNotesMap.get(n.id)!;
+                  if ((n.updatedAt || 0) > (local.updatedAt || 0)) {
+                    sNotesMap.set(n.id, { ...local, ...n });
+                  }
+                }
               }
             });
 
@@ -1380,6 +2356,12 @@ export const useStore = create<StoreState>()(
               reviewLog: mergedReviewLogs,
               reviewHistory: mergedReviewLogs,
               notes: Array.from(noteMap.values()),
+              studyNotebooks: Array.from(snbMap.values()),
+              notebookAreas: Array.from(areaMap.values()),
+              notebookSystems: Array.from(sysMap.values()),
+              notebookSubjects: Array.from(subjMap.values()),
+              notebookTopics: Array.from(topMap.values()),
+              studyNotes: Array.from(sNotesMap.values()),
               settings: { ...DEFAULT_SETTINGS, ...(data.settings || {}), ...(state.settings || {}) },
             };
           });

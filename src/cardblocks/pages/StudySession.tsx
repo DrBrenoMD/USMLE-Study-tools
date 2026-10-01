@@ -17,7 +17,8 @@ import {
   CheckCircle2,
   Volume2,
   AlertTriangle,
-  RotateCcw
+  RotateCcw,
+  BookOpen
 } from 'lucide-react';
 import { Rating } from '../lib/sm2';
 import { matchShortcut, cn, renderCardText, sanitizeHtml } from '../lib/utils';
@@ -25,6 +26,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { RichEditor } from '../components/RichEditor';
 import { IsolatedHtml } from '../components/IsolatedHtml';
 import { NotepadModal } from '../components/NotepadModal';
+import { NoteAssociationModal } from '../components/NoteAssociationModal';
 import { AutoHighlighter } from '../components/AutoHighlighter';
 import { useTimerStore } from '../../store/useTimerStore';
 
@@ -104,6 +106,7 @@ export function StudySession({ deckId, cardIds, onNavigate }: StudySessionProps)
   const [currentBlock, setCurrentBlock] = useState<Flashcard[]>([]);
   // Which cards are selected (checked) in the answer phase
   const [selectedCards, setSelectedCards] = useState<Record<string, boolean>>({});
+  const [noteAssociationCard, setNoteAssociationCard] = useState<Flashcard | null>(null);
 
   // Reset session state when deck or card selection changes
   useEffect(() => {
@@ -538,9 +541,18 @@ export function StudySession({ deckId, cardIds, onNavigate }: StudySessionProps)
                        )}
 
                        <button 
+                         onClick={() => setNoteAssociationCard(card)}
+                         className="p-1 px-2 text-xs font-semibold text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/40 rounded-lg transition-colors flex items-center gap-1"
+                         title="Vincular ou criar nota de estudo no Caderno"
+                       >
+                         <BookOpen className="w-3.5 h-3.5" />
+                         <span>{card.associatedNoteIds && card.associatedNoteIds.length > 0 ? `${card.associatedNoteIds.length} Nota(s)` : 'Caderno'}</span>
+                       </button>
+
+                       <button 
                          onClick={() => setShowNotesForCard(card.id)}
                          className="p-1 px-2 text-xs font-semibold text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-lg transition-colors flex items-center gap-1"
-                         title="Anotações"
+                         title="Anotações Rápidas"
                        >
                          <Edit3 className="w-3.5 h-3.5" />
                          <span>Notas</span>
@@ -839,6 +851,23 @@ export function StudySession({ deckId, cardIds, onNavigate }: StudySessionProps)
           targetId={showNotesForCard}
           targetType="card"
           onClose={() => setShowNotesForCard(null)}
+        />
+      )}
+
+      {/* Caderno de Estudos Note Association Modal */}
+      {noteAssociationCard && (
+        <NoteAssociationModal
+          targetType="card"
+          targetId={noteAssociationCard.id}
+          targetTitle={noteAssociationCard.front ? noteAssociationCard.front.replace(/<[^>]+>/g, '').substring(0, 70) : undefined}
+          defaultStemOrFront={noteAssociationCard.front}
+          defaultExplanationOrBack={noteAssociationCard.back}
+          onClose={() => setNoteAssociationCard(null)}
+          onNavigateToNote={(noteId) => {
+            setNoteAssociationCard(null);
+            onNavigate({ type: 'home' });
+            window.location.href = `/notebooks?noteId=${noteId}`;
+          }}
         />
       )}
 

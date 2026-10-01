@@ -1,21 +1,21 @@
-import { ArrowRight, BookOpen, CalendarDays, LineChart, Activity, Calculator, Chrome, Layers, Database } from "lucide-react";
+import { ArrowRight, BookOpen, CalendarDays, LineChart, Activity, Calculator, Chrome, Layers, Database, FileText, Compass, Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
 import { MouseInteractiveBackground } from "../components/MouseInteractiveBackground";
 import { EXTENSION_VERSION } from "../extension_source/extensionFiles";
 
 const MENU_ITEMS = [
   {
-    title: "Study Tracking",
-    description: "Acompanhe seu progresso e metas diárias para a prova.",
-    icon: CalendarDays,
-    href: "/tracker",
+    title: "Mesa de Estudos",
+    description: "Espaço unificado sincronizado: Pacer integrado, resolução ao vivo, criação instantânea de flashcards e notas.",
+    icon: Compass,
+    href: "/desk",
     active: true,
   },
   {
-    title: "Question Pacer",
-    description: "Treine seu pace de questões contra o relógio.",
-    icon: Activity,
-    href: "/pacer",
+    title: "Cadernos de Estudo",
+    description: "Bloco de anotações Notion-like organizado por Área, Sistema, Matéria e Tema.",
+    icon: FileText,
+    href: "/notebooks",
     active: true,
   },
   {
@@ -30,6 +30,20 @@ const MENU_ITEMS = [
     description: "Revisão espaçada de baralhos e cartões associados às questões.",
     icon: Layers,
     href: "/flashcards",
+    active: true,
+  },
+  {
+    title: "Study Tracking",
+    description: "Acompanhe seu progresso e metas diárias para a prova.",
+    icon: CalendarDays,
+    href: "/tracker",
+    active: true,
+  },
+  {
+    title: "Question Pacer",
+    description: "Treine seu pace de questões contra o relógio.",
+    icon: Activity,
+    href: "/pacer",
     active: true,
   },
   {

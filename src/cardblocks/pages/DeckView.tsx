@@ -24,12 +24,14 @@ import {
   Image as ImageIcon,
   CloudOff,
   Cloud,
-  Check
+  Check,
+  BookOpen
 } from 'lucide-react';
 import { sanitizeHtml, renderCardText, cn } from '../lib/utils';
 import { RichEditor } from '../components/RichEditor';
 import { IsolatedHtml } from '../components/IsolatedHtml';
 import { CardEditor } from '../components/CardEditor';
+import { NoteAssociationModal } from '../components/NoteAssociationModal';
 import Papa from 'papaparse';
 import { useTranslation } from '../lib/i18n';
 
@@ -88,6 +90,7 @@ export function DeckView({ deckId, onNavigate }: DeckViewProps) {
   // Export menu & status
   const [isExporting, setIsExporting] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [noteModalCard, setNoteModalCard] = useState<Flashcard | null>(null);
 
   const getSubdeckIds = (parentId: string): string[] => {
     const children = decks.filter(d => d.parentId === parentId).map(d => d.id);
@@ -967,6 +970,7 @@ export function DeckView({ deckId, onNavigate }: DeckViewProps) {
                   card={card} 
                   onUpdate={(id, f, b, d, t, flag) => updateCard(id, f, b, d, t, flag)}
                   onDeleteRequest={(id) => setCardToDelete(id)}
+                  onOpenNoteModal={(c) => setNoteModalCard(c)}
                   expandAll={expandAll}
                 />
               </div>
@@ -974,6 +978,22 @@ export function DeckView({ deckId, onNavigate }: DeckViewProps) {
           />
         )}
       </div>
+
+      {/* Note Association Modal */}
+      {noteModalCard && (
+        <NoteAssociationModal
+          targetType="card"
+          targetId={noteModalCard.id}
+          targetTitle={noteModalCard.front ? noteModalCard.front.replace(/<[^>]+>/g, '').substring(0, 70) : undefined}
+          defaultStemOrFront={noteModalCard.front}
+          defaultExplanationOrBack={noteModalCard.back}
+          onClose={() => setNoteModalCard(null)}
+          onNavigateToNote={(noteId) => {
+            setNoteModalCard(null);
+            window.location.href = `/notebooks?noteId=${noteId}`;
+          }}
+        />
+      )}
 
       {/* Delete Card Confirmation Modal */}
       {cardToDelete && (
@@ -1019,8 +1039,9 @@ const CardRow: React.FC<{
   card: Flashcard, 
   onUpdate: (id: string, f: string, b: string, details?: string, tags?: string[], flag?: string) => void,
   onDeleteRequest: (id: string) => void,
+  onOpenNoteModal: (card: Flashcard) => void,
   expandAll?: boolean
-}> = ({ card, onUpdate, onDeleteRequest, expandAll = false }) => {
+}> = ({ card, onUpdate, onDeleteRequest, onOpenNoteModal, expandAll = false }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
@@ -1155,6 +1176,19 @@ const CardRow: React.FC<{
           >
             {isExpanded ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
             <span>{isExpanded ? 'Ocultar' : 'Revelar'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onOpenNoteModal(card)}
+            className="p-1.5 text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/30 rounded-xl transition-colors flex items-center gap-1"
+            title="Vincular ou criar nota de estudo no Caderno"
+          >
+            <BookOpen className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+            {card.associatedNoteIds && card.associatedNoteIds.length > 0 && (
+              <span className="text-[10px] font-bold px-1 rounded bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300">
+                {card.associatedNoteIds.length}
+              </span>
+            )}
           </button>
           <button 
             onClick={() => setIsEditing(true)}

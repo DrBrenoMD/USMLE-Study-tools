@@ -53,6 +53,12 @@ export const cloudSyncService = {
       notebooks: cardStore.notebooks || [],
       notebookHistory: cardStore.notebookHistory || [],
       notes: cardStore.notes || [],
+      studyNotebooks: cardStore.studyNotebooks || [],
+      notebookAreas: cardStore.notebookAreas || [],
+      notebookSystems: cardStore.notebookSystems || [],
+      notebookSubjects: cardStore.notebookSubjects || [],
+      notebookTopics: cardStore.notebookTopics || [],
+      studyNotes: cardStore.studyNotes || [],
       settings: cardStore.settings || {},
     };
 
@@ -145,6 +151,12 @@ export const cloudSyncService = {
         notebooks: data.cardblocks.notebooks || [],
         notebookHistory: data.cardblocks.notebookHistory || [],
         notes: data.cardblocks.notes || [],
+        studyNotebooks: data.cardblocks.studyNotebooks || [],
+        notebookAreas: data.cardblocks.notebookAreas || [],
+        notebookSystems: data.cardblocks.notebookSystems || [],
+        notebookSubjects: data.cardblocks.notebookSubjects || [],
+        notebookTopics: data.cardblocks.notebookTopics || [],
+        studyNotes: data.cardblocks.studyNotes || [],
         settings: data.cardblocks.settings || {},
       };
 

@@ -247,7 +247,7 @@ export function useQBankSync() {
         targetBankId = currentBanks[0]?.id;
       }
 
-      upsertQuestionFromQBank({
+      const qCreatedId = upsertQuestionFromQBank({
         qid,
         bankId: targetBankId,
         stem,
@@ -261,6 +261,27 @@ export function useQBankSync() {
         links,
         tags: payload.tags || [`qid:${qid}`],
       });
+
+      // Se a questão veio com resultado de resolução da extensão ou submit
+      if (payload.isAnswered || payload.isCorrect !== undefined || payload.selectedChoice || payload.selectedChoiceId) {
+        const isCorrect = Boolean(payload.isCorrect);
+        const resolutionTimeSeconds = Number(payload.resolutionTimeSeconds || payload.solveTime || payload.timeSeconds || 0);
+        const reviewTimeSeconds = Number(payload.reviewTimeSeconds || payload.reviewTime || 0);
+        const selectedChoiceId = (payload.selectedChoiceId || payload.selectedChoice || '').toString();
+        const correctChoiceId = alternatives.find(a => a.isCorrect)?.id;
+
+        useStore.getState().recordDeskQuestionAnswer({
+          qid,
+          questionId: qCreatedId,
+          selectedChoiceId,
+          correctChoiceId,
+          isCorrect,
+          resolutionTimeSeconds,
+          reviewTimeSeconds,
+          subject,
+          system,
+        });
+      }
     };
 
     // 1. BroadcastChannel para comunicação de questões em tempo real entre abas

@@ -56,7 +56,7 @@ export default function FlashcardsUnifiedHub() {
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get('tab');
 
-    if (tabParam === 'browse') return { type: 'browse' };
+    if (window.location.pathname.startsWith('/browse') || tabParam === 'browse') return { type: 'browse' };
     if (tabParam === 'settings') return { type: 'settings' };
     if (tabParam === 'help') return { type: 'help' };
 
@@ -67,7 +67,9 @@ export default function FlashcardsUnifiedHub() {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const tabParam = params.get('tab');
-    if (tabParam === 'browse') setPage({ type: 'browse' });
+    if (location.pathname.startsWith('/browse') || tabParam === 'browse') {
+      setPage({ type: 'browse' });
+    }
     if (params.get('action') === 'create_card' || params.get('newCard') === 'true') {
       setIsAddCardOpen(true);
     }

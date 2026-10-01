@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, BarChart2, Activity, Calculator, LineChart, Layers, X, BookOpen, Chrome, Cloud, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { Home, BarChart2, Activity, Calculator, LineChart, Layers, X, BookOpen, Chrome, Cloud, RefreshCw, CheckCircle2, FileText, Search, Flame, Compass } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 interface SidebarProps {
@@ -27,13 +27,17 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
   const navItems = [
     { name: 'Início', path: '/', icon: Home },
+    { name: 'Mesa de Estudos', path: '/desk', icon: Compass },
+    { name: 'Navegador Geral', path: '/browse', icon: Search },
+    { name: 'Heatmap de Estudos', path: '/tracker?tab=heatmap', icon: Flame },
     { name: 'Study Tracker', path: '/tracker', icon: BarChart2 },
-    { name: 'Pacer de Questões', path: '/pacer', icon: Activity },
-    { name: 'Extensão Chrome', path: '/extensao', icon: Chrome },
-    { name: 'Calculadora NBME', path: '/calculator', icon: Calculator },
-    { name: 'Score Predictor', path: '/predictor', icon: LineChart },
+    { name: 'Cadernos de Estudo', path: '/notebooks', icon: FileText },
     { name: 'Flashcards', path: '/flashcards', icon: Layers },
     { name: 'Banco de Questões', path: '/questions', icon: BookOpen },
+    { name: 'Pacer de Questões', path: '/pacer', icon: Activity },
+    { name: 'Calculadora NBME', path: '/calculator', icon: Calculator },
+    { name: 'Score Predictor', path: '/predictor', icon: LineChart },
+    { name: 'Extensão Chrome', path: '/extensao', icon: Chrome },
   ];
 
   return (
@@ -65,7 +69,17 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
         <nav className="p-4 space-y-2">
           {navItems.map((item) => {
-            const isActive = location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path));
+            const currentFull = location.pathname + location.search;
+            let isActive = false;
+            if (item.path.includes('?')) {
+              isActive = currentFull === item.path || (location.pathname === '/heatmap');
+            } else if (item.path === '/tracker') {
+              isActive = location.pathname === '/tracker' && !location.search.includes('tab=heatmap');
+            } else if (item.path === '/') {
+              isActive = location.pathname === '/';
+            } else {
+              isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
+            }
             const Icon = item.icon;
             
             return (
