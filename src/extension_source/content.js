@@ -42,10 +42,21 @@ let lastDetectedQId = null;
 let lastDetectedQIndex = null;
 let lastDetectedPhase = null;
 
+// Rastreamento contínuo de tempo por questão e revisão
+let timestampInicioQuestao = Date.now();
+let timestampInicioReview = null;
+let currentTrackedQId = null;
+
 function detectarDadosQuestaoQBank() {
     let qNumber = null;
     let totalQ = null;
     let qId = typeof extrairIdQuestaoAtual === 'function' ? extrairIdQuestaoAtual() : '';
+
+    if (qId && qId !== currentTrackedQId) {
+        currentTrackedQId = qId;
+        timestampInicioQuestao = Date.now();
+        timestampInicioReview = null;
+    }
 
     // 1. Procura texto tipo "Question 5 of 40", "Item 5 of 40", "Questão 5 de 40", "5 / 40"
     const regexFull = /(?:Question|Item|Quest[aã]o)\s*[:#]?\s*(\d+)\s*(?:of|\/|de)\s*(\d+)/i;
@@ -875,6 +886,11 @@ function extrairDadosCompletosQuestao() {
     const resultado = extrairResultadoResolucaoQuestao();
     const resumoBloco = extrairResumoBlocoCompleto();
 
+    // Calcula tempo de revisão com precisão
+    const reviewTimeSeconds = timestampInicioReview 
+        ? Math.max(0, Math.round((Date.now() - timestampInicioReview) / 1000))
+        : 0;
+
     return {
         questionId: qId,
         qid: qId,
@@ -892,11 +908,11 @@ function extrairDadosCompletosQuestao() {
         images: questionImages,
         // Resultados da Resolução do QBank Externo
         isAnswered: resultado.isAnswered,
-        isCorrect: resultado.isCorrect,
+        isCorrect: resultado.isAnswered ? resultado.isCorrect : undefined,
         selectedChoice: resultado.selectedChoice,
         correctChoice: resultado.correctChoice,
         resolutionTimeSeconds: resultado.resolutionTimeSeconds,
-        reviewTimeSeconds: Math.max(0, Math.round((Date.now() - timestampInicioQuestao) / 1000)),
+        reviewTimeSeconds: reviewTimeSeconds,
         globalCorrectPercent: resultado.globalCorrectPercent,
         blockSummary: resumoBloco,
         // Regra: Frente e verso devem permanecer vazios para preenchimento manual do usuário
@@ -908,7 +924,7 @@ function extrairDadosCompletosQuestao() {
 
 function extrairResultadoResolucaoQuestao() {
     let isAnswered = false;
-    let isCorrect = false;
+    let isCorrect = undefined;
     let selectedChoice = '';
     let correctChoice = '';
     let resolutionTimeSeconds = 0;
@@ -990,13 +1006,24 @@ function extrairResultadoResolucaoQuestao() {
         }
     });
 
-    if (!isCorrect && selectedChoice && correctChoice && selectedChoice === correctChoice) {
-        isCorrect = true;
+    if (isAnswered && isCorrect === undefined && selectedChoice && correctChoice) {
+        isCorrect = selectedChoice === correctChoice;
+    }
+
+    // Se a questão foi respondida, registra início da fase de revisão e calcula o tempo de resolução
+    if (isAnswered) {
+        if (!timestampInicioReview) {
+            timestampInicioReview = Date.now();
+        }
+        if (resolutionTimeSeconds <= 0) {
+            const elapsed = Math.round(((timestampInicioReview || Date.now()) - timestampInicioQuestao) / 1000);
+            resolutionTimeSeconds = Math.max(1, elapsed);
+        }
     }
 
     return {
         isAnswered,
-        isCorrect,
+        isCorrect: isAnswered ? Boolean(isCorrect) : undefined,
         selectedChoice,
         correctChoice,
         resolutionTimeSeconds,
@@ -1068,21 +1095,30 @@ function extrairResumoBlocoCompleto() {
 
 // Despacha os dados aproveitando abas já abertas com conexão ultra confiável
 function despacharDadosParaFlashcards(cardData) {
-    const val = validarDadosCompletosQuestao(cardData);
-    if (!val.completo) {
-        const pendenciasMsg = val.pendencias.join('<br>• ');
-        mostrarToastFlutuante(`⚠️ <b>Dados Incompletos para Flashcard:</b><br><div style="text-align:left;font-size:11px;margin-top:4px;">• ${pendenciasMsg}</div><div style="font-size:10px;margin-top:4px;opacity:0.85;">Responda a questão e revele o System ("Click to Show") antes de gerar.</div>`, 'aviso');
-        mostrarFeedbackDrawer(`⚠️ Dados incompletos: ${val.pendencias[0]}`);
-        return false;
+    if (!cardData) cardData = extrairDadosCompletosQuestao();
+    revelarCamposOcultos();
+
+    // Garante identificadores mínimos
+    if (!cardData.questionId || cardData.questionId === 'Q-0') {
+        const detectedQid = extrairIdQuestaoAtual();
+        if (detectedQid) {
+            cardData.questionId = detectedQid;
+            cardData.qid = detectedQid;
+        }
+    }
+    if (!cardData.questionStem || cardData.questionStem.startsWith('Questão #')) {
+        cardData.questionStem = `Questão QID: ${cardData.qid || cardData.questionId || currentQNumberExt}`;
     }
 
     mostrarFeedbackDrawer('⚡ Sincronizando com o editor de Flashcards...');
 
-    // Salva no storage local da extensão
-    chrome.storage.local.set({
-        pending_flashcard_import: cardData,
-        pending_flashcard_timestamp: Date.now()
-    });
+    // Salva no storage local da extensão para consumo resiliente
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.set({
+            pending_flashcard_import: cardData,
+            pending_flashcard_timestamp: Date.now()
+        });
+    }
 
     try {
         localStorage.setItem('pending_flashcard_import', JSON.stringify(cardData));
@@ -1120,14 +1156,45 @@ function despacharDadosParaFlashcards(cardData) {
         } catch(e) {}
     }
 
-    mostrarToastFlutuante(`✅ <b>Flashcard pronto!</b> Dados da questão #${currentQNumberExt} exportados.`, 'sucesso');
+    // 4. CustomEvent local se app estiver na mesma janela
+    try {
+        window.dispatchEvent(new CustomEvent('usmle_generate_flashcard', { detail: cardData }));
+    } catch(e) {}
+
+    mostrarToastFlutuante(`✅ <b>Flashcard pronto!</b> Dados da questão #${currentQNumberExt || cardData.qid} exportados.`, 'sucesso');
     return true;
 }
 
 // Criação de Nota no Caderno de Estudos a partir da questão externa
 function executarCriacaoNota() {
+    revelarCamposOcultos();
     const cardData = extrairDadosCompletosQuestao();
+
+    // Garante identificadores mínimos
+    if (!cardData.questionId || cardData.questionId === 'Q-0') {
+        const detectedQid = extrairIdQuestaoAtual();
+        if (detectedQid) {
+            cardData.questionId = detectedQid;
+            cardData.qid = detectedQid;
+        }
+    }
+    if (!cardData.questionStem || cardData.questionStem.startsWith('Questão #')) {
+        cardData.questionStem = `Questão QID: ${cardData.qid || cardData.questionId || currentQNumberExt}`;
+    }
+
     mostrarFeedbackDrawer('📝 Criando nota de estudo vinculada...');
+
+    // Salva no storage local da extensão e localStorage
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.set({
+            pending_note_import: cardData,
+            pending_note_timestamp: Date.now()
+        });
+    }
+
+    try {
+        localStorage.setItem('pending_note_import', JSON.stringify(cardData));
+    } catch(e) {}
 
     // 1. BroadcastChannel para comunicação instantânea com abas abertas do app
     try {
@@ -1157,7 +1224,7 @@ function executarCriacaoNota() {
         });
     }
 
-    mostrarToastFlutuante(`📝 <b>Nota Criada!</b> Vinculada à questão #${currentQNumberExt} (QID: ${cardData.questionId}).`, 'sucesso');
+    mostrarToastFlutuante(`📝 <b>Nota Criada!</b> Vinculada à questão #${currentQNumberExt || cardData.qid} (QID: ${cardData.questionId || cardData.qid}).`, 'sucesso');
     return true;
 }
 
@@ -1186,7 +1253,7 @@ function autoImportarQuestaoSeNavegou(force = false) {
     const imgCount = (cardData.questionImages || []).length;
     const sys = (cardData.system || '').replace(/click\s*to\s*show/i, '').trim();
     const sub = (cardData.subject || '').replace(/click\s*to\s*show/i, '').trim();
-    const signature = `qid:${currentQId}|exp:${hasExp ? cardData.explanation.length : 0}|obj:${hasObj ? cardData.educationalObjective.length : 0}|corr:${hasCorrect}|img:${imgCount}|sys:${sys}|sub:${sub}`;
+    const signature = `qid:${currentQId}|exp:${hasExp ? cardData.explanation.length : 0}|obj:${hasObj ? cardData.educationalObjective.length : 0}|corr:${hasCorrect}|img:${imgCount}|sys:${sys}|sub:${sub}|ans:${cardData.isAnswered}|isCorr:${cardData.isCorrect}|resTime:${cardData.resolutionTimeSeconds}`;
 
     const prevSignature = lastImportedQuestionSignatures.get(currentQId);
 
@@ -2003,27 +2070,13 @@ function executarAcaoCardDrawer(cardId, action, qid) {
 }
 
 function executarGeracaoFlashcard() {
+    revelarCamposOcultos();
     const cardData = extrairDadosCompletosQuestao();
-    const val = validarDadosCompletosQuestao(cardData);
-    if (!val.completo) {
-        revelarCamposOcultos();
-        setTimeout(() => {
-            const reData = extrairDadosCompletosQuestao();
-            const reVal = validarDadosCompletosQuestao(reData);
-            if (!reVal.completo) {
-                const msg = reVal.pendencias.join('<br>• ');
-                mostrarToastFlutuante(`⚠️ <b>Dados Incompletos:</b><br><div style="text-align:left;font-size:11px;margin-top:4px;">• ${msg}</div><div style="font-size:10px;margin-top:4px;opacity:0.85;">Responda a questão e clique em "Click to Show" para liberar.</div>`, 'aviso');
-                mostrarFeedbackDrawer(`⚠️ Dados incompletos: ${reVal.pendencias[0]}`);
-                atualizarStatusCardQuestaoAtual();
-            } else {
-                despacharDadosParaFlashcards(reData);
-                autoImportarQuestaoSeNavegou();
-                atualizarStatusCardQuestaoAtual();
-            }
-        }, 300);
-        return;
-    }
     despacharDadosParaFlashcards(cardData);
+    autoImportarQuestaoSeNavegou();
+    if (typeof atualizarStatusCardQuestaoAtual === 'function') {
+        atualizarStatusCardQuestaoAtual();
+    }
 }
 
 // Handshake: Se a janela aberta informar que está pronta para receber os dados

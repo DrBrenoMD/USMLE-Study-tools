@@ -170,9 +170,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
 
     chrome.storage.local.get(['last_connected_app_url'], (store) => {
-      const fallbackUrl = request.appUrl || 
-                          store.last_connected_app_url || 
-                          'http://localhost:3000/flashcards?tab=browse&action=create_card';
+      let baseOrigin = 'http://localhost:3000';
+      if (store.last_connected_app_url) {
+        try {
+          const uObj = new URL(store.last_connected_app_url);
+          baseOrigin = uObj.origin;
+        } catch(e) {}
+      }
+
+      const flashcardsUrl = `${baseOrigin}/flashcards?tab=browse&action=create_card`;
 
       // Procura abas abertas para não abrir uma nova caso já exista alguma aberta
       chrome.tabs.query({}, (tabs) => {
@@ -213,13 +219,28 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           if (matchedTab.windowId) {
             chrome.windows.update(matchedTab.windowId, { focused: true }, () => {});
           }
-          chrome.tabs.update(matchedTab.id, { active: true }, () => {});
+
+          // Se a aba não está na página de flashcards, redireciona para a tela de flashcards
+          const isAlreadyOnFlashcards = matchedTab.url && matchedTab.url.includes('/flashcards');
+          if (!isAlreadyOnFlashcards) {
+            try {
+              const tabOrigin = new URL(matchedTab.url).origin;
+              chrome.tabs.update(matchedTab.id, { active: true, url: `${tabOrigin}/flashcards?tab=browse&action=create_card` }, () => {});
+            } catch(e) {
+              chrome.tabs.update(matchedTab.id, { active: true }, () => {});
+            }
+          } else {
+            chrome.tabs.update(matchedTab.id, { active: true }, () => {});
+          }
 
           // Injeção direta e ultra resiliente no contexto da aba via chrome.scripting
           try {
             chrome.scripting.executeScript({
               target: { tabId: matchedTab.id },
               func: (data) => {
+                try {
+                  localStorage.setItem('pending_flashcard_import', JSON.stringify(data));
+                } catch(e) {}
                 window.postMessage({ type: 'USMLE_GENERATE_FLASHCARD', payload: data }, '*');
                 window.dispatchEvent(new CustomEvent('usmle_generate_flashcard', { detail: data }));
                 try {
@@ -237,15 +258,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             type: 'USMLE_GENERATE_FLASHCARD',
             payload: cardData
           }, () => {
-            if (chrome.runtime.lastError) {
-              // Aba aberta processará via storage e BroadcastChannel
-            }
+            if (chrome.runtime.lastError) {}
           });
 
           sendResponse({ success: true, openedNew: false, tabId: matchedTab.id });
         } else {
           // Nenhuma aba aberta encontrada: abre uma nova e injeta os dados assim que carregar
-          chrome.tabs.create({ url: fallbackUrl }, (newTab) => {
+          chrome.tabs.create({ url: flashcardsUrl }, (newTab) => {
             if (newTab && newTab.id) {
               const listener = (tabId, info) => {
                 if (tabId === newTab.id && info.status === 'complete') {
@@ -255,6 +274,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                       chrome.scripting.executeScript({
                         target: { tabId: newTab.id },
                         func: (data) => {
+                          try {
+                            localStorage.setItem('pending_flashcard_import', JSON.stringify(data));
+                          } catch(e) {}
                           window.postMessage({ type: 'USMLE_GENERATE_FLASHCARD', payload: data }, '*');
                           window.dispatchEvent(new CustomEvent('usmle_generate_flashcard', { detail: data }));
                           try {
@@ -278,6 +300,125 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
 
     return true; // Mantém sendResponse ativo para retorno assíncrono
+  }
+
+  // 2.1 Criação / Disparo de Notas no Caderno de Estudos
+  if (request.type === 'DISPATCH_NOTE_DATA') {
+    const questionData = request.questionData || {};
+    const qid = questionData.qid || questionData.questionId || '';
+
+    // Salva nos dados locais da extensão como garantia de persistência
+    chrome.storage.local.set({
+      pending_note_import: questionData,
+      pending_note_timestamp: Date.now()
+    });
+
+    chrome.storage.local.get(['last_connected_app_url'], (store) => {
+      let baseOrigin = 'http://localhost:3000';
+      if (store.last_connected_app_url) {
+        try {
+          const uObj = new URL(store.last_connected_app_url);
+          baseOrigin = uObj.origin;
+        } catch(e) {}
+      }
+
+      const notebooksUrl = `${baseOrigin}/notebooks?action=create_note${qid ? `&qid=${qid}` : ''}`;
+
+      chrome.tabs.query({}, (tabs) => {
+        // Procura aba existente na rota de cadernos ou applet
+        let matchedTab = tabs.find(t => {
+          if (!t.url) return false;
+          const u = t.url.toLowerCase();
+          return u.includes('/notebooks') || u.includes('/cadernos') || u.includes('/notes');
+        });
+
+        if (!matchedTab) {
+          matchedTab = tabs.find(t => {
+            const title = (t.title || '').toLowerCase();
+            const u = (t.url || '').toLowerCase();
+            const matchTitle = title.includes('study tools') || title.includes('cardblocks') || title.includes('uworld assistant');
+            const matchDomain = u.includes('localhost:') || u.includes('.run.app') || u.includes('.web.app') || u.includes('aistudio.google.com');
+            return matchTitle || matchDomain;
+          });
+        }
+
+        if (matchedTab && matchedTab.id) {
+          if (matchedTab.windowId) {
+            chrome.windows.update(matchedTab.windowId, { focused: true }, () => {});
+          }
+
+          // Se a aba não está nos cadernos, navega para os cadernos
+          const isAlreadyOnNotebooks = matchedTab.url && (matchedTab.url.includes('/notebooks') || matchedTab.url.includes('/cadernos'));
+          if (!isAlreadyOnNotebooks) {
+            try {
+              const tabOrigin = new URL(matchedTab.url).origin;
+              chrome.tabs.update(matchedTab.id, { active: true, url: `${tabOrigin}/notebooks?action=create_note${qid ? `&qid=${qid}` : ''}` }, () => {});
+            } catch(e) {
+              chrome.tabs.update(matchedTab.id, { active: true }, () => {});
+            }
+          } else {
+            chrome.tabs.update(matchedTab.id, { active: true }, () => {});
+          }
+
+          // Injeta evento no contexto da aba
+          try {
+            chrome.scripting.executeScript({
+              target: { tabId: matchedTab.id },
+              func: (data) => {
+                try {
+                  localStorage.setItem('pending_note_import', JSON.stringify(data));
+                } catch(e) {}
+                window.postMessage({ type: 'CREATE_NOTE_FROM_QUESTION', question: data }, '*');
+                window.dispatchEvent(new CustomEvent('usmle_create_note', { detail: { type: 'CREATE_NOTE_FROM_QUESTION', question: data } }));
+                try {
+                  const bc = new BroadcastChannel('usmle_qbank_sync');
+                  bc.postMessage({ type: 'CREATE_NOTE_FROM_QUESTION', question: data });
+                  setTimeout(() => bc.close(), 1000);
+                } catch(e) {}
+              },
+              args: [questionData]
+            }).catch(() => {});
+          } catch(e) {}
+
+          sendResponse({ success: true, openedNew: false, tabId: matchedTab.id });
+        } else {
+          // Nenhuma aba aberta encontrada: abre nova aba no Caderno
+          chrome.tabs.create({ url: notebooksUrl }, (newTab) => {
+            if (newTab && newTab.id) {
+              const listener = (tabId, info) => {
+                if (tabId === newTab.id && info.status === 'complete') {
+                  chrome.tabs.onUpdated.removeListener(listener);
+                  setTimeout(() => {
+                    try {
+                      chrome.scripting.executeScript({
+                        target: { tabId: newTab.id },
+                        func: (data) => {
+                          try {
+                            localStorage.setItem('pending_note_import', JSON.stringify(data));
+                          } catch(e) {}
+                          window.postMessage({ type: 'CREATE_NOTE_FROM_QUESTION', question: data }, '*');
+                          window.dispatchEvent(new CustomEvent('usmle_create_note', { detail: { type: 'CREATE_NOTE_FROM_QUESTION', question: data } }));
+                          try {
+                            const bc = new BroadcastChannel('usmle_qbank_sync');
+                            bc.postMessage({ type: 'CREATE_NOTE_FROM_QUESTION', question: data });
+                            setTimeout(() => bc.close(), 1000);
+                          } catch(e) {}
+                        },
+                        args: [questionData]
+                      }).catch(() => {});
+                    } catch(e) {}
+                  }, 800);
+                }
+              };
+              chrome.tabs.onUpdated.addListener(listener);
+            }
+            sendResponse({ success: true, openedNew: true, tabId: newTab?.id });
+          });
+        }
+      });
+    });
+
+    return true;
   }
 
   // 3. Sincronização do Catálogo de Cards

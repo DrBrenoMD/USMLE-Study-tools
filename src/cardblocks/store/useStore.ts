@@ -2110,12 +2110,52 @@ ${objective ? `<blockquote><p><b>Educational Objective:</b> ${objective}</p></bl
 
               updatedSessions = [...sessions];
               updatedSessions[activeIdx] = updatedSession;
+            } else {
+              // Garante que a sessão da extensão seja sempre atualizada para histórico e gráficos
+              const extSessionIdx = sessions.findIndex(s => s.name?.includes('Extensão') || s.name?.includes('Q-Bank'));
+              if (extSessionIdx !== -1) {
+                const current = sessions[extSessionIdx];
+                const prevRecords = current.questionRecords || [];
+                const withoutThis = prevRecords.filter(r => r.qid !== qid);
+                const updatedRecords = [...withoutThis, record];
+                const correctCount = updatedRecords.filter(r => r.isCorrect).length;
+                const incorrectCount = updatedRecords.filter(r => !r.isCorrect).length;
+                const totalResolutionTimeSeconds = updatedRecords.reduce((acc, r) => acc + r.resolutionTimeSeconds, 0);
+                const totalReviewTimeSeconds = updatedRecords.reduce((acc, r) => acc + r.reviewTimeSeconds, 0);
+
+                updatedSessions = [...sessions];
+                updatedSessions[extSessionIdx] = {
+                  ...current,
+                  completedQuestions: updatedRecords.length,
+                  correctCount,
+                  incorrectCount,
+                  totalResolutionTimeSeconds,
+                  totalReviewTimeSeconds,
+                  questionRecords: updatedRecords,
+                };
+              } else {
+                const newExtSession: StudyDeskSession = {
+                  id: 'desk-sess-ext-' + Date.now(),
+                  name: 'Sessão Q-Bank (Extensão)',
+                  startedAt: Date.now(),
+                  totalQuestions: 40,
+                  completedQuestions: 1,
+                  correctCount: isCorrect ? 1 : 0,
+                  incorrectCount: isCorrect ? 0 : 1,
+                  totalResolutionTimeSeconds: record.resolutionTimeSeconds,
+                  totalReviewTimeSeconds: record.reviewTimeSeconds,
+                  targetResolutionTimeSeconds: 75,
+                  targetReviewTimeSeconds: 150,
+                  questionRecords: [record],
+                };
+                updatedSessions = [newExtSession, ...sessions];
+              }
             }
 
             // Atualiza também na questão correspondente no banco
             const updatedQuestions = state.questions.map(q => {
               if (q.id !== questionId && q.qid !== qid) return q;
-              const attempts = q.attempts || [];
+              const prevAttempts = q.attempts || [];
               const newAttempt = {
                 timestamp: Date.now(),
                 selectedChoiceId,
@@ -2127,14 +2167,14 @@ ${objective ? `<blockquote><p><b>Educational Objective:</b> ${objective}</p></bl
                 ...q,
                 status: isCorrect ? ('correct' as const) : ('incorrect' as const),
                 selectedChoiceId,
-                resolutionTimeSeconds: (q.resolutionTimeSeconds || 0) + record.resolutionTimeSeconds,
-                reviewTimeSeconds: (q.reviewTimeSeconds || 0) + record.reviewTimeSeconds,
-                attempts: [...attempts, newAttempt],
+                resolutionTimeSeconds: record.resolutionTimeSeconds,
+                reviewTimeSeconds: record.reviewTimeSeconds,
+                attempts: [...prevAttempts, newAttempt],
                 lastAnsweredAt: Date.now(),
                 subject: subject || q.subject,
                 system: system || q.system,
-                isFromExtension: q.isFromExtension ?? true,
-                source: q.source || 'extension',
+                isFromExtension: true,
+                source: 'extension' as const,
                 updatedAt: Date.now(),
               };
             });

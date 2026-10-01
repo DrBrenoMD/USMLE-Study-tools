@@ -265,13 +265,35 @@ export function useQBankSync() {
         source: 'extension',
       });
 
-      // Se a questão veio com resultado de resolução da extensão ou submit
-      if (payload.isAnswered || payload.isCorrect !== undefined || payload.selectedChoice || payload.selectedChoiceId) {
+      // Apenas processa como respondida se de fato tiver resultado de resolução explícito
+      const isExplicitlyAnswered = Boolean(
+        payload.isAnswered === true ||
+        (payload.selectedChoice && payload.selectedChoice.trim().length > 0) ||
+        (payload.selectedChoiceId && payload.selectedChoiceId.toString().trim().length > 0) ||
+        (payload.isCorrect !== undefined && payload.isAnswered !== false)
+      );
+
+      if (isExplicitlyAnswered) {
         const isCorrect = Boolean(payload.isCorrect);
-        const resolutionTimeSeconds = Number(payload.resolutionTimeSeconds || payload.solveTime || payload.timeSeconds || 0);
-        const reviewTimeSeconds = Number(payload.reviewTimeSeconds || payload.reviewTime || 0);
-        const selectedChoiceId = (payload.selectedChoiceId || payload.selectedChoice || '').toString();
-        const correctChoiceId = alternatives.find(a => a.isCorrect)?.id;
+        const resolutionTimeSeconds = Math.max(1, Number(payload.resolutionTimeSeconds || payload.solveTime || payload.timeSeconds || 60));
+        const reviewTimeSeconds = Math.max(0, Number(payload.reviewTimeSeconds || payload.reviewTime || 0));
+
+        let selectedChoiceId = (payload.selectedChoiceId || payload.selectedChoice || '').toString().trim();
+        const foundSelected = alternatives.find(a => 
+          a.id === selectedChoiceId || 
+          (a.letter && selectedChoiceId && a.letter.toUpperCase() === selectedChoiceId.toUpperCase())
+        );
+        if (foundSelected) {
+          selectedChoiceId = foundSelected.id;
+        }
+
+        let correctChoiceId = alternatives.find(a => a.isCorrect)?.id;
+        if (!correctChoiceId && payload.correctChoice) {
+          const foundCorrect = alternatives.find(a => 
+            a.letter && a.letter.toUpperCase() === payload.correctChoice.toString().toUpperCase()
+          );
+          if (foundCorrect) correctChoiceId = foundCorrect.id;
+        }
 
         useStore.getState().recordDeskQuestionAnswer({
           qid,
@@ -325,6 +347,45 @@ export function useQBankSync() {
       }
     };
 
+    // Handler global para criação de Notas a partir de questões vindas da extensão
+    const handleIncomingNoteCreation = (rawPayload: any) => {
+      if (!rawPayload) return;
+      const questionData = rawPayload.question || rawPayload.questionData || rawPayload.payload || rawPayload;
+      if (!questionData) return;
+      const state = useStore.getState();
+      const targetArea = rawPayload.areaId || state.notebookAreas[0]?.id || 'area-clinica';
+      const noteId = state.createNoteFromQuestion(questionData, targetArea, rawPayload.customTitle);
+
+      // Também sincroniza a questão no repositório de questões
+      const qid = (questionData.qid || questionData.questionId || '').toString().trim();
+      if (qid) {
+        handleIncomingQuestion(questionData);
+      }
+
+      try {
+        localStorage.setItem('pending_note_focus', noteId);
+        window.dispatchEvent(new CustomEvent('usmle_note_created', { detail: { noteId, questionData } }));
+      } catch (e) {}
+
+      return noteId;
+    };
+
+    // Handler global para criação de Flashcards vindos da extensão
+    const handleIncomingFlashcardCreation = (rawPayload: any) => {
+      if (!rawPayload) return;
+      const cardData = rawPayload.payload || rawPayload.cardData || rawPayload;
+      if (!cardData) return;
+
+      if (cardData.qid || cardData.questionId) {
+        handleIncomingQuestion(cardData);
+      }
+
+      try {
+        localStorage.setItem('pending_flashcard_import', JSON.stringify(cardData));
+        window.dispatchEvent(new CustomEvent('usmle_generate_flashcard', { detail: cardData }));
+      } catch (e) {}
+    };
+
     // 1. BroadcastChannel para comunicação de questões em tempo real entre abas
     let bcQuestions: BroadcastChannel | null = null;
     try {
@@ -338,6 +399,18 @@ export function useQBankSync() {
           type === 'import_question'
         ) {
           handleIncomingQuestion(event.data);
+        } else if (
+          type === 'CREATE_NOTE_FROM_QUESTION' ||
+          type === 'create_note_from_question' ||
+          type === 'DISPATCH_NOTE_DATA'
+        ) {
+          handleIncomingNoteCreation(event.data);
+        } else if (
+          type === 'USMLE_GENERATE_FLASHCARD' ||
+          type === 'create_card_from_question' ||
+          type === 'DISPATCH_FLASHCARD_DATA'
+        ) {
+          handleIncomingFlashcardCreation(event.data);
         }
       };
     } catch (e) {}
@@ -352,6 +425,18 @@ export function useQBankSync() {
         type === 'import_question'
       ) {
         handleIncomingQuestion(event.data);
+      } else if (
+        type === 'CREATE_NOTE_FROM_QUESTION' ||
+        type === 'create_note_from_question' ||
+        type === 'DISPATCH_NOTE_DATA'
+      ) {
+        handleIncomingNoteCreation(event.data);
+      } else if (
+        type === 'USMLE_GENERATE_FLASHCARD' ||
+        type === 'create_card_from_question' ||
+        type === 'DISPATCH_FLASHCARD_DATA'
+      ) {
+        handleIncomingFlashcardCreation(event.data);
       }
     };
     window.addEventListener('message', onWindowMessage);
@@ -359,12 +444,20 @@ export function useQBankSync() {
     // 3. CustomEvent para injeção via script da extensão
     const onCustomEvent = (e: any) => {
       if (e.detail) {
-        handleIncomingQuestion(e.detail);
+        const type = e.detail.type || e.detail.action;
+        if (type === 'CREATE_NOTE_FROM_QUESTION' || type === 'create_note_from_question') {
+          handleIncomingNoteCreation(e.detail);
+        } else if (type === 'USMLE_GENERATE_FLASHCARD' || type === 'create_card_from_question') {
+          handleIncomingFlashcardCreation(e.detail);
+        } else {
+          handleIncomingQuestion(e.detail);
+        }
       }
     };
     window.addEventListener('usmle_import_question', onCustomEvent as EventListener);
+    window.addEventListener('usmle_create_note', onCustomEvent as EventListener);
 
-    // 4. Storage event listener (se outra aba salvou pending_question_import)
+    // 4. Storage event listener (se outra aba salvou pending_question_import ou pending_note_import)
     const onStorage = (e: StorageEvent) => {
       if (
         (e.key === 'pending_question_import' || e.key === 'last_synced_question') &&
@@ -374,18 +467,36 @@ export function useQBankSync() {
           const parsed = JSON.parse(e.newValue);
           handleIncomingQuestion(parsed);
         } catch (err) {}
+      } else if (e.key === 'pending_note_import' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          handleIncomingNoteCreation(parsed);
+        } catch (err) {}
+      } else if (e.key === 'pending_flashcard_import' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          handleIncomingFlashcardCreation(parsed);
+        } catch (err) {}
       }
     };
     window.addEventListener('storage', onStorage);
 
-    // 5. Checar pendente no localStorage no carregamento
+    // 5. Checar pendentes no localStorage no carregamento
     try {
-      const stored = localStorage.getItem('pending_question_import');
-      if (stored) {
-        const parsed = JSON.parse(stored);
+      const storedQ = localStorage.getItem('pending_question_import');
+      if (storedQ) {
+        const parsed = JSON.parse(storedQ);
         if (parsed && (parsed.qid || parsed.questionId)) {
           handleIncomingQuestion(parsed);
           localStorage.removeItem('pending_question_import');
+        }
+      }
+      const storedNote = localStorage.getItem('pending_note_import');
+      if (storedNote) {
+        const parsed = JSON.parse(storedNote);
+        if (parsed) {
+          handleIncomingNoteCreation(parsed);
+          localStorage.removeItem('pending_note_import');
         }
       }
     } catch (e) {}

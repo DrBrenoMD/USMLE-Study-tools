@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useNavigate } from 'react-router-dom';
 import {
   X,
   CheckCircle2,
@@ -12,9 +13,10 @@ import {
   Filter,
   ArrowUpRight,
   Eye,
-  CheckSquare
+  CheckSquare,
+  Sparkles
 } from 'lucide-react';
-import { Question } from '../cardblocks/store/useStore';
+import { Question, useStore } from '../cardblocks/store/useStore';
 import { cn } from '../lib/utils';
 
 interface QuestionDrillDownModalProps {
@@ -32,9 +34,41 @@ export const QuestionDrillDownModal: React.FC<QuestionDrillDownModalProps> = ({
   subtitle,
   questions
 }) => {
+  const navigate = useNavigate();
+  const { createNoteFromQuestion, notebookAreas } = useStore();
   const [filterMode, setFilterMode] = useState<'all' | 'correct' | 'incorrect'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedQid, setExpandedQid] = useState<string | null>(null);
+
+  const handleCreateCardFromQuestion = (q: Question) => {
+    const cardData = {
+      questionId: q.qid || q.id,
+      questionStem: q.stem || q.text,
+      questionChoices: (q.alternatives || []).map(a => `${a.letter || ''}. ${a.text}`).join('\n'),
+      explanation: q.explanation,
+      educationalObjective: q.educationalObjective,
+      subject: q.subject,
+      system: q.system,
+      questionImages: q.images,
+      tags: [`qid:${q.qid || q.id}`, q.subject, q.system].filter(Boolean),
+    };
+    try {
+      localStorage.setItem('pending_flashcard_import', JSON.stringify(cardData));
+      window.dispatchEvent(new CustomEvent('usmle_generate_flashcard', { detail: cardData }));
+      const bc = new BroadcastChannel('usmle_flashcards_sync');
+      bc.postMessage({ type: 'USMLE_GENERATE_FLASHCARD', payload: cardData });
+      setTimeout(() => bc.close(), 1000);
+    } catch(e) {}
+    onClose();
+    navigate('/flashcards?tab=browse&action=create_card');
+  };
+
+  const handleCreateNoteFromQuestion = (q: Question) => {
+    const targetArea = notebookAreas[0]?.id || 'area-clinica';
+    const noteId = createNoteFromQuestion(q, targetArea);
+    onClose();
+    navigate(`/notebooks?noteId=${noteId}`);
+  };
 
   if (!isOpen) return null;
 
@@ -223,12 +257,32 @@ export const QuestionDrillDownModal: React.FC<QuestionDrillDownModalProps> = ({
                       )}
                     </div>
 
-                    {/* Navigation Buttons */}
-                    <div className="flex items-center gap-1.5">
+                    {/* Navigation & Creation Buttons */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => handleCreateCardFromQuestion(q)}
+                        className="px-2.5 py-1 rounded-lg text-xs font-bold bg-purple-50 dark:bg-purple-950/50 hover:bg-purple-100 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                        title="Criar Flashcard a partir desta questão"
+                      >
+                        <Sparkles className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+                        <span>Criar Card</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleCreateNoteFromQuestion(q)}
+                        className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                        title="Criar Nota no Caderno a partir desta questão"
+                      >
+                        <BookOpen className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                        <span>Criar Nota</span>
+                      </button>
+
                       <button
                         type="button"
                         onClick={() => setExpandedQid(isExpanded ? null : (q.id || q.qid))}
-                        className="px-2.5 py-1 rounded-lg text-xs font-bold bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 flex items-center gap-1"
+                        className="px-2.5 py-1 rounded-lg text-xs font-bold bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 flex items-center gap-1 cursor-pointer"
                       >
                         <Eye className="w-3 h-3" />
                         <span>{isExpanded ? 'Recolher' : 'Ver Detalhes'}</span>
