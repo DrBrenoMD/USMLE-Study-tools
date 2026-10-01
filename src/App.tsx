@@ -23,6 +23,7 @@ import { AuthProvider } from "./contexts/AuthContext";
 import { UserAuthWidget } from "./components/UserAuthWidget";
 import { useQBankSync } from "./hooks/useQBankSync";
 import { useGlobalUndoRedo } from "./cardblocks/hooks/useGlobalUndoRedo";
+import { GlobalImageManager } from "./components/GlobalImageManager";
 
 function AppContent() {
   const location = useLocation();
@@ -58,6 +59,7 @@ function AppContent() {
 
   return (
     <div className="min-h-screen bg-brand-bg-light dark:bg-brand-bg-dark flex flex-col font-sans transition-colors duration-200">
+      <GlobalImageManager />
       <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
       <ThemeSelector 
         isOpen={isThemeModalOpen} 

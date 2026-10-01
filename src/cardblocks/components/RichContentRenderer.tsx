@@ -23,9 +23,12 @@ export const RichContentRenderer: React.FC<RichContentRendererProps> = ({
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
     if (target && target.tagName === 'IMG') {
-      const src = (target as HTMLImageElement).src;
-      if (src) {
-        setModalImg(src);
+      const isMini = target.getAttribute('data-miniaturized') === 'true';
+      if (!isMini) {
+        const src = (target as HTMLImageElement).src;
+        if (src) {
+          setModalImg(src);
+        }
       }
     }
   };

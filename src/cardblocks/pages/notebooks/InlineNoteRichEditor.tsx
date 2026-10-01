@@ -24,7 +24,8 @@ import {
   BookOpen,
   Volume2,
   CheckCircle2,
-  RefreshCw
+  RefreshCw,
+  Image as ImageIcon
 } from 'lucide-react';
 import { cn, sanitizeHtml } from '../../lib/utils';
 
@@ -178,6 +179,52 @@ export const InlineNoteRichEditor: React.FC<InlineNoteRichEditorProps> = ({
   // Insert divider
   const insertDivider = () => {
     exec('insertHorizontalRule');
+  };
+
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
+  const handleInsertImageClick = () => {
+    imageInputRef.current?.click();
+  };
+
+  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const dataUrl = event.target?.result as string;
+        if (dataUrl) {
+          const imgHtml = `<img src="${dataUrl}" class="max-w-full rounded-xl my-2 shadow-xs border border-gray-200 dark:border-gray-700" style="max-height: 400px;" alt="Imagem inserida" /><br/>`;
+          exec('insertHTML', imgHtml);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+    if (e.target) e.target.value = '';
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (items) {
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          const blob = items[i].getAsFile();
+          if (blob) {
+            e.preventDefault();
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              const dataUrl = event.target?.result as string;
+              if (dataUrl) {
+                const imgHtml = `<img src="${dataUrl}" class="max-w-full rounded-xl my-2 shadow-xs border border-gray-200 dark:border-gray-700" style="max-height: 400px;" alt="Imagem colada" /><br/>`;
+                exec('insertHTML', imgHtml);
+              }
+            };
+            reader.readAsDataURL(blob);
+            return;
+          }
+        }
+      }
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -386,6 +433,21 @@ export const InlineNoteRichEditor: React.FC<InlineNoteRichEditorProps> = ({
         >
           <Minus className="w-3.5 h-3.5" />
         </button>
+        <button
+          type="button"
+          onClick={handleInsertImageClick}
+          className="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400"
+          title="Inserir Imagem (ou cole com Ctrl+V)"
+        >
+          <ImageIcon className="w-3.5 h-3.5" />
+        </button>
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleImageFileChange}
+          className="hidden"
+        />
 
         {/* Right save / auto-save status & close action */}
         <div className="ml-auto flex items-center gap-2">
@@ -427,6 +489,7 @@ export const InlineNoteRichEditor: React.FC<InlineNoteRichEditorProps> = ({
         onInput={handleInput}
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
+        onPaste={handlePaste}
         data-placeholder={placeholder}
         className="p-4 min-h-[140px] max-h-[500px] overflow-y-auto text-sm text-gray-900 dark:text-gray-100 focus:outline-none leading-relaxed prose dark:prose-invert max-w-none empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400 empty:before:pointer-events-none"
       />
