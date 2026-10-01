@@ -872,9 +872,13 @@ function extrairDadosCompletosQuestao() {
     const subSys = extrairSubjectESystem();
     const questionImages = extrairTodasImagensQuestao();
     const tags = gerarTagsUnicas(qId, subSys.subject, subSys.system);
+    const resultado = extrairResultadoResolucaoQuestao();
+    const resumoBloco = extrairResumoBlocoCompleto();
 
     return {
         questionId: qId,
+        qid: qId,
+        questionNumber: currentQNumberExt,
         questionStem: questionStem || `Questão #${currentQNumberExt}`,
         alternatives: detailedAlternatives,
         choices: detailedAlternatives,
@@ -885,10 +889,180 @@ function extrairDadosCompletosQuestao() {
         subjective: subSys.subject || '',
         system: subSys.system || '',
         questionImages: questionImages,
+        images: questionImages,
+        // Resultados da Resolução do QBank Externo
+        isAnswered: resultado.isAnswered,
+        isCorrect: resultado.isCorrect,
+        selectedChoice: resultado.selectedChoice,
+        correctChoice: resultado.correctChoice,
+        resolutionTimeSeconds: resultado.resolutionTimeSeconds,
+        reviewTimeSeconds: Math.max(0, Math.round((Date.now() - timestampInicioQuestao) / 1000)),
+        globalCorrectPercent: resultado.globalCorrectPercent,
+        blockSummary: resumoBloco,
         // Regra: Frente e verso devem permanecer vazios para preenchimento manual do usuário
         front: '',
         back: '',
         tags: tags
+    };
+}
+
+function extrairResultadoResolucaoQuestao() {
+    let isAnswered = false;
+    let isCorrect = false;
+    let selectedChoice = '';
+    let correctChoice = '';
+    let resolutionTimeSeconds = 0;
+    let globalCorrectPercent = null;
+
+    // 1. Result banner (ex: role="alert", border-l-red, border-l-green, .result-banner)
+    const alertBanner = document.querySelector('div[role="alert"], [class*="border-l-red"], [class*="border-l-green"], [class*="border-l-[#f60001]"], .result-banner');
+    if (alertBanner && alertBanner.offsetParent !== null) {
+        isAnswered = true;
+        const bannerTxt = (alertBanner.innerText || alertBanner.textContent || '').trim();
+        if (/Incorrect|Incorreta|Wrong|Erro/i.test(bannerTxt)) {
+            isCorrect = false;
+        } else if (/Correct|Correta|Right|Acerto/i.test(bannerTxt)) {
+            isCorrect = true;
+        }
+
+        // Correct answer letter: "Correct answer\n D"
+        const mCorr = bannerTxt.match(/Correct\s*answer\s*[:\n\r\s]+([A-H])/i);
+        if (mCorr && mCorr[1]) {
+            correctChoice = mCorr[1].toUpperCase();
+        }
+
+        // Global percentage: "52% Answered correctly"
+        const mPercent = bannerTxt.match(/(\d+)%\s*(?:Answered\s*correctly|de\s*acertos?)/i);
+        if (mPercent && mPercent[1]) {
+            globalCorrectPercent = parseInt(mPercent[1], 10);
+        }
+
+        // Time spent: "01 mins, 59 secs" or "59 secs" or "01:59"
+        const mTimeMinsSecs = bannerTxt.match(/(\d+)\s*mins?,\s*(\d+)\s*secs?/i);
+        if (mTimeMinsSecs) {
+            resolutionTimeSeconds = parseInt(mTimeMinsSecs[1], 10) * 60 + parseInt(mTimeMinsSecs[2], 10);
+        } else {
+            const mSecsOnly = bannerTxt.match(/(\d+)\s*secs?/i);
+            if (mSecsOnly) {
+                resolutionTimeSeconds = parseInt(mSecsOnly[1], 10);
+            } else {
+                const mDigital = bannerTxt.match(/(\d+):(\d+)/);
+                if (mDigital) {
+                    resolutionTimeSeconds = parseInt(mDigital[1], 10) * 60 + parseInt(mDigital[2], 10);
+                }
+            }
+        }
+    }
+
+    // 2. Left Question Status list (<ol> with <li>)
+    const activeItem = document.querySelector('ol li.bg-\\[\\#004976\\], ol li[class*="outline-\\[\\#004976\\]"], ol li.active, ol li[aria-current="true"]');
+    if (activeItem) {
+        const hasRedX = activeItem.querySelector('svg[class*="text-red"], svg.fill-red-600, path[d*="M4.646 4.646"]');
+        const hasGreenCheck = activeItem.querySelector('svg[class*="text-green"], path[d*="M10.97 4.97"]');
+        if (hasRedX) {
+            isAnswered = true;
+            isCorrect = false;
+        } else if (hasGreenCheck) {
+            isAnswered = true;
+            isCorrect = true;
+        }
+    }
+
+    // 3. Choice table for selected and correct letters
+    const rows = Array.from(document.querySelectorAll('table tr, .choices-container [class*="choice"], tr[class*="cursor-default"]'));
+    rows.forEach(r => {
+        const rowTxt = (r.innerText || '').trim();
+        const letterMatch = rowTxt.match(/^([A-H])[\.\)]/i);
+        const letter = letterMatch ? letterMatch[1].toUpperCase() : '';
+
+        // Check if selected by user
+        const isSelected = r.querySelector('[role="radio"][aria-checked="true"], input[type="radio"]:checked, div.bg-red-600, [class*="bg-red"], svg.lucide-x, svg[class*="text-red"], path[d*="M18 6 6 18"]');
+        if (isSelected && letter) {
+            selectedChoice = letter;
+            isAnswered = true;
+        }
+
+        // Check if correct option
+        const isCorrectRow = r.querySelector('svg.lucide-check, svg[class*="text-green"], svg[class*="fill-green"], path[d*="M20 6 9 17l-5-5"], path[d*="M10.97 4.97"]');
+        if (isCorrectRow && letter) {
+            correctChoice = letter;
+            isAnswered = true;
+        }
+    });
+
+    if (!isCorrect && selectedChoice && correctChoice && selectedChoice === correctChoice) {
+        isCorrect = true;
+    }
+
+    return {
+        isAnswered,
+        isCorrect,
+        selectedChoice,
+        correctChoice,
+        resolutionTimeSeconds,
+        globalCorrectPercent
+    };
+}
+
+function extrairResumoBlocoCompleto() {
+    const listItems = Array.from(document.querySelectorAll('ol li'));
+    if (listItems.length < 2) return null;
+
+    let total = 0;
+    let correct = 0;
+    let incorrect = 0;
+    let unanswered = 0;
+    const questionsStatus = [];
+
+    listItems.forEach((li, idx) => {
+        const numTxt = (li.innerText || li.textContent || '').replace(/\D/g, '');
+        const qNum = parseInt(numTxt, 10) || (idx + 1);
+        total++;
+
+        const isGreen = li.querySelector('svg[class*="text-green"], path[d*="M10.97 4.97"]') !== null;
+        const isRed = li.querySelector('svg[class*="text-red"], svg.fill-red-600, path[d*="M4.646 4.646"]') !== null;
+
+        let status = 'unanswered';
+        if (isGreen) {
+            status = 'correct';
+            correct++;
+        } else if (isRed) {
+            status = 'incorrect';
+            incorrect++;
+        } else {
+            unanswered++;
+        }
+
+        questionsStatus.push({
+            questionNumber: qNum,
+            status,
+            isCorrect: isGreen
+        });
+    });
+
+    // Block elapsed time (ex: "Block Time Elapsed 47:29")
+    let blockElapsedSeconds = 0;
+    const blockTimeEl = Array.from(document.querySelectorAll('div, span, p')).find(el => 
+        /Block\s*Time\s*Elapsed/i.test(el.innerText || '')
+    );
+    if (blockTimeEl) {
+        const txt = blockTimeEl.innerText || '';
+        const m = txt.match(/(\d+):(\d+)/);
+        if (m) {
+            blockElapsedSeconds = parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+        }
+    }
+
+    const accuracy = total > 0 ? Math.round((correct / (correct + incorrect || 1)) * 100) : 0;
+
+    return {
+        totalQuestions: total,
+        correctCount: correct,
+        incorrectCount: incorrect,
+        unansweredCount: unanswered,
+        accuracyPercent: accuracy,
+        blockElapsedSeconds,
+        questionsStatus
     };
 }
 

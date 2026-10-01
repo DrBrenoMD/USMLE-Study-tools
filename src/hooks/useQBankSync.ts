@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { format } from 'date-fns';
 import { useStore, QuestionAlternative } from '../cardblocks/store/useStore';
 import { toCompactCardSummary } from '../utils/qbankCardMatcher';
 import { useTimerStore } from '../store/useTimerStore';
@@ -281,6 +282,44 @@ export function useQBankSync() {
           subject,
           system,
         });
+
+        // Sincroniza com os logs do Study Tracker (Heatmap e Gráfico de Desempenho)
+        try {
+          const todayStr = format(new Date(), 'yyyy-MM-dd');
+          const savedLogsStr = localStorage.getItem('usmle_study_logs_v4');
+          let currentLogs: any[] = [];
+          if (savedLogsStr) {
+            try { currentLogs = JSON.parse(savedLogsStr); } catch (e) {}
+          }
+          
+          const timeMinutes = Math.max(1, Math.round((resolutionTimeSeconds + reviewTimeSeconds) / 60));
+          const existingLogIndex = currentLogs.findIndex(l => l.date === todayStr && (l.resourceId === 'qbankly' || l.resourceId === 'uworld' || l.unit === 'questões'));
+          
+          if (existingLogIndex >= 0) {
+            currentLogs[existingLogIndex].amount = (currentLogs[existingLogIndex].amount || 0) + 1;
+            currentLogs[existingLogIndex].minutesSpent = (currentLogs[existingLogIndex].minutesSpent || 0) + timeMinutes;
+            const prevAmount = currentLogs[existingLogIndex].amount - 1;
+            const prevScore = currentLogs[existingLogIndex].scorePercent || 0;
+            const newScore = Math.round(((prevScore * prevAmount) + (isCorrect ? 100 : 0)) / currentLogs[existingLogIndex].amount);
+            currentLogs[existingLogIndex].scorePercent = newScore;
+          } else {
+            currentLogs.unshift({
+              id: 'log-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+              date: todayStr,
+              resourceId: 'qbankly',
+              resourceName: 'QBank Externo (QBankly / UWorld)',
+              resourceType: 'qbank',
+              amount: 1,
+              unit: 'questões',
+              minutesSpent: timeMinutes,
+              scorePercent: isCorrect ? 100 : 0,
+              notes: `Sincronizado via Extensão (${subject || 'Geral'})`,
+              createdAt: Date.now()
+            });
+          }
+          localStorage.setItem('usmle_study_logs_v4', JSON.stringify(currentLogs));
+          window.dispatchEvent(new Event('usmle_logs_updated'));
+        } catch (err) {}
       }
     };
 

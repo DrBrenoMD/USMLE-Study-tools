@@ -547,6 +547,26 @@ export const StudyNoteEditor: React.FC<StudyNoteEditorProps> = ({
                       <b>Explicação:</b> <IsolatedHtml html={q.explanation} />
                     </div>
                   )}
+
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-700/60">
+                    <a
+                      href={`/questions?qid=${q.qid || q.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-xs font-semibold hover:bg-white dark:hover:bg-gray-800 flex items-center gap-1 transition-colors"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      <span>Ver no Hub</span>
+                    </a>
+                    <a
+                      href={`/desk?qid=${q.qid || q.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1 shadow-xs transition-colors"
+                    >
+                      <span>Abrir na Mesa de Estudos ➔</span>
+                    </a>
+                  </div>
                 </div>
               ))}
             </div>

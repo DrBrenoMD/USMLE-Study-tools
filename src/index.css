@@ -461,3 +461,30 @@ body.dark {
   color: #f9fafb;
 }
 
+/* Cloze styling in notes & cards */
+.cloze-hole {
+  display: inline-block;
+  background-color: #3b82f6;
+  color: #ffffff !important;
+  padding: 1px 7px;
+  margin: 0 2px;
+  border-radius: 6px;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease-in-out;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  vertical-align: baseline;
+}
+
+.cloze-hole:hover {
+  background-color: #2563eb;
+  transform: translateY(-1px);
+}
+
+.cloze-hole.cloze-revealed {
+  background-color: #10b981 !important;
+  color: #ffffff !important;
+  box-shadow: 0 1px 3px rgba(16, 185, 129, 0.25);
+}
+

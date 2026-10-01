@@ -33,6 +33,7 @@ import {
   Upload,
   Flag,
   Flame,
+  TrendingUp,
 } from "lucide-react";
 import { useStudyPlan } from "../hooks/useStudyPlan";
 import { cn } from "../lib/utils";
@@ -98,12 +99,13 @@ const CLEAN_STARTER_RESOURCES: Resource[] = [
   },
 ];
 
-export default function StudyTracker({ initialTab }: { initialTab?: 'planner' | 'timeline' | 'heatmap' }) {
+export default function StudyTracker({ initialTab }: { initialTab?: 'planner' | 'timeline' | 'heatmap' | 'analytics' }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
 
-  const [activeTab, setActiveTab] = useState<'planner' | 'timeline' | 'heatmap'>(() => {
+  const [activeTab, setActiveTab] = useState<'planner' | 'timeline' | 'heatmap' | 'analytics'>(() => {
     const tabParam = searchParams.get('tab');
+    if (tabParam === 'analytics' || tabParam === 'desempenho' || tabParam === 'acompanhamento' || initialTab === 'analytics') return 'analytics';
     if (tabParam === 'heatmap' || initialTab === 'heatmap' || window.location.pathname.startsWith('/heatmap')) return 'heatmap';
     if (tabParam === 'timeline' || initialTab === 'timeline') return 'timeline';
     return 'planner';
@@ -494,6 +496,23 @@ export default function StudyTracker({ initialTab }: { initialTab?: 'planner' | 
             >
               <Flame className="w-4 h-4 text-orange-500" />
               Heatmap de Consistência
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('analytics');
+                setSearchParams({ tab: 'analytics' });
+              }}
+              className={cn(
+                "font-medium pb-3 transition-all flex items-center gap-2 cursor-pointer border-b-2",
+                activeTab === 'analytics'
+                  ? "text-blue-600 dark:text-blue-400 border-blue-600 font-semibold"
+                  : "text-gray-500 dark:text-gray-400 border-transparent hover:text-gray-800 dark:text-gray-200"
+              )}
+            >
+              <TrendingUp className="w-4 h-4 text-emerald-500" />
+              Gráficos & Acompanhamento
             </button>
           </nav>
         </div>
@@ -1491,6 +1510,13 @@ export default function StudyTracker({ initialTab }: { initialTab?: 'planner' | 
 
             <ScoreChart logs={studyLogs} />
 
+          </div>
+        )}
+
+        {/* ABA 4: GRÁFICOS & ACOMPANHAMENTO DE DESEMPENHO DEDICADO */}
+        {activeTab === 'analytics' && (
+          <div className="flex flex-col gap-6">
+            <ScoreChart logs={studyLogs} />
           </div>
         )}
 

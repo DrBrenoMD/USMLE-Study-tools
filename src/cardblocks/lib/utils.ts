@@ -47,7 +47,18 @@ const escapeHtml = (unsafe: string) => {
 
 export function sanitizeHtml(html?: string) {
   if (!html) return '';
-  return html;
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: [
+      'b', 'i', 'em', 'strong', 'a', 'p', 'div', 'span', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+      'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'blockquote', 'hr', 'br', 'pre', 'code', 'mark',
+      'figure', 'figcaption', 'input', 'button', 'svg', 'path', 'iframe'
+    ],
+    ALLOWED_ATTR: [
+      'href', 'target', 'src', 'alt', 'class', 'style', 'title', 'width', 'height', 'data-answer', 'data-cloze-index',
+      'data-miniaturized', 'data-original-width', 'data-original-height', 'type', 'checked', 'disabled', 'viewbox',
+      'fill', 'stroke', 'stroke-width', 'd', 'xmlns', 'colspan', 'rowspan', 'border', 'cellpadding', 'cellspacing', 'onclick'
+    ]
+  });
 }
 
 export function renderCardText(html?: string, forceRevealCloze: boolean = false) {
@@ -57,7 +68,7 @@ export function renderCardText(html?: string, forceRevealCloze: boolean = false)
     const safeAnswer = escapeHtml(p1);
     const content = forceRevealCloze ? safeAnswer : '[...]';
     const classes = forceRevealCloze ? 'cloze-hole cloze-revealed' : 'cloze-hole';
-    return `<span class="${classes}" onclick="this.classList.add('cloze-revealed'); this.innerHTML = this.getAttribute('data-answer'); event.stopPropagation();" data-answer="${safeAnswer}">${content}</span>`;
+    return `<span class="${classes}" onclick="this.classList.toggle('cloze-revealed'); this.innerHTML = this.classList.contains('cloze-revealed') ? this.getAttribute('data-answer') : '[...]'; event.stopPropagation();" data-answer="${safeAnswer}" title="Clique para revelar / ocultar">${content}</span>`;
   });
   return sanitizeHtml(parsed);
 }
