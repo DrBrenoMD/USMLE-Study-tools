@@ -16,34 +16,47 @@ interface GranularResetModalProps {
   onClose: () => void;
   availableSubjects: string[];
   availableSystems: string[];
+  availableBanks?: Array<{ id: string; name: string }>;
   onResetExtensionOnly: () => void;
   onResetSubject: (subject: string) => void;
   onResetSystem: (system: string) => void;
+  onResetBank?: (bankId: string) => void;
   onResetGeneralLogsOnly: () => void;
+  onOpenDateManager?: () => void;
 }
 
-type ResetScope = 'extension' | 'subject' | 'system' | 'general_logs';
+type ResetScope = 'extension' | 'bank' | 'subject' | 'system' | 'general_logs';
 
 export const GranularResetModal: React.FC<GranularResetModalProps> = ({
   isOpen,
   onClose,
   availableSubjects,
   availableSystems,
+  availableBanks = [],
   onResetExtensionOnly,
   onResetSubject,
   onResetSystem,
-  onResetGeneralLogsOnly
+  onResetBank,
+  onResetGeneralLogsOnly,
+  onOpenDateManager
 }) => {
   const [scope, setScope] = useState<ResetScope>('extension');
+  const [selectedBankId, setSelectedBankId] = useState<string>(availableBanks[0]?.id || '');
   const [selectedSubject, setSelectedSubject] = useState<string>(availableSubjects[0] || '');
   const [selectedSystem, setSelectedSystem] = useState<string>(availableSystems[0] || '');
   const [step, setStep] = useState<'select' | 'confirm'>('select');
 
   if (!isOpen) return null;
 
+  const selectedBankName = availableBanks.find(b => b.id === selectedBankId)?.name || 'Banco Selecionado';
+
   const handleExecuteReset = () => {
     if (scope === 'extension') {
       onResetExtensionOnly();
+    } else if (scope === 'bank') {
+      if (onResetBank && selectedBankId) {
+        onResetBank(selectedBankId);
+      }
     } else if (scope === 'subject') {
       onResetSubject(selectedSubject);
     } else if (scope === 'system') {
@@ -59,6 +72,8 @@ export const GranularResetModal: React.FC<GranularResetModalProps> = ({
     switch (scope) {
       case 'extension':
         return 'Todas as resoluções, acertos e estatísticas das questões capturadas pela extensão do navegador serão resetadas para o estado inicial. Seus cadernos de notas e logs de sessão NÃO serão afetados.';
+      case 'bank':
+        return `Todas as estatísticas, acertos e tentativas de questões associadas ao Banco "${selectedBankName}" serão resetadas para o estado inicial.`;
       case 'subject':
         return `Todas as estatísticas e tentativas de questões associadas à matéria "${selectedSubject}" serão resetadas. As outras matérias e os logs gerais permanecerão intactos.`;
       case 'system':
@@ -134,6 +149,51 @@ export const GranularResetModal: React.FC<GranularResetModalProps> = ({
                   </p>
                 </div>
               </label>
+
+              {/* Opção: Resetar por Banco de Questões específico */}
+              {availableBanks && availableBanks.length > 0 && (
+                <label
+                  className={`p-3.5 rounded-2xl border flex flex-col gap-2 cursor-pointer transition-all ${
+                    scope === 'bank'
+                      ? 'bg-blue-50/80 dark:bg-blue-950/30 border-blue-400 dark:border-blue-600 shadow-xs'
+                      : 'bg-gray-50 dark:bg-gray-800/60 border-gray-200 dark:border-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <input
+                      type="radio"
+                      name="resetScope"
+                      checked={scope === 'bank'}
+                      onChange={() => setScope('bank')}
+                      className="mt-1 text-blue-600 focus:ring-blue-500"
+                    />
+                    <div>
+                      <div className="font-bold text-xs text-gray-900 dark:text-white">
+                        🏦 Resetar por Banco de Questões específico
+                      </div>
+                      <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
+                        Zera todas as questões e resoluções pertencentes a um banco específico (ex: UWorld, Amboss, USMLE-Rx).
+                      </p>
+                    </div>
+                  </div>
+
+                  {scope === 'bank' && (
+                    <div className="pl-7 pt-1">
+                      <select
+                        value={selectedBankId}
+                        onChange={(e) => setSelectedBankId(e.target.value)}
+                        className="w-full p-2 text-xs bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-xl font-bold text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                      >
+                        {availableBanks.map((b) => (
+                          <option key={b.id} value={b.id}>
+                            Banco: {b.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </label>
+              )}
 
               {/* Opção 2: Resetar por Subject específico */}
               <label

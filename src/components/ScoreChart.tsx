@@ -30,12 +30,17 @@ import {
   XCircle,
   HelpCircle,
   Download,
-  Wand2
+  Wand2,
+  Calendar,
+  CalendarDays,
+  Layers,
+  Building2
 } from 'lucide-react';
 import { useStore, StudyDeskQuestionRecord, Question } from '../cardblocks/store/useStore';
 import { cn } from '../lib/utils';
 import { QuestionDrillDownModal } from './QuestionDrillDownModal';
 import { GranularResetModal } from './GranularResetModal';
+import { DateRecordsManagerModal } from './DateRecordsManagerModal';
 import { sanitizeStudyData } from '../utils/sanitizeStudyData';
 
 interface ScoreChartProps {
@@ -56,10 +61,16 @@ const PALETTE = [
 ];
 
 export function ScoreChart({ logs }: ScoreChartProps) {
-  // Configurações do Gráfico Geral (Não alterar)
+  // Configurações do Gráfico Geral
   const [daysToShow, setDaysToShow] = useState<number>(30);
 
-  // Seletor de Modo na Seção de Gráficos: 'general' (Geral de Sessões) | 'subject' (Novo Gráfico por Subject da Extensão)
+  // Seletor de Banco de Questões: 'all' (Todos os Bancos / Unificado) | bankId
+  const [selectedBankId, setSelectedBankId] = useState<string>('all');
+
+  // Modo de tratamento de revisões: 'original_date' (Preserva data de resolução original) | 'all_attempts' (Contabiliza na data feita)
+  const [reviewHandlingMode, setReviewHandlingMode] = useState<'original_date' | 'all_attempts'>('original_date');
+
+  // Seletor de Modo na Seção de Gráficos: 'general' (Geral de Sessões) | 'subject' (Gráfico por Subject da Extensão)
   const [activeChartTab, setActiveChartTab] = useState<'general' | 'subject'>('general');
 
   // Filtro de Dias para o gráfico de Subject
@@ -80,6 +91,10 @@ export function ScoreChart({ logs }: ScoreChartProps) {
     questions: []
   });
 
+  // Estado para Modal de Gerenciamento de Registros por Data
+  const [isDateManagerOpen, setIsDateManagerOpen] = useState(false);
+  const [dateForManager, setDateForManager] = useState<string | undefined>(undefined);
+
   // Estado para Modal de Reset Granular
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [resetToast, setResetToast] = useState<string | null>(null);
@@ -87,13 +102,41 @@ export function ScoreChart({ logs }: ScoreChartProps) {
   // Busca store
   const {
     questions,
+    questionBanks,
     studyDeskSessions,
+    resetBankStats,
     resetExtensionStats,
     resetSubjectStats,
     resetSystemStats,
     upsertQuestionFromQBank,
     recordDeskQuestionAnswer
   } = useStore();
+
+  // Lista de bancos de questões disponíveis (com dados ou cadastrados)
+  const availableBanksList = useMemo(() => {
+    const map = new Map<string, { id: string; name: string }>();
+
+    // 1. Bancos cadastrados no store
+    (questionBanks || []).forEach(b => {
+      map.set(b.id, { id: b.id, name: b.name });
+    });
+
+    // 2. Bancos detectados nas questões
+    questions.forEach(q => {
+      if (q.bankId && !map.has(q.bankId)) {
+        map.set(q.bankId, { id: q.bankId, name: q.bankId });
+      }
+    });
+
+    // Se nenhum banco cadastrado, adiciona bancos padrão populares
+    if (map.size === 0) {
+      map.set('uworld', { id: 'uworld', name: 'UWorld Step 1' });
+      map.set('amboss', { id: 'amboss', name: 'Amboss' });
+      map.set('usmle_rx', { id: 'usmle_rx', name: 'USMLE-Rx' });
+    }
+
+    return Array.from(map.values());
+  }, [questionBanks, questions]);
 
   // Helper para identificar questões que vieram da extensão do navegador
   const isExtensionQuestion = (q: Question): boolean => {
@@ -107,11 +150,30 @@ export function ScoreChart({ logs }: ScoreChartProps) {
     );
   };
 
-  // 1. Processa dados do GRÁFICO GERAL EXISTENTE (Não alterar - Fonte: logs de sessão)
+  // Helper para testar se uma questão pertence ao banco selecionado
+  const matchesBank = (q: Question): boolean => {
+    if (selectedBankId === 'all') return true;
+    if (q.bankId === selectedBankId) return true;
+    const bankObj = questionBanks.find(b => b.id === selectedBankId);
+    if (bankObj && q.tags?.some(t => t.toLowerCase().includes(bankObj.name.toLowerCase()))) return true;
+    return false;
+  };
+
+  // 1. Processa dados do GRÁFICO GERAL (Com separação por banco ou unificado + Barras: % Acertos, Linha: Volume)
   const { generalChartData, generalSummaryStats } = useMemo(() => {
-    const qbankLogs = logs.filter(
-      (l) => l.resourceType === 'qbank' || l.unit === 'questões' || l.unit === 'questoes'
-    );
+    // Filtra logs de sessão que correspondam a qbank e ao banco selecionado (se filtrado)
+    const qbankLogs = logs.filter((l) => {
+      const isQBank = l.resourceType === 'qbank' || l.unit === 'questões' || l.unit === 'questoes';
+      if (!isQBank) return false;
+      if (selectedBankId === 'all') return true;
+      const bankObj = questionBanks.find(b => b.id === selectedBankId);
+      const bankName = bankObj ? bankObj.name.toLowerCase() : '';
+      return (
+        l.resourceId === selectedBankId ||
+        l.resourceName.toLowerCase().includes(selectedBankId.toLowerCase()) ||
+        (bankName && l.resourceName.toLowerCase().includes(bankName))
+      );
+    });
 
     const byDate = new Map<
       string,
@@ -119,15 +181,18 @@ export function ScoreChart({ logs }: ScoreChartProps) {
         totalAmount: number;
         scoredAmount: number;
         weightedScoreSum: number;
+        questionIds: Set<string>;
       }
     >();
 
+    // Se temos logs manuais/sincronizados correspondentes
     qbankLogs.forEach((log) => {
       if (!log.date) return;
       const existing = byDate.get(log.date) || {
         totalAmount: 0,
         scoredAmount: 0,
         weightedScoreSum: 0,
+        questionIds: new Set(),
       };
 
       const amt = Number(log.amount) || 0;
@@ -141,6 +206,71 @@ export function ScoreChart({ logs }: ScoreChartProps) {
 
       byDate.set(log.date, existing);
     });
+
+    // Se um banco específico foi selecionado e não tem logs dedicados na tabela geral,
+    // calcula os pontos diários diretamente das questões do banco
+    if (selectedBankId !== 'all' && qbankLogs.length === 0) {
+      const bankQuestions = questions.filter(matchesBank);
+
+      bankQuestions.forEach(q => {
+        if (!q.attempts || q.attempts.length === 0) {
+          if (q.lastAnsweredAt && q.status && q.status !== 'unused') {
+            const dStr = format(new Date(q.lastAnsweredAt), 'yyyy-MM-dd');
+            const existing = byDate.get(dStr) || {
+              totalAmount: 0,
+              scoredAmount: 0,
+              weightedScoreSum: 0,
+              questionIds: new Set(),
+            };
+            if (!existing.questionIds.has(q.id)) {
+              existing.questionIds.add(q.id);
+              existing.totalAmount += 1;
+              existing.scoredAmount += 1;
+              existing.weightedScoreSum += q.status === 'correct' ? 100 : 0;
+              byDate.set(dStr, existing);
+            }
+          }
+          return;
+        }
+
+        // Tratamento de Revisões:
+        // 'original_date': atribui à primeira tentativa (data de resolução original) para não distorcer hoje
+        // 'all_attempts': contabiliza cada tentativa na data em que foi realizada
+        if (reviewHandlingMode === 'original_date') {
+          const firstAtt = q.attempts[0];
+          const t = firstAtt?.timestamp || q.lastAnsweredAt || q.createdAt || Date.now();
+          const dStr = format(new Date(t), 'yyyy-MM-dd');
+          const existing = byDate.get(dStr) || {
+            totalAmount: 0,
+            scoredAmount: 0,
+            weightedScoreSum: 0,
+            questionIds: new Set(),
+          };
+          if (!existing.questionIds.has(q.id)) {
+            existing.questionIds.add(q.id);
+            existing.totalAmount += 1;
+            existing.scoredAmount += 1;
+            existing.weightedScoreSum += (firstAtt ? firstAtt.isCorrect : q.status === 'correct') ? 100 : 0;
+            byDate.set(dStr, existing);
+          }
+        } else {
+          q.attempts.forEach(att => {
+            const t = att.timestamp || q.lastAnsweredAt || Date.now();
+            const dStr = format(new Date(t), 'yyyy-MM-dd');
+            const existing = byDate.get(dStr) || {
+              totalAmount: 0,
+              scoredAmount: 0,
+              weightedScoreSum: 0,
+              questionIds: new Set(),
+            };
+            existing.totalAmount += 1;
+            existing.scoredAmount += 1;
+            existing.weightedScoreSum += att.isCorrect ? 100 : 0;
+            byDate.set(dStr, existing);
+          });
+        }
+      });
+    }
 
     const today = startOfDay(new Date());
     const startDate = subDays(today, Math.max(1, daysToShow - 1));
@@ -229,14 +359,14 @@ export function ScoreChart({ logs }: ScoreChartProps) {
       generalChartData: finalData,
       generalSummaryStats: summary,
     };
-  }, [logs, daysToShow]);
+  }, [logs, questions, questionBanks, daysToShow, selectedBankId, reviewHandlingMode]);
 
-  // 2. FONTE DE DADOS RESTRITA: Coleta de registros EXCLUSIVAMENTE das questões da Extensão
+  // 2. FONTE DE DADOS DA EXTENSÃO & BANCOS: Registros filtrados por banco e tratamento de revisões
   const extensionData = useMemo(() => {
-    // Filtra questões puramente da extensão
-    const extQuestions = questions.filter(isExtensionQuestion);
+    // Filtra questões puramente da extensão ou do banco selecionado
+    const extQuestions = questions.filter(q => isExtensionQuestion(q) && matchesBank(q));
 
-    // Mapeamento de registros de resolução das questões da extensão
+    // Mapeamento de registros de resolução das questões
     const records: Array<{
       qid: string;
       questionId?: string;
@@ -256,21 +386,41 @@ export function ScoreChart({ logs }: ScoreChartProps) {
       const sys = (q.system || 'Sistema Geral').trim();
 
       if (q.attempts && q.attempts.length > 0) {
-        q.attempts.forEach(att => {
-          const tDate = att.timestamp ? new Date(att.timestamp) : new Date(q.lastAnsweredAt || Date.now());
+        if (reviewHandlingMode === 'original_date') {
+          // Utiliza a 1ª tentativa ou consolida na data de resolução original
+          const firstAtt = q.attempts[0];
+          const lastAtt = q.attempts[q.attempts.length - 1];
+          const tDate = firstAtt?.timestamp ? new Date(firstAtt.timestamp) : new Date(q.lastAnsweredAt || Date.now());
+          
           records.push({
             qid: q.qid || q.id,
             questionId: q.id,
             questionObj: q,
-            isCorrect: att.isCorrect,
+            isCorrect: lastAtt ? lastAtt.isCorrect : (firstAtt?.isCorrect ?? (q.status === 'correct')),
             subject: subj,
             system: sys,
-            resolutionTimeSeconds: att.resolutionTimeSeconds || q.resolutionTimeSeconds || 60,
-            reviewTimeSeconds: att.reviewTimeSeconds || q.reviewTimeSeconds || 100,
+            resolutionTimeSeconds: lastAtt?.resolutionTimeSeconds || q.resolutionTimeSeconds || 60,
+            reviewTimeSeconds: lastAtt?.reviewTimeSeconds || q.reviewTimeSeconds || 100,
             answeredAt: tDate.getTime(),
             dateStr: format(tDate, 'yyyy-MM-dd')
           });
-        });
+        } else {
+          q.attempts.forEach(att => {
+            const tDate = att.timestamp ? new Date(att.timestamp) : new Date(q.lastAnsweredAt || Date.now());
+            records.push({
+              qid: q.qid || q.id,
+              questionId: q.id,
+              questionObj: q,
+              isCorrect: att.isCorrect,
+              subject: subj,
+              system: sys,
+              resolutionTimeSeconds: att.resolutionTimeSeconds || q.resolutionTimeSeconds || 60,
+              reviewTimeSeconds: att.reviewTimeSeconds || q.reviewTimeSeconds || 100,
+              answeredAt: tDate.getTime(),
+              dateStr: format(tDate, 'yyyy-MM-dd')
+            });
+          });
+        }
       } else if (q.status && q.status !== 'unused') {
         const tDate = q.lastAnsweredAt ? new Date(q.lastAnsweredAt) : new Date(q.updatedAt || Date.now());
         records.push({
@@ -288,13 +438,13 @@ export function ScoreChart({ logs }: ScoreChartProps) {
       }
     });
 
-    // Se nenhuma questão da extensão estiver salva ainda, busca se há sessões de desk com tag de extensão
+    // Se nenhuma questão da extensão estiver salva ainda, busca se há sessões de desk
     if (records.length === 0) {
       (studyDeskSessions || []).forEach(s => {
         (s.questionRecords || []).forEach(r => {
           if (r.isFromExtension) {
             const matchedQ = questions.find(q => q.qid === r.qid || q.id === r.questionId);
-            if (matchedQ) {
+            if (matchedQ && matchesBank(matchedQ)) {
               const tDate = new Date(r.answeredAt || s.startedAt);
               records.push({
                 qid: r.qid,
@@ -318,7 +468,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
       extensionQuestions: extQuestions,
       records
     };
-  }, [questions, studyDeskSessions]);
+  }, [questions, studyDeskSessions, selectedBankId, reviewHandlingMode]);
 
   // Lista única de Subjects e Systems capturados da extensão
   const { allSubjectsList, allSystemsList } = useMemo(() => {
@@ -341,7 +491,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
     };
   }, [extensionData]);
 
-  // 3. Processamento do NOVO GRÁFICO - Desempenho por Subject pelo Tempo
+  // 3. Processamento do GRÁFICO - Desempenho por Subject pelo Tempo
   const { subjectTimeSeriesData, subjectColorsMap } = useMemo(() => {
     const today = startOfDay(new Date());
     const startDate = subDays(today, Math.max(1, subjectDaysRange - 1));
@@ -399,7 +549,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
     };
   }, [allSubjectsList, extensionData, subjectDaysRange]);
 
-  // 4. Processamento da NOVA SEÇÃO - System vs Subject (Hierarquia detalhada baseada em questões únicas)
+  // 4. Processamento da SEÇÃO - System vs Subject (Hierarquia detalhada baseada em questões únicas)
   const systemVsSubjectData = useMemo(() => {
     // Mapa: Subject -> Map<System, { solveSum, revSum, questionsMap: Map<string, Question> }>
     const map = new Map<
@@ -418,136 +568,118 @@ export function ScoreChart({ logs }: ScoreChartProps) {
     extensionData.records.forEach(r => {
       const qKey = r.questionObj.id || r.questionObj.qid;
       const subj = (r.subject || 'Sem Matéria').trim();
-      const sys = (r.system || 'Sistema Geral').trim();
+      const sys = (r.system || 'Sem Sistema').trim();
 
       if (!map.has(subj)) {
         map.set(subj, new Map());
       }
       const sysMap = map.get(subj)!;
+
       if (!sysMap.has(sys)) {
         sysMap.set(sys, {
           solveSum: 0,
           revSum: 0,
-          questionsMap: new Map()
+          questionsMap: new Map(),
         });
       }
 
       const item = sysMap.get(sys)!;
-      // Garante que cada questão única seja contabilizada uma única vez por sistema
-      if (!item.questionsMap.has(qKey)) {
-        item.questionsMap.set(qKey, r.questionObj);
-        item.solveSum += (r.resolutionTimeSeconds || 60);
-        item.revSum += (r.reviewTimeSeconds || 90);
-      }
+      item.solveSum += r.resolutionTimeSeconds;
+      item.revSum += r.reviewTimeSeconds;
+      item.questionsMap.set(qKey, r.questionObj);
     });
 
-    // Formata em estrutura hierárquica ordenada garantindo consistência com o Drill-down
-    const result = Array.from(map.entries()).map(([subjectName, sysMap]) => {
-      let subjTotal = 0;
-      let subjCorrect = 0;
-      const subjQuestionsMap = new Map<string, Question>();
+    // Converte em array estruturado e calcula médias precisas
+    const subjectsArray = Array.from(map.entries()).map(([subjName, sysMap]) => {
+      let subjTotalQuestions = 0;
+      let subjCorrectCount = 0;
+      let subjSolveSum = 0;
+      let subjRevSum = 0;
+      const subjAllQuestionsMap = new Map<string, Question>();
 
-      const systems = Array.from(sysMap.entries()).map(([systemName, data]) => {
-        const sysQuestions = Array.from(data.questionsMap.values());
-        const total = sysQuestions.length;
-        const correct = sysQuestions.filter(q => q.status === 'correct').length;
+      const systemsArray = Array.from(sysMap.entries()).map(([sysName, data]) => {
+        const uniqueQuestions = Array.from(data.questionsMap.values());
+        const total = uniqueQuestions.length;
+        const correct = uniqueQuestions.filter(q => q.status === 'correct').length;
         const incorrect = total - correct;
         const accuracy = total > 0 ? Math.round((correct / total) * 100) : 0;
-        const avgSolve = total > 0 ? Math.round(data.solveSum / total) : 0;
-        const avgRev = total > 0 ? Math.round(data.revSum / total) : 0;
+        const avgSolve = total > 0 ? Math.round(data.solveSum / total) : 60;
+        const avgRev = total > 0 ? Math.round(data.revSum / total) : 90;
 
-        subjTotal += total;
-        subjCorrect += correct;
-        data.questionsMap.forEach((q, id) => subjQuestionsMap.set(id, q));
+        subjTotalQuestions += total;
+        subjCorrectCount += correct;
+        subjSolveSum += data.solveSum;
+        subjRevSum += data.revSum;
+        uniqueQuestions.forEach(q => subjAllQuestionsMap.set(q.id || q.qid, q));
 
         return {
-          systemName,
+          systemName: sysName,
           total,
           correct,
           incorrect,
           accuracy,
           avgSolveTime: avgSolve,
-          avgRevTime: avgRev,
-          questions: sysQuestions
+          avgReviewTime: avgRev,
+          questions: uniqueQuestions
         };
-      }).sort((a, b) => b.total - a.total);
+      });
 
-      const subjAccuracy = subjTotal > 0 ? Math.round((subjCorrect / subjTotal) * 100) : 0;
+      systemsArray.sort((a, b) => b.total - a.total);
+
+      const subjUniqueQuestions = Array.from(subjAllQuestionsMap.values());
+      const subjAccuracy = subjTotalQuestions > 0 ? Math.round((subjCorrectCount / subjTotalQuestions) * 100) : 0;
+      const subjAvgSolve = subjTotalQuestions > 0 ? Math.round(subjSolveSum / Math.max(1, subjTotalQuestions)) : 60;
+      const subjAvgRev = subjTotalQuestions > 0 ? Math.round(subjRevSum / Math.max(1, subjTotalQuestions)) : 90;
 
       return {
-        subjectName,
-        total: subjTotal,
-        correct: subjCorrect,
-        incorrect: subjTotal - subjCorrect,
+        subjectName: subjName,
+        total: subjTotalQuestions,
+        correct: subjCorrectCount,
+        incorrect: subjTotalQuestions - subjCorrectCount,
         accuracy: subjAccuracy,
-        systems,
-        questions: Array.from(subjQuestionsMap.values())
+        avgSolveTime: subjAvgSolve,
+        avgReviewTime: subjAvgRev,
+        systems: systemsArray,
+        allQuestions: subjUniqueQuestions
       };
-    }).sort((a, b) => b.total - a.total);
+    });
 
-    return result;
+    subjectsArray.sort((a, b) => b.total - a.total);
+    return subjectsArray;
   }, [extensionData]);
 
-  // Sanitização automática no mount para corrigir dados inflados antigos
-  useEffect(() => {
-    sanitizeStudyData();
-  }, []);
-
   // Formatação de segundos
-  const formatSec = (sec: number) => {
-    const s = Math.round(sec);
+  const formatSec = (seconds: number): string => {
+    const s = Math.max(0, Math.round(seconds));
     const m = Math.floor(s / 60);
     const rem = s % 60;
     if (m === 0) return `${rem}s`;
-    return `${m}m ${rem.toString().padStart(2, '0')}s`;
+    return `${m}m ${rem}s`;
   };
 
-  // Toggle interativo de legendas no gráfico por Subject
-  const toggleSubjectVisibility = (subjectName: string) => {
-    setHiddenSubjects(prev => {
-      const next = new Set(prev);
-      if (next.has(subjectName)) {
-        next.delete(subjectName);
-      } else {
-        next.add(subjectName);
-      }
-      return next;
-    });
-  };
-
-  // Abertura de Drill-down a partir do clique em data point ou linha
-  const handleSubjectPointClick = (pointData: any, subjectName: string) => {
-    if (!pointData || !subjectName) return;
-    const dateStr = pointData.dateStr;
-    const matchingRecords = extensionData.records.filter(
-      r => r.subject === subjectName && (!dateStr || r.dateStr === dateStr)
-    );
-    const qList = Array.from(new Set(matchingRecords.map(r => r.questionObj)));
-
-    setDrillDownData({
-      isOpen: true,
-      title: `Questões de ${subjectName}`,
-      subtitle: dateStr ? `Resolvidas em ${format(new Date(dateStr), 'dd/MM/yyyy')} via extensão do navegador` : 'Capturadas via extensão',
-      questions: qList.length > 0 ? qList : extensionData.extensionQuestions.filter(q => q.subject === subjectName)
-    });
-  };
-
-  // Executores de Reset Granular
-  const handleResetExtension = () => {
+  // Handlers para ações e reset
+  const handleResetExtensionData = () => {
     resetExtensionStats();
-    setResetToast('Estatísticas das questões da extensão foram resetadas com sucesso!');
+    setResetToast('Todas as estatísticas de questões da extensão foram resetadas!');
     setTimeout(() => setResetToast(null), 3500);
   };
 
   const handleResetSubject = (subjectName: string) => {
     resetSubjectStats(subjectName);
-    setResetToast(`Estatísticas do Subject "${subjectName}" foram resetadas!`);
+    setResetToast(`Estatísticas da matéria "${subjectName}" foram resetadas!`);
     setTimeout(() => setResetToast(null), 3500);
   };
 
   const handleResetSystem = (systemName: string) => {
     resetSystemStats(systemName);
     setResetToast(`Estatísticas do System "${systemName}" foram resetadas!`);
+    setTimeout(() => setResetToast(null), 3500);
+  };
+
+  const handleResetBank = (bankId: string) => {
+    resetBankStats(bankId);
+    const bankName = availableBanksList.find(b => b.id === bankId)?.name || bankId;
+    setResetToast(`Estatísticas do Banco "${bankName}" foram resetadas!`);
     setTimeout(() => setResetToast(null), 3500);
   };
 
@@ -586,6 +718,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
     samples.forEach(s => {
       const qId = upsertQuestionFromQBank({
         qid: s.qid,
+        bankId: selectedBankId === 'all' ? 'uworld' : selectedBankId,
         stem: s.text,
         text: s.text,
         subject: s.subject,
@@ -616,6 +749,10 @@ export function ScoreChart({ logs }: ScoreChartProps) {
     setTimeout(() => setResetToast(null), 4000);
   };
 
+  const selectedBankName = selectedBankId === 'all'
+    ? 'Todos os Bancos (Unificado)'
+    : (availableBanksList.find(b => b.id === selectedBankId)?.name || 'Banco Selecionado');
+
   return (
     <div className="space-y-8 mt-6">
       {/* Toast Feedback */}
@@ -643,12 +780,12 @@ export function ScoreChart({ logs }: ScoreChartProps) {
               </h2>
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              Acompanhe o volume geral de questões e as estatísticas detalhadas de acertos por matéria e sistema.
+              Filtre por banco de questões ou veja dados unificados, com separação de acertos e volume.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Seletor de Modo: Gráfico Geral (Não Alterar) vs Novo Gráfico por Subject */}
+            {/* Seletor de Modo: Gráfico Geral vs Novo Gráfico por Subject */}
             <div className="flex items-center bg-gray-100 dark:bg-gray-800 p-1 rounded-2xl border border-gray-200 dark:border-gray-700">
               <button
                 type="button"
@@ -660,7 +797,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
                     : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
                 )}
               >
-                <span>📅 Gráfico Geral (Sessões)</span>
+                <span>📅 Gráfico Geral (Sessões & Bancos)</span>
               </button>
 
               <button
@@ -725,7 +862,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
               title="Corrigir registros e recalcular métricas para corresponderem exatamente ao número de questões únicas"
             >
               <Wand2 className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-              <span>Sincronizar & Corrigir Métricas</span>
+              <span>Sincronizar & Corrigir</span>
             </button>
 
             {/* Botão de Reset Granular */}
@@ -736,7 +873,81 @@ export function ScoreChart({ logs }: ScoreChartProps) {
               title="Resetar estatísticas individualmente"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span>Resetar Estatísticas</span>
+              <span>Resetar</span>
+            </button>
+          </div>
+        </div>
+
+        {/* ========================================================================= */}
+        {/* BARRA DE FILTRO POR BANCO DE QUESTÕES & TRATAMENTO DE REVISÕES */}
+        {/* ========================================================================= */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 p-3.5 bg-gray-50 dark:bg-gray-800/60 rounded-2xl border border-gray-200 dark:border-gray-700 text-xs">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1.5 mr-1">
+              <Building2 className="w-4 h-4 text-blue-600" />
+              <span>Banco de Questões:</span>
+            </span>
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setSelectedBankId('all')}
+                className={cn(
+                  "px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5",
+                  selectedBankId === 'all'
+                    ? "bg-blue-600 text-white shadow-xs"
+                    : "bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600"
+                )}
+              >
+                <span>🌐 Todos os Bancos (Unificado)</span>
+              </button>
+
+              {availableBanksList.map((b) => (
+                <button
+                  key={b.id}
+                  type="button"
+                  onClick={() => setSelectedBankId(b.id)}
+                  className={cn(
+                    "px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5",
+                    selectedBankId === b.id
+                      ? "bg-blue-600 text-white shadow-xs"
+                      : "bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600"
+                  )}
+                >
+                  <Layers className="w-3 h-3 opacity-70" />
+                  <span>{b.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Tratamento de Questões Revisadas de Outras Datas */}
+            <div className="flex items-center gap-1.5 bg-white dark:bg-gray-700 px-2.5 py-1.5 rounded-xl border border-gray-200 dark:border-gray-600">
+              <span className="text-[11px] font-bold text-gray-600 dark:text-gray-300">Revisões:</span>
+              <select
+                value={reviewHandlingMode}
+                onChange={(e) => setReviewHandlingMode(e.target.value as any)}
+                className="bg-transparent text-[11px] font-bold text-blue-600 dark:text-blue-400 focus:outline-none cursor-pointer"
+                title="Define como questões resolvidas em datas anteriores são contabilizadas quando revisadas"
+              >
+                <option value="original_date">Data Original (Sem poluir data atual)</option>
+                <option value="all_attempts">Contabilizar todas as tentativas hoje</option>
+              </select>
+            </div>
+
+            {/* Botão de Abrir Gerenciador de Registros por Data */}
+            <button
+              type="button"
+              onClick={() => {
+                setDateForManager(undefined);
+                setIsDateManagerOpen(true);
+              }}
+              className="px-3 py-1.5 bg-white hover:bg-gray-100 dark:bg-gray-700 dark:hover:bg-gray-600 border border-gray-200 dark:border-gray-600 text-gray-800 dark:text-gray-200 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+              title="Abrir gerenciador para excluir ou transferir questões registradas na data errada"
+            >
+              <Calendar className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              <span>Gerenciar / Excluir por Data</span>
             </button>
           </div>
         </div>
@@ -746,7 +957,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
           <div className="p-3.5 rounded-2xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40">
             <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 text-xs font-bold mb-1">
               <CheckSquare className="w-3.5 h-3.5" />
-              <span>{activeChartTab === 'general' ? 'Total (Logs Sessão)' : 'Total (Extensão)'}</span>
+              <span>{activeChartTab === 'general' ? 'Total de Questões' : 'Total (Extensão)'}</span>
             </div>
             <div className="text-xl sm:text-2xl font-extrabold text-blue-950 dark:text-blue-100">
               {activeChartTab === 'general' 
@@ -755,7 +966,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
             </div>
             <span className="text-[11px] text-gray-500 dark:text-gray-400">
               {activeChartTab === 'general'
-                ? `${generalSummaryStats.activeDaysCount} dias ativos`
+                ? `${generalSummaryStats.activeDaysCount} dias ativos (${selectedBankName})`
                 : `${extensionData.extensionQuestions.length} questões catalogadas`}
             </span>
           </div>
@@ -763,20 +974,17 @@ export function ScoreChart({ logs }: ScoreChartProps) {
           <div className="p-3.5 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900/40">
             <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 text-xs font-bold mb-1">
               <Award className="w-3.5 h-3.5" />
-              <span>Taxa de Acertos</span>
+              <span>Taxa Geral de Acertos</span>
             </div>
             <div className="text-xl sm:text-2xl font-extrabold text-emerald-950 dark:text-emerald-100">
               {activeChartTab === 'general'
                 ? (generalSummaryStats.overallAvgScore !== null ? `${generalSummaryStats.overallAvgScore}%` : '—')
-                : (() => {
-                    const answered = extensionData.extensionQuestions.filter(q => q.status && q.status !== 'unused');
-                    if (answered.length === 0) return '—';
-                    const correct = answered.filter(q => q.status === 'correct').length;
-                    return `${Math.round((correct / answered.length) * 100)}%`;
-                  })()}
+                : (extensionData.records.length > 0 
+                    ? `${Math.round((extensionData.records.filter(r => r.isCorrect).length / extensionData.records.length) * 100)}%` 
+                    : '—')}
             </div>
             <span className="text-[11px] text-gray-500 dark:text-gray-400">
-              {activeChartTab === 'general' ? 'Média ponderada geral' : 'Exclusivo da extensão'}
+              {activeChartTab === 'general' ? 'Média ponderada do período' : `${extensionData.records.filter(r => r.isCorrect).length} acertos registrados`}
             </span>
           </div>
 
@@ -810,13 +1018,23 @@ export function ScoreChart({ logs }: ScoreChartProps) {
           </div>
         </div>
 
-        {/* 1. RENDERIZAÇÃO DO MODO 1: GRÁFICO GERAL EXISTENTE (Não alterar) */}
+        {/* ========================================================================= */}
+        {/* 1. RENDERIZAÇÃO DO MODO 1: GRÁFICO GERAL (BARRAS = % ACERTOS, LINHA = VOLUME) */}
+        {/* ========================================================================= */}
         {activeChartTab === 'general' && (
           <div className="space-y-3">
-            <div className="flex items-center justify-between text-xs text-gray-500 pb-1">
-              <span>Fonte: Banco de logs de sessão de estudo geral</span>
-              <span className="font-semibold">Volume (Barras) • Acertos & Tendência (Linhas)</span>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between text-xs text-gray-500 pb-1 gap-2">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-gray-700 dark:text-gray-300">Banco: {selectedBankName}</span>
+                <span>•</span>
+                <span>Clique em uma data para inspecionar, corrigir ou excluir lançamentos</span>
+              </div>
+              <div className="flex items-center gap-3 font-semibold">
+                <span className="text-emerald-600 dark:text-emerald-400">📊 Barras: Taxa de Acertos (%)</span>
+                <span className="text-blue-600 dark:text-blue-400">📈 Linha: Volume de Questões</span>
+              </div>
             </div>
+
             <div className="h-72 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart
@@ -827,21 +1045,28 @@ export function ScoreChart({ logs }: ScoreChartProps) {
                       const d = e.activePayload[0].payload;
                       const dayQuestions = questions.filter(q => {
                         if (!q.lastAnsweredAt) return false;
-                        return format(new Date(q.lastAnsweredAt), 'yyyy-MM-dd') === d.dateStr;
+                        const qDate = format(new Date(q.lastAnsweredAt), 'yyyy-MM-dd');
+                        return qDate === d.dateStr && matchesBank(q);
                       });
+
                       if (dayQuestions.length > 0) {
                         setDrillDownData({
                           isOpen: true,
                           title: `Questões de ${d.dateFormatted}`,
-                          subtitle: `Resolvidas na data ${d.dateStr}`,
+                          subtitle: `Data: ${d.dateStr} • Banco: ${selectedBankName}`,
                           questions: dayQuestions
                         });
+                      } else {
+                        setDateForManager(d.dateStr);
+                        setIsDateManagerOpen(true);
                       }
                     }
                   }}
                 >
                   <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
                   <XAxis dataKey="dateFormatted" tick={{ fontSize: 11 }} />
+
+                  {/* Eixo Esquerdo: Volume de Questões */}
                   <YAxis
                     yAxisId="left"
                     orientation="left"
@@ -850,6 +1075,8 @@ export function ScoreChart({ logs }: ScoreChartProps) {
                     tick={{ fontSize: 11 }}
                     label={{ value: 'Questões', angle: -90, position: 'insideLeft', fontSize: 10, fill: '#3b82f6' }}
                   />
+
+                  {/* Eixo Direito: Taxa de Acertos (%) */}
                   <YAxis
                     yAxisId="right"
                     orientation="right"
@@ -858,6 +1085,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
                     tick={{ fontSize: 11 }}
                     label={{ value: 'Acerto (%)', angle: 90, position: 'insideRight', fontSize: 10, fill: '#10b981' }}
                   />
+
                   <Tooltip
                     contentStyle={{
                       backgroundColor: '#1f2937',
@@ -867,35 +1095,69 @@ export function ScoreChart({ logs }: ScoreChartProps) {
                       fontSize: '12px',
                     }}
                     formatter={(value: any, name: string) => {
-                      if (name === 'Questões Resolvidas') return [`${value} questões`, name];
-                      if (name === 'Taxa de Acertos') return [value !== null ? `${value}%` : 'Sem acertos', name];
-                      if (name === 'Tendência (Média Móvel)') return [value !== null ? `${value}%` : '—', name];
+                      if (name === 'Taxa de Acertos (%)') return [value !== null ? `${value}%` : 'Sem dados de acerto', name];
+                      if (name === 'Volume de Questões') return [`${value} questões resolvidas`, name];
+                      if (name === 'Tendência (Média Móvel %)') return [value !== null ? `${value}%` : '—', name];
                       return [value, name];
                     }}
                   />
                   <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-                  <Bar yAxisId="left" dataKey="questions" name="Questões Resolvidas" fill="#3b82f6" opacity={0.8} radius={[4, 4, 0, 0]} />
-                  <Line yAxisId="right" type="monotone" dataKey="score" name="Taxa de Acertos" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} connectNulls={true} />
-                  <Line yAxisId="right" type="monotone" dataKey="trend" name="Tendência (Média Móvel)" stroke="#f59e0b" strokeWidth={2.5} strokeDasharray="4 4" dot={false} connectNulls={true} />
+
+                  {/* BARRAS: Porcentagem de Acertos (%) */}
+                  <Bar
+                    yAxisId="right"
+                    dataKey="score"
+                    name="Taxa de Acertos (%)"
+                    fill="#10b981"
+                    opacity={0.85}
+                    radius={[4, 4, 0, 0]}
+                  />
+
+                  {/* LINHA: Volume de Questões */}
+                  <Line
+                    yAxisId="left"
+                    type="monotone"
+                    dataKey="questions"
+                    name="Volume de Questões"
+                    stroke="#3b82f6"
+                    strokeWidth={3}
+                    dot={{ r: 4, fill: '#3b82f6' }}
+                    activeDot={{ r: 6 }}
+                  />
+
+                  {/* LINHA: Tendência (Média Móvel) */}
+                  <Line
+                    yAxisId="right"
+                    type="monotone"
+                    dataKey="trend"
+                    name="Tendência (Média Móvel %)"
+                    stroke="#f59e0b"
+                    strokeWidth={2}
+                    strokeDasharray="4 4"
+                    dot={false}
+                    connectNulls={true}
+                  />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
           </div>
         )}
 
+        {/* ========================================================================= */}
         {/* 2. RENDERIZAÇÃO DO MODO 2: NOVO GRÁFICO - DESEMPENHO POR SUBJECT PELO TEMPO */}
+        {/* ========================================================================= */}
         {activeChartTab === 'subject' && (
           <div className="space-y-4">
-            {/* Aviso de Fonte Restrita da Extensão */}
+            {/* Aviso de Fonte e Filtros */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-blue-50/70 dark:bg-blue-950/40 rounded-2xl border border-blue-200 dark:border-blue-900/60 text-xs">
               <div className="flex items-center gap-2">
                 <span className="text-base">🔒</span>
                 <div>
                   <span className="font-bold text-blue-950 dark:text-blue-200">
-                    Fonte de Dados Restrita:
+                    Fonte de Dados:
                   </span>
                   <span className="text-blue-800 dark:text-blue-300 ml-1">
-                    Alimentado exclusivamente pelas questões capturadas pela extensão do navegador.
+                    Questões do banco {selectedBankName} com taxa de acertos por matéria.
                   </span>
                 </div>
               </div>
@@ -918,113 +1180,96 @@ export function ScoreChart({ logs }: ScoreChartProps) {
                   🧩
                 </div>
                 <h4 className="text-sm font-bold text-gray-900 dark:text-white">
-                  Nenhuma questão capturada pela extensão ainda
+                  Nenhuma questão registrada para o banco selecionado
                 </h4>
-                <p className="text-xs text-gray-500 max-w-md mx-auto">
-                  Resolva questões no seu Q-Bank com a extensão ativa para sincronizar automaticamente os Subjects e Systems, ou carregue dados de demonstração.
+                <p className="text-xs text-gray-500 dark:text-gray-400 max-w-md mx-auto">
+                  Resolva questões usando a extensão do navegador ou clique no botão acima para injetar dados de teste.
                 </p>
-                <button
-                  type="button"
-                  onClick={handleSeedSampleExtensionData}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer"
-                >
-                  Carregar Amostra de Teste da Extensão
-                </button>
               </div>
             ) : (
               <>
-                {/* Legendas Interativas Personalizadas (Clique para Filtrar) */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between text-[11px] text-gray-500 font-semibold px-1">
-                    <span>Clique em uma legenda para ocultar ou exibir a linha correspondente:</span>
-                    <button
-                      type="button"
-                      onClick={() => setHiddenSubjects(new Set())}
-                      className="text-blue-600 dark:text-blue-400 font-bold hover:underline"
-                    >
-                      Exibir Todos
-                    </button>
-                  </div>
-
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {allSubjectsList.map(subj => {
-                      const isHidden = hiddenSubjects.has(subj);
-                      const color = subjectColorsMap[subj] || '#3b82f6';
-
-                      return (
-                        <button
-                          key={subj}
-                          type="button"
-                          onClick={() => toggleSubjectVisibility(subj)}
-                          className={cn(
-                            "px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 border transition-all cursor-pointer",
-                            isHidden
-                              ? "bg-gray-100 dark:bg-gray-800 text-gray-400 border-gray-300 dark:border-gray-700 opacity-60 line-through"
-                              : "bg-white dark:bg-gray-850 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-gray-750 shadow-2xs hover:scale-105"
-                          )}
-                          title={`Clique para ${isHidden ? 'exibir' : 'ocultar'} a linha de ${subj}`}
-                        >
-                          <span
-                            className="w-2.5 h-2.5 rounded-full shrink-0"
-                            style={{ backgroundColor: isHidden ? '#9ca3af' : color }}
-                          />
-                          <span>{subj}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                {/* Legendas Interativas de Subjects (Clique para ativar/ocultar) */}
+                <div className="flex flex-wrap items-center gap-2 pt-1 pb-2">
+                  <span className="text-xs font-bold text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                    <Filter className="w-3 h-3" /> Matérias:
+                  </span>
+                  {allSubjectsList.map(subj => {
+                    const isHidden = hiddenSubjects.has(subj);
+                    const color = subjectColorsMap[subj] || '#3b82f6';
+                    return (
+                      <button
+                        key={subj}
+                        type="button"
+                        onClick={() => {
+                          const next = new Set(hiddenSubjects);
+                          if (next.has(subj)) next.delete(subj);
+                          else next.add(subj);
+                          setHiddenSubjects(next);
+                        }}
+                        className={cn(
+                          "px-2.5 py-1 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs",
+                          isHidden
+                            ? "bg-gray-100 dark:bg-gray-800 text-gray-400 border-gray-200 dark:border-gray-700 opacity-60 line-through"
+                            : "bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 border-gray-300 dark:border-gray-700"
+                        )}
+                      >
+                        <span
+                          className="w-2.5 h-2.5 rounded-full"
+                          style={{ backgroundColor: isHidden ? '#9ca3af' : color }}
+                        />
+                        <span>{subj}</span>
+                      </button>
+                    );
+                  })}
                 </div>
 
-                {/* Gráfico de Linhas por Subject pelo Tempo */}
-                <div className="h-80 w-full pt-2">
+                {/* Container do Gráfico Multi-Linhas por Subject */}
+                <div className="h-80 w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart
                       data={subjectTimeSeriesData}
-                      margin={{ top: 10, right: 15, left: -20, bottom: 5 }}
+                      margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
                     >
                       <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
                       <XAxis dataKey="dateFormatted" tick={{ fontSize: 11 }} />
-                      <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} unit="%" />
+                      <YAxis
+                        domain={[0, 100]}
+                        tick={{ fontSize: 11 }}
+                        label={{ value: '% Acerto', angle: -90, position: 'insideLeft', fontSize: 10 }}
+                      />
                       <Tooltip
                         contentStyle={{
                           backgroundColor: '#1f2937',
                           color: '#fff',
                           borderRadius: '12px',
                           border: 'none',
-                          fontSize: '12px'
+                          fontSize: '12px',
                         }}
-                        formatter={(val: any, name: any) => {
-                          if (val === null || val === undefined) return ['Sem questões', name];
-                          return [`${val}% de acerto`, name];
+                        formatter={(value: any, name: string) => {
+                          if (value === null) return ['Sem questões', name];
+                          return [`${value}% de acerto`, name];
                         }}
                       />
+                      <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+
                       {allSubjectsList.map(subj => {
-                        const color = subjectColorsMap[subj] || '#3b82f6';
+                        if (hiddenSubjects.has(subj)) return null;
                         return (
                           <Line
                             key={subj}
                             type="monotone"
                             dataKey={subj}
                             name={subj}
-                            stroke={color}
+                            stroke={subjectColorsMap[subj] || '#3b82f6'}
                             strokeWidth={2.5}
-                            dot={{ r: 4, cursor: 'pointer' }}
-                            activeDot={{ r: 7, cursor: 'pointer' }}
+                            dot={{ r: 3 }}
+                            activeDot={{ r: 6 }}
                             connectNulls={true}
-                            hide={hiddenSubjects.has(subj)}
-                            onClick={(dataPoint: any) => {
-                              if (dataPoint && dataPoint.payload) {
-                                handleSubjectPointClick(dataPoint.payload, subj);
-                              }
-                            }}
                           />
                         );
                       })}
                     </LineChart>
                   </ResponsiveContainer>
-                </div>
-                <div className="text-[11px] text-gray-400 text-center italic">
-                  💡 Dica: Clique sobre qualquer ponto colorido no gráfico para abrir o Drill-down com a lista exata das questões!
                 </div>
               </>
             )}
@@ -1033,180 +1278,133 @@ export function ScoreChart({ logs }: ScoreChartProps) {
       </div>
 
       {/* ========================================================================= */}
-      {/* BLOCO INFERIOR: NOVA SEÇÃO - SYSTEM VS SUBJECT (HIERARQUIA DETALHADA) */}
+      {/* BLOCO INFERIOR: HIERARQUIA SYSTEM VS SUBJECT & AUDITORIA CIRÚRGICA */}
       {/* ========================================================================= */}
-      <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-200 dark:border-gray-800 p-5 sm:p-6 shadow-xs space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-gray-100 dark:border-gray-800">
+      <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-200 dark:border-gray-800 p-5 sm:p-6 shadow-xs flex flex-col gap-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-gray-100 dark:border-gray-800">
           <div>
             <div className="flex items-center gap-2">
-              <FolderTree className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+              <FolderTree className="w-5 h-5 text-purple-600 dark:text-purple-400" />
               <h3 className="text-base font-extrabold text-gray-900 dark:text-white tracking-tight">
-                System vs Subject (Desempenho Hierárquico)
+                Análise Hierárquica por Matéria (Subject) & Sistema (System)
               </h3>
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              Avaliação detalhada do desempenho de cada System dentro dos seus respectivos Subjects (exclusivo da extensão).
+              Filtro ativo: <strong>{selectedBankName}</strong> • Clique em qualquer linha para abrir o Drill-down de auditoria cirúrgica.
             </p>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-gray-500">
-              {systemVsSubjectData.length} Subjects • {allSystemsList.length} Sistemas
+            <span className="text-xs font-semibold px-3 py-1 rounded-full bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+              {systemVsSubjectData.length} Matérias Catalogadas
             </span>
           </div>
         </div>
 
         {systemVsSubjectData.length === 0 ? (
-          <div className="py-12 text-center text-gray-400 text-xs">
-            Nenhum dado de System e Subject capturado pela extensão ainda.
+          <div className="py-12 text-center text-xs text-gray-400">
+            Nenhuma questão registrada para esta matéria ou banco.
           </div>
         ) : (
           <div className="space-y-4">
             {systemVsSubjectData.map((subjItem) => {
-              const subjColor = subjectColorsMap[subjItem.subjectName] || '#3b82f6';
-
               return (
                 <div
                   key={subjItem.subjectName}
-                  className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-850/60 overflow-hidden shadow-2xs"
+                  className="rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden bg-gray-50/40 dark:bg-gray-800/30"
                 >
-                  {/* Subject Header */}
-                  <div className="p-4 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  {/* Subject Header Row */}
+                  <div className="p-4 bg-white dark:bg-gray-850 flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-gray-100 dark:border-gray-800">
                     <div className="flex items-center gap-3">
-                      <div
-                        className="w-3 h-8 rounded-full shrink-0"
-                        style={{ backgroundColor: subjColor }}
-                      />
+                      <div className="w-9 h-9 rounded-xl bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 font-extrabold flex items-center justify-center text-sm">
+                        {subjItem.subjectName.substring(0, 2).toUpperCase()}
+                      </div>
                       <div>
-                        <h4 className="text-sm font-extrabold text-gray-900 dark:text-white flex items-center gap-2">
-                          <span>{subjItem.subjectName}</span>
-                          <span className="text-xs font-semibold text-gray-400">
-                            ({subjItem.systems.length} {subjItem.systems.length === 1 ? 'sistema' : 'sistemas'})
-                          </span>
+                        <h4 className="text-sm font-extrabold text-gray-900 dark:text-white">
+                          {subjItem.subjectName}
                         </h4>
-                        <span className="text-xs text-gray-500">
-                          Total acumulado: {subjItem.total} questões • {subjItem.correct} acertos
-                        </span>
+                        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                          <span>{subjItem.total} questões</span>
+                          <span>•</span>
+                          <span className="text-emerald-600 dark:text-emerald-400 font-bold">{subjItem.correct} acertos</span>
+                          <span>•</span>
+                          <span className="text-rose-500 font-bold">{subjItem.incorrect} erros</span>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
-                      {/* Badge de Acerto Geral do Subject */}
+                    <div className="flex items-center gap-4">
+                      {/* Badge de Acerto */}
+                      <div className="text-right">
+                        <div className="text-sm font-extrabold text-emerald-600 dark:text-emerald-400">
+                          {subjItem.accuracy}%
+                        </div>
+                        <div className="text-[10px] text-gray-400 uppercase font-semibold">Taxa de Acerto</div>
+                      </div>
+
+                      {/* Botão de Drill-Down do Subject */}
                       <button
                         type="button"
                         onClick={() => {
                           setDrillDownData({
                             isOpen: true,
-                            title: `Todas as Questões de ${subjItem.subjectName}`,
-                            subtitle: `Total de ${subjItem.questions.length} questões capturadas pela extensão`,
-                            questions: subjItem.questions
+                            title: `Matéria: ${subjItem.subjectName}`,
+                            subtitle: `${subjItem.total} questões catalogadas no banco ${selectedBankName}`,
+                            questions: subjItem.allQuestions
                           });
                         }}
-                        className={cn(
-                          "px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-transform hover:scale-105 cursor-pointer",
-                          subjItem.accuracy >= 70
-                            ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300"
-                            : subjItem.accuracy >= 55
-                            ? "bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300"
-                            : "bg-rose-100 text-rose-800 dark:bg-rose-950/70 dark:text-rose-300"
-                        )}
-                        title="Clique para ver todas as questões deste Subject"
+                        className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/60 dark:hover:bg-purple-900/80 text-purple-700 dark:text-purple-300 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1"
+                        title="Ver todas as questões desta matéria"
                       >
-                        <span>{subjItem.accuracy}% Acerto Global</span>
-                        <span className="text-[10px] underline">Ver ({subjItem.total})</span>
+                        <span>Drill-Down</span>
+                        <ChevronDown className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
 
-                  {/* Systems Breakdown Table */}
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                      <thead className="bg-gray-100/70 dark:bg-gray-800/50 text-gray-500 font-bold uppercase tracking-wider text-[11px]">
-                        <tr>
-                          <th className="py-2.5 px-4">System (Sistema)</th>
-                          <th className="py-2.5 px-3 text-center">Questões</th>
-                          <th className="py-2.5 px-3 text-center">Acertos / Erros</th>
-                          <th className="py-2.5 px-3 text-center">Taxa de Acertos (%)</th>
-                          <th className="py-2.5 px-3 text-center">Média Resolução</th>
-                          <th className="py-2.5 px-3 text-center">Média Revisão</th>
-                          <th className="py-2.5 px-4 text-right">Drill-down</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200/60 dark:divide-gray-800">
-                        {subjItem.systems.map((sys) => {
-                          return (
-                            <tr
-                              key={sys.systemName}
-                              onClick={() => {
-                                setDrillDownData({
-                                  isOpen: true,
-                                  title: `${subjItem.subjectName} • ${sys.systemName}`,
-                                  subtitle: `Exibindo as ${sys.questions.length} questões deste sistema`,
-                                  questions: sys.questions
-                                });
-                              }}
-                              className="hover:bg-blue-50/50 dark:hover:bg-blue-950/30 transition-colors cursor-pointer"
-                              title="Clique para navegar e abrir a lista exata destas questões"
-                            >
-                              <td className="py-3 px-4 font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                                <span className="text-gray-400">🩺</span>
-                                <span>{sys.systemName}</span>
-                              </td>
+                  {/* Systems Table under Subject */}
+                  <div className="divide-y divide-gray-100 dark:divide-gray-800 text-xs">
+                    {subjItem.systems.map((sys) => (
+                      <div
+                        key={sys.systemName}
+                        onClick={() => {
+                          setDrillDownData({
+                            isOpen: true,
+                            title: `Sistema: ${sys.systemName}`,
+                            subtitle: `Matéria: ${subjItem.subjectName} • ${sys.total} questões`,
+                            questions: sys.questions
+                          });
+                        }}
+                        className="p-3.5 px-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-purple-50/40 dark:hover:bg-purple-950/20 transition-colors cursor-pointer group"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-2 h-2 rounded-full bg-purple-500 group-hover:scale-125 transition-transform" />
+                          <span className="font-semibold text-gray-800 dark:text-gray-200">
+                            {sys.systemName}
+                          </span>
+                        </div>
 
-                              <td className="py-3 px-3 text-center font-bold text-gray-800 dark:text-gray-200">
-                                {sys.total}
-                              </td>
+                        <div className="flex items-center gap-6 text-gray-600 dark:text-gray-300">
+                          <div>
+                            <span className="font-bold text-gray-900 dark:text-white">{sys.total}</span>
+                            <span className="text-[10px] text-gray-400 ml-1">q.</span>
+                          </div>
 
-                              <td className="py-3 px-3 text-center text-gray-600 dark:text-gray-400 font-medium">
-                                <span className="text-emerald-600 dark:text-emerald-400 font-bold">{sys.correct}</span>
-                                <span className="mx-1">/</span>
-                                <span className="text-rose-600 dark:text-rose-400 font-bold">{sys.incorrect}</span>
-                              </td>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-emerald-600 font-bold">{sys.correct}✓</span>
+                            <span className="text-rose-500 font-bold">{sys.incorrect}✗</span>
+                          </div>
 
-                              <td className="py-3 px-3 text-center">
-                                <div className="inline-flex flex-col items-center gap-1 w-24">
-                                  <span
-                                    className={cn(
-                                      "px-2.5 py-0.5 rounded-full text-[11px] font-extrabold",
-                                      sys.accuracy >= 70
-                                        ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300"
-                                        : sys.accuracy >= 55
-                                        ? "bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300"
-                                        : "bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300"
-                                    )}
-                                  >
-                                    {sys.accuracy}%
-                                  </span>
-                                  <div className="w-full bg-gray-200 dark:bg-gray-700 h-1.5 rounded-full overflow-hidden">
-                                    <div
-                                      className={cn(
-                                        "h-full rounded-full transition-all",
-                                        sys.accuracy >= 70 ? "bg-emerald-500" : sys.accuracy >= 55 ? "bg-amber-500" : "bg-rose-500"
-                                      )}
-                                      style={{ width: `${sys.accuracy}%` }}
-                                    />
-                                  </div>
-                                </div>
-                              </td>
+                          <div className="w-16 text-right font-extrabold text-emerald-600 dark:text-emerald-400">
+                            {sys.accuracy}%
+                          </div>
 
-                              <td className="py-3 px-3 text-center font-mono text-gray-700 dark:text-gray-300">
-                                {formatSec(sys.avgSolveTime)}
-                              </td>
-
-                              <td className="py-3 px-3 text-center font-mono text-gray-700 dark:text-gray-300">
-                                {formatSec(sys.avgRevTime)}
-                              </td>
-
-                              <td className="py-3 px-4 text-right">
-                                <span className="px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-300 font-bold text-xs hover:bg-blue-100 inline-block">
-                                  Abrir ➔
-                                </span>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                          <div className="text-[11px] text-gray-400 font-mono hidden sm:block">
+                            {formatSec(sys.avgSolveTime)}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               );
@@ -1216,7 +1414,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
       </div>
 
       {/* ========================================================================= */}
-      {/* MODAL DE DRILL-DOWN PARA AS QUESTÕES EXATAS */}
+      {/* MODAL DE DRILL-DOWN DE QUESTÕES */}
       {/* ========================================================================= */}
       <QuestionDrillDownModal
         isOpen={drillDownData.isOpen}
@@ -1227,6 +1425,19 @@ export function ScoreChart({ logs }: ScoreChartProps) {
       />
 
       {/* ========================================================================= */}
+      {/* MODAL DE GERENCIAMENTO DE REGISTROS POR DATA CIRÚRGICO */}
+      {/* ========================================================================= */}
+      <DateRecordsManagerModal
+        isOpen={isDateManagerOpen}
+        onClose={() => setIsDateManagerOpen(false)}
+        initialDate={dateForManager}
+        onDateRecordsChanged={() => {
+          setResetToast('Registros de data atualizados com sucesso!');
+          setTimeout(() => setResetToast(null), 3000);
+        }}
+      />
+
+      {/* ========================================================================= */}
       {/* MODAL DE RESET GRANULAR */}
       {/* ========================================================================= */}
       <GranularResetModal
@@ -1234,10 +1445,16 @@ export function ScoreChart({ logs }: ScoreChartProps) {
         onClose={() => setIsResetModalOpen(false)}
         availableSubjects={allSubjectsList}
         availableSystems={allSystemsList}
-        onResetExtensionOnly={handleResetExtension}
+        availableBanks={availableBanksList}
+        onResetExtensionOnly={handleResetExtensionData}
         onResetSubject={handleResetSubject}
         onResetSystem={handleResetSystem}
+        onResetBank={handleResetBank}
         onResetGeneralLogsOnly={handleResetGeneralLogs}
+        onOpenDateManager={() => {
+          setIsResetModalOpen(false);
+          setIsDateManagerOpen(true);
+        }}
       />
     </div>
   );

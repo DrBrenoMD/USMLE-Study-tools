@@ -14,7 +14,9 @@ import {
   ArrowUpRight,
   Eye,
   CheckSquare,
-  Sparkles
+  Sparkles,
+  Trash2,
+  RotateCcw
 } from 'lucide-react';
 import { Question, useStore } from '../cardblocks/store/useStore';
 import { cn } from '../lib/utils';
@@ -24,6 +26,7 @@ interface QuestionDrillDownModalProps {
   onClose: () => void;
   title: string;
   subtitle?: string;
+  dateStr?: string;
   questions: Question[];
 }
 
@@ -32,13 +35,33 @@ export const QuestionDrillDownModal: React.FC<QuestionDrillDownModalProps> = ({
   onClose,
   title,
   subtitle,
+  dateStr,
   questions
 }) => {
   const navigate = useNavigate();
-  const { createNoteFromQuestion, notebookAreas } = useStore();
+  const { createNoteFromQuestion, notebookAreas, deleteQuestionRecordsForDate, resetSingleQuestionResolution } = useStore();
   const [filterMode, setFilterMode] = useState<'all' | 'correct' | 'incorrect'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedQid, setExpandedQid] = useState<string | null>(null);
+  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
+
+  const handleDeleteDateRecords = () => {
+    if (!dateStr) return;
+    if (window.confirm(`Deseja realmente excluir todos os registros de estudo e resoluções do dia ${dateStr}?`)) {
+      deleteQuestionRecordsForDate(dateStr);
+      setActionFeedback(`Registros do dia ${dateStr} foram excluídos com sucesso!`);
+      setTimeout(() => {
+        setActionFeedback(null);
+        onClose();
+      }, 1500);
+    }
+  };
+
+  const handleResetSingleQuestion = (qId: string) => {
+    resetSingleQuestionResolution(qId);
+    setActionFeedback(`Resolução da questão foi resetada!`);
+    setTimeout(() => setActionFeedback(null), 2000);
+  };
 
   const handleCreateCardFromQuestion = (q: Question) => {
     const cardData = {
@@ -100,7 +123,7 @@ export const QuestionDrillDownModal: React.FC<QuestionDrillDownModalProps> = ({
         className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden"
       >
         {/* Header */}
-        <div className="p-5 border-b border-gray-200 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-850 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="p-5 border-b border-gray-200 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-855 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
               <span className="p-1.5 rounded-xl bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 font-bold text-xs">
@@ -117,13 +140,35 @@ export const QuestionDrillDownModal: React.FC<QuestionDrillDownModalProps> = ({
             )}
           </div>
 
-          <button
-            onClick={onClose}
-            className="self-end sm:self-auto p-1.5 rounded-xl text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2 self-end sm:self-auto">
+            {dateStr && (
+              <button
+                type="button"
+                onClick={handleDeleteDateRecords}
+                className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-900/60 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                title="Excluir lançamentos e resoluções desta data caso tenham sido gravados incorretamente"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                <span>Excluir Registros desta Data</span>
+              </button>
+            )}
+
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-xl text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
+
+        {/* Action Feedback Banner */}
+        {actionFeedback && (
+          <div className="p-3 bg-emerald-50 dark:bg-emerald-950/70 border-b border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs font-bold flex items-center gap-2 animate-in fade-in">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            <span>{actionFeedback}</span>
+          </div>
+        )}
 
         {/* Stats Summary & Filters */}
         <div className="px-5 py-3.5 bg-gray-50/50 dark:bg-gray-850/50 border-b border-gray-100 dark:border-gray-800 flex flex-wrap items-center justify-between gap-3">
@@ -286,6 +331,16 @@ export const QuestionDrillDownModal: React.FC<QuestionDrillDownModalProps> = ({
                       >
                         <Eye className="w-3 h-3" />
                         <span>{isExpanded ? 'Recolher' : 'Ver Detalhes'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleResetSingleQuestion(q.id || q.qid)}
+                        className="px-2.5 py-1 rounded-lg text-xs font-bold bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-900/50 hover:bg-rose-100 flex items-center gap-1 transition-colors cursor-pointer"
+                        title="Resetar resolução desta questão (remove acerto/erro das estatísticas caso tenha sido registrada na data errada)"
+                      >
+                        <RotateCcw className="w-3 h-3 text-rose-600 dark:text-rose-400" />
+                        <span>Resetar Resolução</span>
                       </button>
 
                       <a

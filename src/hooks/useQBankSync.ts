@@ -295,6 +295,30 @@ export function useQBankSync() {
           if (foundCorrect) correctChoiceId = foundCorrect.id;
         }
 
+        const storeState = useStore.getState();
+        const existingQ = storeState.questions.find(q => q.qid === qid || q.id === qCreatedId);
+        const todayDateStr = format(new Date(), 'yyyy-MM-dd');
+        
+        // Determina data de resolução (respeita data histórica se informada pela extensão)
+        const targetDateStr = payload.answeredAt 
+          ? format(new Date(payload.answeredAt), 'yyyy-MM-dd') 
+          : (payload.date || payload.testDate || todayDateStr);
+
+        // Identifica se é uma revisão de questão que já foi respondida em data anterior
+        const isReviewingPastQuestion = Boolean(
+          payload.isReviewOnly === true ||
+          payload.testMode === 'review' ||
+          (existingQ && existingQ.status && existingQ.status !== 'unused' && existingQ.lastAnsweredAt &&
+           format(new Date(existingQ.lastAnsweredAt), 'yyyy-MM-dd') !== todayDateStr &&
+           !payload.isNewSubmission)
+        );
+
+        // Se o usuário está apenas REVISANDO uma questão de outra data, não altera a data de resolução
+        // nem polui o gráfico/heatmap da data presente como se fosse uma nova questão feita hoje
+        if (isReviewingPastQuestion) {
+          return;
+        }
+
         useStore.getState().recordDeskQuestionAnswer({
           qid,
           questionId: qCreatedId,
@@ -310,7 +334,6 @@ export function useQBankSync() {
         // Sincroniza com os logs do Study Tracker (Heatmap e Gráfico de Desempenho)
         // Garante que cada questão única (QID) seja contabilizada apenas UMA vez por dia no amount
         try {
-          const todayStr = format(new Date(), 'yyyy-MM-dd');
           const savedLogsStr = localStorage.getItem('usmle_study_logs_v4');
           let currentLogs: any[] = [];
           if (savedLogsStr) {
@@ -318,7 +341,7 @@ export function useQBankSync() {
           }
           
           const timeMinutes = Math.max(1, Math.round((resolutionTimeSeconds + reviewTimeSeconds) / 60));
-          const existingLogIndex = currentLogs.findIndex(l => l.date === todayStr && (l.resourceId === 'qbankly' || l.resourceId === 'uworld' || l.unit === 'questões'));
+          const existingLogIndex = currentLogs.findIndex(l => l.date === targetDateStr && (l.resourceId === 'qbankly' || l.resourceId === 'uworld' || l.unit === 'questões'));
           
           if (existingLogIndex >= 0) {
             const existingLog = currentLogs[existingLogIndex];
@@ -343,7 +366,7 @@ export function useQBankSync() {
           } else {
             currentLogs.unshift({
               id: 'log-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
-              date: todayStr,
+              date: targetDateStr,
               resourceId: 'qbankly',
               resourceName: 'QBank Externo (QBankly / UWorld)',
               resourceType: 'qbank',

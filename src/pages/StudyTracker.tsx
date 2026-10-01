@@ -50,7 +50,6 @@ import { DailyLogSection } from "../components/DailyLogSection";
 import { StudyTimeline } from "../components/StudyTimeline";
 import { StudyCalendar } from "../components/StudyCalendar";
 import { ScoreChart } from "../components/ScoreChart";
-import { SubjectSystemsBreakdown } from "../components/SubjectSystemsBreakdown";
 
 const DAYS_OF_WEEK = [
   { id: 0, name: 'Dom', short: 'D' },
@@ -152,6 +151,18 @@ export default function StudyTracker({ initialTab }: { initialTab?: 'planner' | 
     return saved ? JSON.parse(saved) : {};
   });
 
+  const [defaultQuestionsByDayOfWeek, setDefaultQuestionsByDayOfWeek] = useState<Record<number, number | null>>(() => {
+    const saved = localStorage.getItem('usmle_defaultQuestionsByDayOfWeek_v4');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error("Erro ao carregar defaultQuestionsByDayOfWeek", e);
+      }
+    }
+    return { 0: null, 1: null, 2: null, 3: null, 4: null, 5: null, 6: null };
+  });
+
   const [expandedSettingsId, setExpandedSettingsId] = useState<string | null>(null);
   const [activeLogDateStr, setActiveLogDateStr] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
 
@@ -199,12 +210,13 @@ export default function StudyTracker({ initialTab }: { initialTab?: 'planner' | 
     localStorage.setItem('usmle_daysOff_v4', JSON.stringify(daysOff));
     localStorage.setItem('usmle_specificDaysOff_v4', JSON.stringify(specificDaysOff));
     localStorage.setItem('usmle_customDateMarks_v4', JSON.stringify(customDateMarks));
+    localStorage.setItem('usmle_defaultQuestionsByDayOfWeek_v4', JSON.stringify(defaultQuestionsByDayOfWeek));
     localStorage.setItem('usmle_resources_v4', JSON.stringify(resources));
     localStorage.setItem('usmle_study_logs_v4', JSON.stringify(studyLogs));
     window.dispatchEvent(new Event('usmle_tracker_updated'));
-  }, [mode, examDateStr, bufferDays, daysOff, specificDaysOff, customDateMarks, resources, studyLogs]);
+  }, [mode, examDateStr, bufferDays, daysOff, specificDaysOff, customDateMarks, defaultQuestionsByDayOfWeek, resources, studyLogs]);
 
-  const plan = useStudyPlan(resources, examDateStr, daysOff, mode, bufferDays, specificDaysOff);
+  const plan = useStudyPlan(resources, examDateStr, daysOff, mode, bufferDays, specificDaysOff, defaultQuestionsByDayOfWeek);
 
   const toggleDayOff = (dayId: number) => {
     setDaysOff(prev => 
@@ -638,6 +650,138 @@ export default function StudyTracker({ initialTab }: { initialTab?: 'planner' | 
                         })}
                       </div>
                     </div>
+                  </div>
+                </section>
+
+                {/* Meta Semanal Padrão de Questões por Dia da Semana */}
+                <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200/90 dark:border-gray-700/90 p-5 sm:p-6 shadow-sm">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-gray-100 dark:border-gray-800">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400">
+                        <CheckSquare className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h2 className="text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                          <span>Meta Diária de Questões por Dia da Semana</span>
+                          <span className="text-[10px] font-semibold px-2 py-0.2 rounded-full bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                            Padrão Geral
+                          </span>
+                        </h2>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                          Defina a meta diária de questões para cada dia da semana. Será aplicada a todos os bancos que não possuem personalização individual. Se deixar em branco, as questões serão distribuídas automaticamente.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Presets Rápidos */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDefaultQuestionsByDayOfWeek({ 0: null, 1: 40, 2: 40, 3: 40, 4: 40, 5: 40, 6: null });
+                        }}
+                        className="px-2 py-1 text-[11px] font-semibold bg-gray-50 hover:bg-blue-50 dark:bg-gray-800 dark:hover:bg-blue-900/30 text-gray-700 dark:text-gray-300 hover:text-blue-600 rounded-lg border border-gray-200 dark:border-gray-700 transition-colors cursor-pointer"
+                        title="40 questões de Segunda a Sexta"
+                      >
+                        40/dia (Seg-Sex)
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDefaultQuestionsByDayOfWeek({ 0: 50, 1: 50, 2: 50, 3: 50, 4: 50, 5: 50, 6: 50 });
+                        }}
+                        className="px-2 py-1 text-[11px] font-semibold bg-gray-50 hover:bg-blue-50 dark:bg-gray-800 dark:hover:bg-blue-900/30 text-gray-700 dark:text-gray-300 hover:text-blue-600 rounded-lg border border-gray-200 dark:border-gray-700 transition-colors cursor-pointer"
+                        title="50 questões todos os dias"
+                      >
+                        50/dia (Todos)
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDefaultQuestionsByDayOfWeek({ 0: 60, 1: 30, 2: 30, 3: 30, 4: 30, 5: 30, 6: 60 });
+                        }}
+                        className="px-2 py-1 text-[11px] font-semibold bg-gray-50 hover:bg-blue-50 dark:bg-gray-800 dark:hover:bg-blue-900/30 text-gray-700 dark:text-gray-300 hover:text-blue-600 rounded-lg border border-gray-200 dark:border-gray-700 transition-colors cursor-pointer"
+                        title="30 em dias de semana e 60 aos fins de semana"
+                      >
+                        FDS + Intenso
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDefaultQuestionsByDayOfWeek({ 0: null, 1: null, 2: null, 3: null, 4: null, 5: null, 6: null });
+                        }}
+                        className="px-2 py-1 text-[11px] font-semibold bg-gray-50 hover:bg-rose-50 dark:bg-gray-800 dark:hover:bg-rose-950/40 text-gray-500 hover:text-rose-600 rounded-lg border border-gray-200 dark:border-gray-700 transition-colors cursor-pointer"
+                        title="Limpar metas e usar distribuição dinâmica automática"
+                      >
+                        Limpar (Auto)
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Inputs dos 7 Dias da Semana */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">
+                    {DAYS_OF_WEEK.map((day) => {
+                      const isOff = daysOff.includes(day.id);
+                      const val = defaultQuestionsByDayOfWeek[day.id];
+                      return (
+                        <div
+                          key={day.id}
+                          className={cn(
+                            "p-2.5 rounded-xl border transition-all flex flex-col justify-between",
+                            isOff 
+                              ? "bg-gray-50/50 dark:bg-gray-800/30 border-gray-200 dark:border-gray-800 opacity-60" 
+                              : val !== null && val !== undefined && val > 0
+                                ? "bg-blue-50/50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900/60"
+                                : "bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700"
+                          )}
+                        >
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-xs font-bold text-gray-800 dark:text-gray-200">
+                              {day.name}
+                            </span>
+                            {isOff ? (
+                              <span className="text-[10px] font-bold text-gray-400 bg-gray-200 dark:bg-gray-700 px-1.5 py-0.2 rounded">
+                                Folga
+                              </span>
+                            ) : val !== null && val !== undefined && val > 0 ? (
+                              <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/40 px-1.5 py-0.2 rounded">
+                                Fixado
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-medium text-gray-400">
+                                Auto
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="relative flex items-center">
+                            <input
+                              type="number"
+                              min="0"
+                              max="500"
+                              step="1"
+                              value={val === null || val === undefined ? '' : val}
+                              placeholder="Auto"
+                              onChange={(e) => {
+                                const raw = e.target.value.trim();
+                                const num = raw === '' ? null : Math.max(0, parseInt(raw) || 0);
+                                setDefaultQuestionsByDayOfWeek(prev => ({
+                                  ...prev,
+                                  [day.id]: num
+                                }));
+                              }}
+                              className="w-full pl-2.5 pr-8 py-1.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-xs font-bold text-gray-900 dark:text-white placeholder:text-gray-400 placeholder:font-normal focus:outline-none focus:border-blue-500"
+                            />
+                            <span className="absolute right-2 text-[10px] font-semibold text-gray-400 pointer-events-none">
+                              q/dia
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </section>
 
@@ -1437,6 +1581,7 @@ export default function StudyTracker({ initialTab }: { initialTab?: 'planner' | 
                   customDateMarks={customDateMarks}
                   setCustomDateMarks={setCustomDateMarks}
                   onAddLog={handleAddLog}
+                  defaultQuestionsByDayOfWeek={defaultQuestionsByDayOfWeek}
                 />
               </>
             )}
@@ -1491,9 +1636,6 @@ export default function StudyTracker({ initialTab }: { initialTab?: 'planner' | 
             />
 
             <ScoreChart logs={studyLogs} />
-
-            {/* Nova Seção: Avaliação de desempenho de cada System dentro dos Subjects */}
-            <SubjectSystemsBreakdown />
 
           </div>
         )}

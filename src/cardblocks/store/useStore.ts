@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { temporal } from 'zundo';
 import localforage from 'localforage';
+import { format } from 'date-fns';
 
 export const cardblocksDataStore = localforage.createInstance({
   name: 'cardblocks_data'
@@ -479,6 +480,8 @@ export interface StoreState {
   finishDeskSession: (sessionId?: string) => void;
   deleteDeskSession: (sessionId: string) => void;
   setActiveDeskSessionId: (sessionId: string | null) => void;
+  deleteQuestionRecordsForDate: (dateStr: string) => void;
+  resetSingleQuestionResolution: (questionId: string) => void;
 
   // Settings Actions
   updateSettings: (settings: Partial<Settings>) => void;
@@ -1406,7 +1409,14 @@ export const useStore = create<StoreState>()(
                 lastAnsweredAt: undefined,
                 updatedAt: Date.now(),
               };
-            })
+            }),
+            studyDeskSessions: (state.studyDeskSessions || []).map(s => ({
+              ...s,
+              questionRecords: (s.questionRecords || []).filter(r => {
+                const matchedQ = state.questions.find(q => q.qid === r.qid || q.id === r.questionId);
+                return matchedQ ? matchedQ.bankId !== bankId : true;
+              }),
+            }))
           }));
         },
 
@@ -1475,6 +1485,142 @@ export const useStore = create<StoreState>()(
               questionRecords: (s.questionRecords || []).filter(r => (r.system || '').trim().toLowerCase() !== systemName.trim().toLowerCase()),
             }))
           }));
+        },
+
+        deleteQuestionRecordsForDate: (dateStr) => {
+          set(state => {
+            const updatedQuestions = state.questions.map(q => {
+              const qAnswerDate = q.lastAnsweredAt ? format(new Date(q.lastAnsweredAt), 'yyyy-MM-dd') : null;
+              const hasAttemptsOnDate = (q.attempts || []).some(att => att.timestamp && format(new Date(att.timestamp), 'yyyy-MM-dd') === dateStr);
+              
+              if (qAnswerDate !== dateStr && !hasAttemptsOnDate) {
+                return q;
+              }
+
+              const remainingAttempts = (q.attempts || []).filter(att => {
+                if (!att.timestamp) return false;
+                return format(new Date(att.timestamp), 'yyyy-MM-dd') !== dateStr;
+              });
+
+              if (remainingAttempts.length === 0) {
+                return {
+                  ...q,
+                  status: 'unused' as const,
+                  selectedChoiceId: undefined,
+                  resolutionTimeSeconds: 0,
+                  reviewTimeSeconds: 0,
+                  attempts: [],
+                  lastAnsweredAt: undefined,
+                  updatedAt: Date.now(),
+                };
+              } else {
+                const lastAtt = remainingAttempts[remainingAttempts.length - 1];
+                return {
+                  ...q,
+                  status: lastAtt.isCorrect ? ('correct' as const) : ('incorrect' as const),
+                  selectedChoiceId: lastAtt.selectedChoiceId,
+                  resolutionTimeSeconds: lastAtt.resolutionTimeSeconds || 60,
+                  reviewTimeSeconds: lastAtt.reviewTimeSeconds || 90,
+                  attempts: remainingAttempts,
+                  lastAnsweredAt: lastAtt.timestamp,
+                  updatedAt: Date.now(),
+                };
+              }
+            });
+
+            const updatedSessions = (state.studyDeskSessions || []).map(s => {
+              const remainingRecords = (s.questionRecords || []).filter(r => {
+                const rDate = r.answeredAt ? format(new Date(r.answeredAt), 'yyyy-MM-dd') : format(new Date(s.startedAt), 'yyyy-MM-dd');
+                return rDate !== dateStr;
+              });
+              const correctCount = remainingRecords.filter(r => r.isCorrect).length;
+              return {
+                ...s,
+                completedQuestions: remainingRecords.length,
+                correctCount,
+                incorrectCount: remainingRecords.length - correctCount,
+                questionRecords: remainingRecords,
+              };
+            });
+
+            // Limpa logs do heatmap para a data informada
+            try {
+              const savedLogsStr = localStorage.getItem('usmle_study_logs_v4');
+              if (savedLogsStr) {
+                const logs: any[] = JSON.parse(savedLogsStr);
+                const filteredLogs = logs.filter(l => l.date !== dateStr);
+                localStorage.setItem('usmle_study_logs_v4', JSON.stringify(filteredLogs));
+                window.dispatchEvent(new Event('usmle_logs_updated'));
+              }
+            } catch (e) {}
+
+            return {
+              questions: updatedQuestions,
+              studyDeskSessions: updatedSessions,
+            };
+          });
+        },
+
+        resetSingleQuestionResolution: (questionId) => {
+          set(state => {
+            const targetQ = state.questions.find(q => q.id === questionId || q.qid === questionId);
+            const targetDateStr = targetQ?.lastAnsweredAt ? format(new Date(targetQ.lastAnsweredAt), 'yyyy-MM-dd') : null;
+            const qKey = targetQ?.qid || targetQ?.id || questionId;
+
+            const updatedQuestions = state.questions.map(q => {
+              if (q.id !== questionId && q.qid !== questionId) return q;
+              return {
+                ...q,
+                status: 'unused' as const,
+                selectedChoiceId: undefined,
+                resolutionTimeSeconds: 0,
+                reviewTimeSeconds: 0,
+                attempts: [],
+                lastAnsweredAt: undefined,
+                updatedAt: Date.now(),
+              };
+            });
+
+            const updatedSessions = (state.studyDeskSessions || []).map(s => {
+              const remainingRecords = (s.questionRecords || []).filter(r => r.qid !== qKey && r.questionId !== questionId);
+              const correctCount = remainingRecords.filter(r => r.isCorrect).length;
+              return {
+                ...s,
+                completedQuestions: remainingRecords.length,
+                correctCount,
+                incorrectCount: remainingRecords.length - correctCount,
+                questionRecords: remainingRecords,
+              };
+            });
+
+            // Ajusta logs do heatmap se necessário
+            if (targetDateStr) {
+              try {
+                const savedLogsStr = localStorage.getItem('usmle_study_logs_v4');
+                if (savedLogsStr) {
+                  const logs: any[] = JSON.parse(savedLogsStr);
+                  const updatedLogs = logs.map(l => {
+                    if (l.date === targetDateStr && l.questionIds?.includes(qKey)) {
+                      const newQids = l.questionIds.filter((id: string) => id !== qKey);
+                      return {
+                        ...l,
+                        amount: Math.max(0, newQids.length),
+                        questionIds: newQids,
+                      };
+                    }
+                    return l;
+                  }).filter(l => l.amount > 0 || l.minutesSpent > 0);
+                  localStorage.setItem('usmle_study_logs_v4', JSON.stringify(updatedLogs));
+                  window.dispatchEvent(new Event('usmle_logs_updated'));
+                }
+              } catch (e) {}
+            }
+
+            return {
+              questions: updatedQuestions,
+              studyDeskSessions: updatedSessions,
+            };
+          });
         },
 
         updateQuestionNotes: (questionId, notes) => {

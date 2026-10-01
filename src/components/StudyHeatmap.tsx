@@ -1,10 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { format, subDays, addDays, isSameDay, startOfWeek, endOfWeek, parseISO, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Flame, Trophy, Clock, CheckCircle2, Calendar as CalendarIcon, Sparkles, Plus, Trash2, Filter, CheckSquare } from 'lucide-react';
+import { Flame, Trophy, Clock, CheckCircle2, Calendar as CalendarIcon, Sparkles, Plus, Trash2, Filter, CheckSquare, CalendarDays } from 'lucide-react';
 import { StudyLogEntry, Resource, getCategoryIcon } from '../types';
 import { cn } from '../lib/utils';
 import { useTimerStore } from '../store/useTimerStore';
+import { DateRecordsManagerModal } from './DateRecordsManagerModal';
 
 interface StudyHeatmapProps {
   logs: StudyLogEntry[];
@@ -18,6 +19,7 @@ export function StudyHeatmap({ logs, resources, onAddLog, onDeleteLog, onSelectD
   const [selectedDateStr, setSelectedDateStr] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const [filterResourceId, setFilterResourceId] = useState<string>('all');
   const [weeksToShow, setWeeksToShow] = useState<number>(18); // ~4.5 meses
+  const [isDateManagerOpen, setIsDateManagerOpen] = useState(false);
   const { dailyNetTime } = useTimerStore();
 
   // Mapa de data (YYYY-MM-DD) -> Array de Logs
@@ -409,6 +411,16 @@ export function StudyHeatmap({ logs, resources, onAddLog, onDeleteLog, onSelectD
             <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900 px-2 py-1 rounded-md border border-gray-200 dark:border-gray-700">
               Total do Dia: <span className="font-bold text-blue-600 dark:text-blue-400">{Math.floor(selectedDayTotalMinutes / 60)}h {selectedDayTotalMinutes % 60}m</span>
             </div>
+
+            <button
+              type="button"
+              onClick={() => setIsDateManagerOpen(true)}
+              className="px-2.5 py-1 bg-white hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 text-blue-600 dark:text-blue-400 text-xs font-bold rounded-md flex items-center gap-1.5 transition-colors cursor-pointer"
+              title="Gerenciar, excluir ou transferir questões e logs desta data"
+            >
+              <CalendarDays className="w-3.5 h-3.5" />
+              <span>Gerenciar Questões do Dia</span>
+            </button>
           </div>
         </div>
 
@@ -456,6 +468,12 @@ export function StudyHeatmap({ logs, resources, onAddLog, onDeleteLog, onSelectD
           </div>
         )}
       </div>
+
+      <DateRecordsManagerModal
+        isOpen={isDateManagerOpen}
+        onClose={() => setIsDateManagerOpen(false)}
+        initialDate={selectedDateStr}
+      />
 
     </div>
   );

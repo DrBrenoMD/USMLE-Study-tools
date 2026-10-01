@@ -23,7 +23,8 @@ export function useStudyPlan(
   daysOff: number[], // 0 = Domingo, 1 = Segunda, ..., 6 = Sábado
   mode: StudyMode = 'by_date',
   bufferDays: number = 14,
-  specificDaysOff: string[] = [] // Array of 'yyyy-MM-dd' dates
+  specificDaysOff: string[] = [], // Array of 'yyyy-MM-dd' dates
+  defaultQuestionsByDayOfWeek?: Record<number, number | null>
 ): StudyPlan {
   return useMemo(() => {
     const today = startOfDay(new Date());
@@ -451,8 +452,19 @@ export function useStudyPlan(
         let breakdown: string[] = [];
         let dailyAmountToday = 0;
 
-        const hasFixedDays = r.fixedVolumeByDayOfWeek && Object.keys(r.fixedVolumeByDayOfWeek).length > 0;
-        const hasGlobalFixed = r.fixedGlobalVolume !== undefined && r.fixedGlobalVolume !== null;
+        const isQBank = r.type === 'qbank' || r.unit === 'questões' || r.unit === 'questoes';
+        const hasCustomFixedDays = Boolean(r.fixedVolumeByDayOfWeek && Object.values(r.fixedVolumeByDayOfWeek).some(v => v !== null && v !== undefined && v > 0));
+        const hasCustomGlobalFixed = r.fixedGlobalVolume !== undefined && r.fixedGlobalVolume !== null;
+
+        // Se o banco de questões não possui uma personalização própria, herda a meta semanal padrão por dia da semana
+        const effectiveFixedByDow: Record<number, number | null> = hasCustomFixedDays
+          ? (r.fixedVolumeByDayOfWeek || {})
+          : (isQBank && defaultQuestionsByDayOfWeek && Object.values(defaultQuestionsByDayOfWeek).some(v => v !== null && v !== undefined && v > 0))
+            ? defaultQuestionsByDayOfWeek
+            : {};
+
+        const hasFixedDays = Object.values(effectiveFixedByDow).some(v => v !== null && v !== undefined && v > 0);
+        const hasGlobalFixed = hasCustomGlobalFixed;
 
         let unfixedCount = 0;
         let totalFixed = 0;
@@ -469,8 +481,8 @@ export function useStudyPlan(
               cur = addDays(cur, 1);
             }
             for (let d = 0; d < 7; d++) {
-              const f = (r.fixedVolumeByDayOfWeek as any)?.[d];
-              if (f !== undefined && f !== null) {
+              const f = (effectiveFixedByDow as any)?.[d];
+              if (f !== undefined && f !== null && f > 0) {
                 totalFixed += f * projectedDowCounts[d];
               } else if (hasGlobalFixed) {
                 totalFixed += r.fixedGlobalVolume! * projectedDowCounts[d];
@@ -496,9 +508,9 @@ export function useStudyPlan(
         while (simulatedRemaining > 0) {
           if (!isDayOff(simCur)) {
               const dow = simCur.getDay();
-              const f = (r.fixedVolumeByDayOfWeek as any)?.[dow];
+              const f = (effectiveFixedByDow as any)?.[dow];
               let planned = 0;
-              if (f !== undefined && f !== null) {
+              if (f !== undefined && f !== null && f > 0) {
                   planned = f;
               } else if (hasGlobalFixed) {
                   planned = r.fixedGlobalVolume!;
@@ -530,11 +542,13 @@ export function useStudyPlan(
         breakdown.push(`Volume pendente: ${remainingItems} ${r.unit}`);
         
         if (hasFixedDays || hasGlobalFixed) {
+            const isInheritedMeta = !hasCustomFixedDays && isQBank;
             for (let d = 0; d < 7; d++) {
                 if (actualDowCounts[d] > 0) {
-                    const f = (r.fixedVolumeByDayOfWeek as any)?.[d];
-                    if (f !== undefined && f !== null) {
-                        breakdown.push(`${daysOfWeekNames[d]}: ${f} ${r.unit}/dia (Fixo) x ${actualDowCounts[d]} dias`);
+                    const f = (effectiveFixedByDow as any)?.[d];
+                    if (f !== undefined && f !== null && f > 0) {
+                        const tag = isInheritedMeta ? 'Meta Padrão' : 'Fixo Personalizado';
+                        breakdown.push(`${daysOfWeekNames[d]}: ${f} ${r.unit}/dia (${tag}) x ${actualDowCounts[d]} dias`);
                     } else if (hasGlobalFixed) {
                         breakdown.push(`${daysOfWeekNames[d]}: ${r.fixedGlobalVolume} ${r.unit}/dia (Geral) x ${actualDowCounts[d]} dias`);
                     } else {
@@ -547,7 +561,7 @@ export function useStudyPlan(
             }
         } else {
             breakdown.push(`Dias úteis até o final da fase: ${allocatedEffectiveDays}`);
-            breakdown.push(`Cálculo: ${remainingItems} / ${allocatedEffectiveDays} = ${amountPerDay} ${r.unit}/dia`);
+            breakdown.push(`Cálculo: ${remainingItems} / ${allocatedEffectiveDays} = ${amountPerDay} ${r.unit}/dia (Distribuição automática)`);
         }
 
         if (simulatedRemaining <= 0 && calculatedEndDate < originalEnd) {
@@ -560,8 +574,8 @@ export function useStudyPlan(
         allocatedEffectiveDays = daysCount > 0 ? daysCount : allocatedEffectiveDays;
 
         const todayDow = startOfDay(new Date()).getDay();
-        const todayFixed = (r.fixedVolumeByDayOfWeek as any)?.[todayDow];
-        if (todayFixed !== undefined && todayFixed !== null) {
+        const todayFixed = (effectiveFixedByDow as any)?.[todayDow];
+        if (todayFixed !== undefined && todayFixed !== null && todayFixed > 0) {
           dailyAmountToday = todayFixed;
         } else if (hasGlobalFixed) {
           dailyAmountToday = r.fixedGlobalVolume!;
@@ -870,8 +884,18 @@ export function useStudyPlan(
         let calculatedEndDate = startDate;
         let daysCount = 0;
 
-        const hasFixedDays = r.fixedVolumeByDayOfWeek && Object.keys(r.fixedVolumeByDayOfWeek).length > 0;
-        const hasGlobalFixed = r.fixedGlobalVolume !== undefined && r.fixedGlobalVolume !== null;
+        const isQBank = r.type === 'qbank' || r.unit === 'questões' || r.unit === 'questoes';
+        const hasCustomFixedDays = Boolean(r.fixedVolumeByDayOfWeek && Object.values(r.fixedVolumeByDayOfWeek).some(v => v !== null && v !== undefined && v > 0));
+        const hasCustomGlobalFixed = r.fixedGlobalVolume !== undefined && r.fixedGlobalVolume !== null;
+
+        const effectiveFixedByDow: Record<number, number | null> = hasCustomFixedDays
+          ? (r.fixedVolumeByDayOfWeek || {})
+          : (isQBank && defaultQuestionsByDayOfWeek && Object.values(defaultQuestionsByDayOfWeek).some(v => v !== null && v !== undefined && v > 0))
+            ? defaultQuestionsByDayOfWeek
+            : {};
+
+        const hasFixedDays = Object.values(effectiveFixedByDow).some(v => v !== null && v !== undefined && v > 0);
+        const hasGlobalFixed = hasCustomGlobalFixed;
 
         let simulatedRemaining = remainingItems;
         let simCur = startOfDay(startDate);
@@ -879,9 +903,9 @@ export function useStudyPlan(
         while (simulatedRemaining > 0) {
           if (!isDayOff(simCur)) {
               const dow = simCur.getDay();
-              const f = (r.fixedVolumeByDayOfWeek as any)?.[dow];
+              const f = (effectiveFixedByDow as any)?.[dow];
               let planned = 0;
-              if (f !== undefined && f !== null) {
+              if (f !== undefined && f !== null && f > 0) {
                   planned = f;
               } else if (hasGlobalFixed) {
                   planned = r.fixedGlobalVolume!;
@@ -912,8 +936,8 @@ export function useStudyPlan(
         }
 
         const todayDow = startOfDay(new Date()).getDay();
-        const todayFixed = (r.fixedVolumeByDayOfWeek as any)?.[todayDow];
-        if (todayFixed !== undefined && todayFixed !== null) {
+        const todayFixed = (effectiveFixedByDow as any)?.[todayDow];
+        if (todayFixed !== undefined && todayFixed !== null && todayFixed > 0) {
           dailyAmountToday = todayFixed;
         } else if (hasGlobalFixed) {
           dailyAmountToday = r.fixedGlobalVolume!;
@@ -1102,5 +1126,5 @@ export function useStudyPlan(
         isValid: true,
       };
     }
-  }, [resources, examDateStr, daysOff, mode, bufferDays]);
+  }, [resources, examDateStr, daysOff, mode, bufferDays, specificDaysOff, defaultQuestionsByDayOfWeek]);
 }

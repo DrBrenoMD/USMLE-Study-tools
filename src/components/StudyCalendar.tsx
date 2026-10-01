@@ -11,7 +11,8 @@ function getProjectedDailyVolume(
   plan: StudyPlan,
   daysOff: number[],
   resources: Resource[],
-  specificDaysOff: string[]
+  specificDaysOff: string[],
+  defaultQuestionsByDayOfWeek?: Record<number, number | null>
 ): { amount: number, minutes: number } {
   const d = startOfDay(date);
   const start = startOfDay(task.startDate);
@@ -61,11 +62,14 @@ function getProjectedDailyVolume(
 
   // item_target
   let amount = task.projectedDailyAmount || task.dailyAmount || 0;
+  const isQBank = resourceDef.type === 'qbank' || resourceDef.unit === 'questões' || resourceDef.unit === 'questoes';
   
   if (resourceDef.fixedVolumeByDayOfWeek && (resourceDef.fixedVolumeByDayOfWeek as any)[d.getDay()] != null) {
     amount = (resourceDef.fixedVolumeByDayOfWeek as any)[d.getDay()];
   } else if (resourceDef.fixedGlobalVolume != null) {
     amount = resourceDef.fixedGlobalVolume;
+  } else if (isQBank && defaultQuestionsByDayOfWeek && (defaultQuestionsByDayOfWeek as any)[d.getDay()] != null) {
+    amount = (defaultQuestionsByDayOfWeek as any)[d.getDay()];
   }
   
   const minutes = Math.round(amount * (resourceDef.minutesPerItem || 2));
@@ -82,9 +86,10 @@ interface StudyCalendarProps {
   customDateMarks: Record<string, { color: string, label?: string }>;
   setCustomDateMarks: React.Dispatch<React.SetStateAction<Record<string, { color: string, label?: string }>>>;
   onAddLog: (log: Omit<StudyLogEntry, 'id' | 'createdAt'>) => void;
+  defaultQuestionsByDayOfWeek?: Record<number, number | null>;
 }
 
-export function StudyCalendar({ plan, resources, studyLogs, daysOff, specificDaysOff, setSpecificDaysOff, customDateMarks, setCustomDateMarks, onAddLog }: StudyCalendarProps) {
+export function StudyCalendar({ plan, resources, studyLogs, daysOff, specificDaysOff, setSpecificDaysOff, customDateMarks, setCustomDateMarks, onAddLog, defaultQuestionsByDayOfWeek }: StudyCalendarProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
 
@@ -256,7 +261,7 @@ export function StudyCalendar({ plan, resources, studyLogs, daysOff, specificDay
                 .reduce((acc, log) => acc + (log.amount || 0), 0);
               
               // 1. Calculate Today's Volume for this specific date
-              const volToday = resourceDef ? getProjectedDailyVolume(task, resourceDef, selectedDate, plan, daysOff, resources, specificDaysOff) : { amount: task.dailyAmount, minutes: task.dailyMinutes };
+              const volToday = resourceDef ? getProjectedDailyVolume(task, resourceDef, selectedDate, plan, daysOff, resources, specificDaysOff, defaultQuestionsByDayOfWeek) : { amount: task.dailyAmount, minutes: task.dailyMinutes };
               
               // 2. Calculate Projected Progress until this date
               let projectedTotal = resourceDef?.completed || 0;
@@ -266,7 +271,7 @@ export function StudyCalendar({ plan, resources, studyLogs, daysOff, specificDay
               if (selDay > todayDate && resourceDef) {
                 let cur = addDays(todayDate, 1);
                 while (cur <= selDay) {
-                  const v = getProjectedDailyVolume(task, resourceDef, cur, plan, daysOff, resources, specificDaysOff);
+                  const v = getProjectedDailyVolume(task, resourceDef, cur, plan, daysOff, resources, specificDaysOff, defaultQuestionsByDayOfWeek);
                   projectedTotal += v.amount;
                   cur = addDays(cur, 1);
                 }
