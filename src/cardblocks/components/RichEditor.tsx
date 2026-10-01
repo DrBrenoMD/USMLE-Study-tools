@@ -23,8 +23,9 @@ import {
   XCircle,
   ChevronDown
 } from 'lucide-react';
-import { cn, sanitizeHtml } from '../lib/utils';
+import { cn, sanitizeHtml, extractNextClozeIndex } from '../lib/utils';
 import { ImageOcclusionTool } from './ImageOcclusionTool';
+import { SafeHtmlInsertModal } from './SafeHtmlInsertModal';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface RichEditorProps {
@@ -64,6 +65,7 @@ export function RichEditor({ value, onChange, placeholder, className, minHeight,
   const [showHtmlEditor, setShowHtmlEditor] = useState(false);
   const [showMediaPrompt, setShowMediaPrompt] = useState<{type: 'image' | 'video' | 'audio'} | null>(null);
   const [showClozePrompt, setShowClozePrompt] = useState(false);
+  const [showSafeHtmlModal, setShowSafeHtmlModal] = useState(false);
 
   // Dropdowns
   const [showColorPicker, setShowColorPicker] = useState(false);
@@ -158,9 +160,11 @@ export function RichEditor({ value, onChange, placeholder, className, minHeight,
   const insertCloze = () => {
     const sel = window.getSelection();
     let text = '';
+    const currentHtml = editorRef.current?.innerHTML || value;
+    const nextIdx = extractNextClozeIndex(currentHtml);
     if (sel && sel.toString().trim()) {
       text = sel.toString().trim();
-      exec('insertHTML', `{{c1::${text}}}`);
+      exec('insertHTML', `{{c${nextIdx}::${text}}}`);
     } else {
       setShowClozePrompt(true);
     }
@@ -262,7 +266,8 @@ export function RichEditor({ value, onChange, placeholder, className, minHeight,
         <div className="w-px h-4 bg-gray-300 dark:bg-gray-700 mx-0.5" />
 
         {/* Cloze & Media */}
-        <ToolbarButton onClick={insertCloze} icon={<Brackets className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />} title="Ocultação / Cloze ({{c1::texto}})" />
+        <ToolbarButton onClick={insertCloze} icon={<Brackets className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />} title="Ocultação / Cloze (Ctrl+Shift+C)" />
+        <ToolbarButton onClick={() => setShowSafeHtmlModal(true)} icon={<Code className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />} title="Inserir Bloco de HTML Seguro (Sandbox Iframe)" />
         <ToolbarButton onClick={() => setShowMediaPrompt({type: 'image'})} icon={<ImageIcon className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />} title="Inserir Imagem" />
         <ToolbarButton onClick={() => setShowMediaPrompt({type: 'video'})} icon={<Video className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />} title="Inserir Vídeo" />
         <ToolbarButton onClick={() => setShowMediaPrompt({type: 'audio'})} icon={<Music className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />} title="Inserir Áudio" />
@@ -277,6 +282,11 @@ export function RichEditor({ value, onChange, placeholder, className, minHeight,
         onInput={handleInput}
         onBlur={handleInput}
         onKeyDown={(e) => {
+          if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'c' || e.key === 'C')) {
+            e.preventDefault();
+            insertCloze();
+            return;
+          }
           if (e.key === 'Tab') {
             e.preventDefault();
             exec('insertHTML', '&nbsp;&nbsp;&nbsp;&nbsp;');
@@ -389,13 +399,32 @@ export function RichEditor({ value, onChange, placeholder, className, minHeight,
         {showClozePrompt && (
           <ClozeModal
             onClose={() => setShowClozePrompt(false)}
-            onInsert={(text) => {
-              exec('insertHTML', `{{c1::${text}}}`);
+            onInsert={(text, hint) => {
+              const currentHtml = editorRef.current?.innerHTML || value;
+              const nextIdx = extractNextClozeIndex(currentHtml);
+              const tag = hint ? `{{c${nextIdx}::${text}::${hint}}}` : `{{c${nextIdx}::${text}}}`;
+              exec('insertHTML', tag);
               setShowClozePrompt(false);
             }}
           />
         )}
       </AnimatePresence>
+
+      {/* Safe HTML Insert Modal (Iframe Sandbox) */}
+      <SafeHtmlInsertModal
+        isOpen={showSafeHtmlModal}
+        onClose={() => setShowSafeHtmlModal(false)}
+        onSave={(data) => {
+          const blockPayload = `
+<div class="safe-html-embed my-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700" contenteditable="false" style="user-select:none;">
+  <div style="font-size:11px;font-weight:bold;color:#4f46e5;margin-bottom:6px;display:flex;align-items:center;gap:4px;">
+    <span>⚡ Bloco HTML Seguro:</span> <span>${data.title}</span>
+  </div>
+  <iframe srcdoc="<!DOCTYPE html><html><head><meta charset='utf-8'><style>*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}body{font-family:sans-serif;padding:12px;background:transparent;color:#1e293b;}${data.css || ''}</style></head><body><div>${data.html.replace(/"/g, '&quot;')}</div><script>try{${data.js || ''}}catch(e){console.error(e);}<\/script></body></html>" sandbox="allow-scripts" style="width:100%;min-height:160px;border:none;border-radius:8px;background:transparent;"></iframe>
+</div><br/>`;
+          exec('insertHTML', blockPayload);
+        }}
+      />
     </div>
   );
 }
@@ -413,8 +442,9 @@ function ToolbarButton({ onClick, icon, title }: { onClick: () => void, icon: Re
   );
 }
 
-function ClozeModal({ onClose, onInsert }: { onClose: () => void, onInsert: (t: string) => void }) {
+function ClozeModal({ onClose, onInsert }: { onClose: () => void, onInsert: (t: string, hint?: string) => void }) {
   const [val, setVal] = useState('');
+  const [hint, setHint] = useState('');
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-ui-surface border border-ui-border rounded-xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col">
@@ -422,13 +452,19 @@ function ClozeModal({ onClose, onInsert }: { onClose: () => void, onInsert: (t: 
           <h2 className="text-lg font-bold text-ui-text">Inserir Ocultação / Cloze</h2>
           <button onClick={onClose} className="p-1 text-ui-muted hover:text-ui-text rounded bg-ui-surface hover:bg-ui-surface-hover"><XCircle className="w-5 h-5"/></button>
         </div>
-        <div className="p-4">
-          <label className="block text-sm font-medium text-ui-muted mb-1">Texto a ocultar</label>
-          <input autoFocus value={val} onChange={e => setVal(e.target.value)} placeholder="ex: Mitocôndria" className="w-full p-2 border border-ui-border bg-ui-background text-ui-text rounded-lg outline-none focus:border-primary" onKeyDown={e => { if (e.key === 'Enter' && val.trim()) onInsert(val); }} />
+        <div className="p-4 space-y-3">
+          <div>
+            <label className="block text-xs font-semibold text-ui-muted mb-1">Texto a ocultar</label>
+            <input autoFocus value={val} onChange={e => setVal(e.target.value)} placeholder="ex: Mitocôndria" className="w-full p-2 text-xs border border-ui-border bg-ui-background text-ui-text rounded-lg outline-none focus:border-primary" onKeyDown={e => { if (e.key === 'Enter' && val.trim()) onInsert(val, hint); }} />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-ui-muted mb-1">Dica opcional</label>
+            <input value={hint} onChange={e => setHint(e.target.value)} placeholder="ex: Organela energética" className="w-full p-2 text-xs border border-ui-border bg-ui-background text-ui-text rounded-lg outline-none focus:border-primary" onKeyDown={e => { if (e.key === 'Enter' && val.trim()) onInsert(val, hint); }} />
+          </div>
         </div>
         <div className="p-4 border-t border-ui-border flex justify-end gap-3">
           <button onClick={onClose} className="px-4 py-2 font-medium text-ui-text hover:bg-ui-surface-hover border border-ui-border rounded-lg">Cancelar</button>
-          <button disabled={!val.trim()} onClick={() => onInsert(val)} className="px-4 py-2 font-medium bg-primary text-primary-foreground rounded-lg disabled:opacity-50">Inserir</button>
+          <button disabled={!val.trim()} onClick={() => onInsert(val, hint)} className="px-4 py-2 font-medium bg-primary text-primary-foreground rounded-lg disabled:opacity-50">Inserir</button>
         </div>
       </motion.div>
     </div>

@@ -461,3 +461,38 @@ body.dark {
   color: #f9fafb;
 }
 
+/* Cloze Deletions in Notes and Cards */
+.cloze-hole {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 7px;
+  margin: 0 2px;
+  background-color: #4f46e5;
+  color: #ffffff !important;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 0.9em;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  text-decoration: none !important;
+}
+.cloze-hole:hover {
+  filter: brightness(1.15);
+  transform: translateY(-0.5px);
+}
+.cloze-hole.cloze-revealed {
+  background-color: rgba(79, 70, 229, 0.12) !important;
+  color: #4f46e5 !important;
+  border: 1px solid rgba(79, 70, 229, 0.35);
+  box-shadow: none;
+}
+.dark .cloze-hole.cloze-revealed {
+  background-color: rgba(99, 102, 241, 0.22) !important;
+  color: #a5b4fc !important;
+  border: 1px solid rgba(99, 102, 241, 0.4);
+}
+
+

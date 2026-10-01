@@ -260,7 +260,9 @@ export function useQBankSync() {
         system,
         images,
         links,
-        tags: payload.tags || [`qid:${qid}`],
+        tags: Array.from(new Set([...(payload.tags || []), `qid:${qid}`, 'origem:extensao', 'extension'])),
+        isFromExtension: true,
+        source: 'extension',
       });
 
       // Se a questão veio com resultado de resolução da extensão ou submit

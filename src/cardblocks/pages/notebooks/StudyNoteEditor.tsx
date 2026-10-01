@@ -32,7 +32,9 @@ import { CodeSandboxRunner } from '../../components/CodeSandboxRunner';
 import { EmbeddedFlashcardBlock } from '../../components/EmbeddedFlashcardBlock';
 import { IsolatedHtml } from '../../components/IsolatedHtml';
 import { PdfExportModal } from '../../components/PdfExportModal';
-import { sanitizeHtml } from '../../lib/utils';
+import { SafeIsolatedHtmlBlock } from '../../components/SafeIsolatedHtmlBlock';
+import { SafeHtmlInsertModal } from '../../components/SafeHtmlInsertModal';
+import { sanitizeHtml, renderCardText } from '../../lib/utils';
 
 interface StudyNoteEditorProps {
   noteId: string;
@@ -99,6 +101,9 @@ export const StudyNoteEditor: React.FC<StudyNoteEditorProps> = ({
   const [showVideoForm, setShowVideoForm] = useState(false);
   const [showAudioRecorder, setShowAudioRecorder] = useState(false);
   const [showCodeSandbox, setShowCodeSandbox] = useState(false);
+  const [showSafeHtmlModal, setShowSafeHtmlModal] = useState(false);
+  const [editingHtmlItem, setEditingHtmlItem] = useState<{ id?: string; title?: string; html?: string; css?: string; js?: string } | null>(null);
+  const [previewClozeMode, setPreviewClozeMode] = useState(false);
 
   // Question / Card Search inside note
   const [searchQuestion, setSearchQuestion] = useState('');
@@ -477,12 +482,28 @@ export const StudyNoteEditor: React.FC<StudyNoteEditorProps> = ({
           </button>
 
           <button
-            onClick={() => setShowCodeSandbox(!showCodeSandbox)}
-            className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-750 text-gray-700 dark:text-gray-200 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors"
-            title="Adicionar código HTML/JS interativo"
+            onClick={() => {
+              setEditingHtmlItem(null);
+              setShowSafeHtmlModal(true);
+            }}
+            className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors border border-indigo-200 dark:border-indigo-800"
+            title="Inserir bloco de HTML seguro com CSS/JS em iframe isolado"
           >
-            <Code className="w-3.5 h-3.5 text-cyan-500" />
-            <span>+ Código</span>
+            <Code className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+            <span>+ HTML Seguro</span>
+          </button>
+
+          <button
+            onClick={() => setPreviewClozeMode(!previewClozeMode)}
+            className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors border ${
+              previewClozeMode
+                ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-750 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-gray-700'
+            }`}
+            title="Alternar entre modo edição e modo treino de omissões (clozes)"
+          >
+            {previewClozeMode ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+            <span>{previewClozeMode ? 'Ocultar Clozes Ativo' : 'Testar Clozes'}</span>
           </button>
 
           <button
@@ -814,15 +835,126 @@ export const StudyNoteEditor: React.FC<StudyNoteEditorProps> = ({
         </div>
       </div>
 
-      {/* Notion-Style Rich Text Editor */}
+      {/* Notion-Style Rich Text Editor ou Modo Treino de Clozes */}
       <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-200 dark:border-gray-800 p-6 shadow-xs min-h-[400px]">
-        <RichEditor
-          value={content}
-          onChange={setContent}
-          placeholder="Comece a escrever sua nota ou pressione as opções acima para inserir vídeos, áudios, flashcards..."
-          minHeight="350px"
-        />
+        {previewClozeMode ? (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-3 bg-purple-50 dark:bg-purple-950/40 rounded-2xl border border-purple-200 dark:border-purple-800">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🎯</span>
+                <div>
+                  <h4 className="text-xs font-bold text-purple-900 dark:text-purple-200 uppercase tracking-wider">
+                    Modo Treino Ativo de Clozes
+                  </h4>
+                  <p className="text-[11px] text-purple-700 dark:text-purple-300">
+                    Clique em qualquer lacuna <span className="font-bold underline">[...]</span> para revelar ou ocultar a resposta e testar sua memória.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewClozeMode(false)}
+                className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+              >
+                Voltar à Edição
+              </button>
+            </div>
+
+            <div
+              className="prose dark:prose-invert max-w-none text-sm text-gray-900 dark:text-gray-100 leading-relaxed p-2"
+              dangerouslySetInnerHTML={{ __html: renderCardText(content, false) || '<p class="italic text-gray-400">Nota sem conteúdo.</p>' }}
+            />
+          </div>
+        ) : (
+          <RichEditor
+            value={content}
+            onChange={setContent}
+            placeholder="Comece a escrever sua nota ou pressione as opções acima para inserir vídeos, áudios, flashcards, blocos de HTML..."
+            minHeight="350px"
+          />
+        )}
       </div>
+
+      {/* Blocos de HTML Seguro / Sandbox Salvos na Nota */}
+      {mediaItems.filter(m => m.type === 'code_sandbox').length > 0 && (
+        <div className="space-y-3 pt-2">
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider flex items-center gap-1.5">
+              <Code className="w-3.5 h-3.5 text-indigo-500" />
+              <span>Blocos de HTML Seguro Integrados ({mediaItems.filter(m => m.type === 'code_sandbox').length})</span>
+            </h4>
+            <span className="text-[11px] text-gray-400">Isolados com sandbox iframe</span>
+          </div>
+
+          <div className="space-y-3">
+            {mediaItems.filter(m => m.type === 'code_sandbox').map((item) => (
+              <SafeIsolatedHtmlBlock
+                key={item.id}
+                html={item.codeHtml || ''}
+                css={item.codeCss}
+                js={item.codeJs}
+                title={item.title || 'Bloco de HTML Seguro'}
+                onEdit={() => {
+                  setEditingHtmlItem({
+                    id: item.id,
+                    title: item.title,
+                    html: item.codeHtml,
+                    css: item.codeCss,
+                    js: item.codeJs
+                  });
+                  setShowSafeHtmlModal(true);
+                }}
+                onDelete={() => {
+                  const nextMedia = mediaItems.filter(m => m.id !== item.id);
+                  setMediaItems(nextMedia);
+                  updateStudyNote(note.id, { mediaItems: nextMedia });
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Modal para Inserção de HTML Seguro (Iframe Sandbox) */}
+      <SafeHtmlInsertModal
+        isOpen={showSafeHtmlModal}
+        initialTitle={editingHtmlItem?.title}
+        initialHtml={editingHtmlItem?.html}
+        initialCss={editingHtmlItem?.css}
+        initialJs={editingHtmlItem?.js}
+        onClose={() => {
+          setShowSafeHtmlModal(false);
+          setEditingHtmlItem(null);
+        }}
+        onSave={(data) => {
+          if (editingHtmlItem && editingHtmlItem.id) {
+            const nextMedia = mediaItems.map(m => m.id === editingHtmlItem.id ? {
+              ...m,
+              title: data.title,
+              codeHtml: data.html,
+              codeCss: data.css,
+              codeJs: data.js
+            } : m);
+            setMediaItems(nextMedia);
+            updateStudyNote(note.id, { mediaItems: nextMedia });
+          } else {
+            const newMedia = {
+              id: 'media-' + Date.now(),
+              type: 'code_sandbox' as const,
+              title: data.title,
+              codeHtml: data.html,
+              codeCss: data.css,
+              codeJs: data.js,
+              createdAt: Date.now()
+            };
+            const nextMedia = [...mediaItems, newMedia];
+            setMediaItems(nextMedia);
+            updateStudyNote(note.id, { mediaItems: nextMedia });
+          }
+          setEditingHtmlItem(null);
+          setShowSafeHtmlModal(false);
+        }}
+      />
 
       {/* Flashcards Embutidos Exibidos na Nota com Botão Revelar/Ocultar Verso */}
       {note.embeddedFlashcardIds && note.embeddedFlashcardIds.length > 0 && (

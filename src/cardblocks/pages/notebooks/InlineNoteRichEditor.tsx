@@ -25,9 +25,12 @@ import {
   Volume2,
   CheckCircle2,
   RefreshCw,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Brackets,
+  ShieldCheck
 } from 'lucide-react';
-import { cn, sanitizeHtml } from '../../lib/utils';
+import { cn, sanitizeHtml, extractNextClozeIndex } from '../../lib/utils';
+import { SafeHtmlInsertModal } from '../../components/SafeHtmlInsertModal';
 
 interface InlineNoteRichEditorProps {
   initialContent: string;
@@ -72,9 +75,48 @@ export const InlineNoteRichEditor: React.FC<InlineNoteRichEditorProps> = ({
   const [showHighlightPicker, setShowHighlightPicker] = useState(false);
   const [showHeadings, setShowHeadings] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [showSafeHtmlModal, setShowSafeHtmlModal] = useState(false);
+  const [showClozeModal, setShowClozeModal] = useState(false);
+  const [clozeWord, setClozeWord] = useState('');
+  const [clozeHint, setClozeHint] = useState('');
 
   // Debounced auto-save timer ref
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const insertCloze = useCallback(() => {
+    const sel = window.getSelection();
+    let text = '';
+    const currentHtml = editorRef.current?.innerHTML || content;
+    const nextIdx = extractNextClozeIndex(currentHtml);
+    if (sel && sel.toString().trim()) {
+      text = sel.toString().trim();
+      exec('insertHTML', `{{c${nextIdx}::${text}}}`);
+    } else {
+      setShowClozeModal(true);
+    }
+  }, [content]);
+
+  const handleConfirmCloze = (word: string, hint: string) => {
+    if (!word.trim()) return;
+    const currentHtml = editorRef.current?.innerHTML || content;
+    const nextIdx = extractNextClozeIndex(currentHtml);
+    const tag = hint.trim() ? `{{c${nextIdx}::${word.trim()}::${hint.trim()}}}` : `{{c${nextIdx}::${word.trim()}}}`;
+    exec('insertHTML', tag);
+    setShowClozeModal(false);
+    setClozeWord('');
+    setClozeHint('');
+  };
+
+  const handleInsertSafeHtml = (data: { title: string; html: string; css: string; js: string }) => {
+    const blockPayload = `
+<div class="safe-html-embed my-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700" contenteditable="false" style="user-select:none;">
+  <div style="font-size:11px;font-weight:bold;color:#4f46e5;margin-bottom:6px;display:flex;align-items:center;gap:4px;">
+    <span>⚡ Bloco HTML Seguro:</span> <span>${data.title}</span>
+  </div>
+  <iframe srcdoc="<!DOCTYPE html><html><head><meta charset='utf-8'><style>*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}body{font-family:sans-serif;padding:12px;background:transparent;color:#1e293b;}${data.css || ''}</style></head><body><div>${data.html.replace(/"/g, '&quot;')}</div><script>try{${data.js || ''}}catch(e){console.error(e);}<\/script></body></html>" sandbox="allow-scripts" style="width:100%;min-height:160px;border:none;border-radius:8px;background:transparent;"></iframe>
+</div><br/>`;
+    exec('insertHTML', blockPayload);
+  };
 
   // Initialize content
   useEffect(() => {
@@ -228,6 +270,12 @@ export const InlineNoteRichEditor: React.FC<InlineNoteRichEditorProps> = ({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Ctrl + Shift + C for Cloze Deletion
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'c' || e.key === 'C')) {
+      e.preventDefault();
+      insertCloze();
+      return;
+    }
     // Ctrl + S / Cmd + S for explicit instant save
     if ((e.ctrlKey || e.metaKey) && e.key === 's') {
       e.preventDefault();
@@ -433,6 +481,31 @@ export const InlineNoteRichEditor: React.FC<InlineNoteRichEditorProps> = ({
         >
           <Minus className="w-3.5 h-3.5" />
         </button>
+
+        <div className="h-4 w-px bg-gray-300 dark:bg-gray-700 mx-0.5" />
+
+        {/* Cloze Deletion Button */}
+        <button
+          type="button"
+          onClick={insertCloze}
+          className="p-1.5 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-950/60 text-purple-600 dark:text-purple-400 font-bold flex items-center gap-1 transition-colors"
+          title="Criar Omissão de Palavra / Cloze (Ctrl+Shift+C)"
+        >
+          <Brackets className="w-3.5 h-3.5" />
+          <span className="text-[10px] hidden sm:inline">Cloze</span>
+        </button>
+
+        {/* Inserir Bloco de HTML Seguro (Iframe Sandbox) */}
+        <button
+          type="button"
+          onClick={() => setShowSafeHtmlModal(true)}
+          className="p-1.5 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-bold flex items-center gap-1 transition-colors"
+          title="Inserir Bloco de HTML Seguro (Iframe Sandbox com CSS/JS)"
+        >
+          <Code className="w-3.5 h-3.5" />
+          <span className="text-[10px] hidden sm:inline">+ HTML Seguro</span>
+        </button>
+
         <button
           type="button"
           onClick={handleInsertImageClick}
@@ -495,9 +568,90 @@ export const InlineNoteRichEditor: React.FC<InlineNoteRichEditorProps> = ({
       />
       
       <div className="px-4 py-1.5 bg-gray-50/70 dark:bg-gray-850/70 border-t border-gray-100 dark:border-gray-800 text-[11px] text-gray-400 flex items-center justify-between">
-        <span>💡 Salvamento automático contínuo ativado • <b>Ctrl+Z</b> desfaz • <b>Ctrl+Shift+Z</b> refaz</span>
+        <span>💡 Salvamento automático contínuo ativado • <b>Ctrl+Shift+C</b> cria Cloze • <b>Ctrl+Z</b> desfaz</span>
         <span>Modo Edição Ágil</span>
       </div>
+
+      {/* Modal para Omissão de Palavra / Cloze */}
+      {showClozeModal && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden p-5 space-y-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-3">
+              <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <Brackets className="w-4 h-4 text-purple-600" />
+                <span>Criar Omissão de Palavra (Cloze)</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowClozeModal(false)}
+                className="text-gray-400 hover:text-gray-600 text-xs"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Texto ou Termo a Ocultar:
+                </label>
+                <input
+                  type="text"
+                  autoFocus
+                  value={clozeWord}
+                  onChange={(e) => setClozeWord(e.target.value)}
+                  placeholder="Ex: Insuficiência Cardíaca"
+                  className="w-full px-3 py-2 text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 font-medium"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleConfirmCloze(clozeWord, clozeHint);
+                  }}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Dica Opcional (visível quando oculto):
+                </label>
+                <input
+                  type="text"
+                  value={clozeHint}
+                  onChange={(e) => setClozeHint(e.target.value)}
+                  placeholder="Ex: Doença miocárdica comum"
+                  className="w-full px-3 py-2 text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleConfirmCloze(clozeWord, clozeHint);
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+              <button
+                type="button"
+                onClick={() => setShowClozeModal(false)}
+                className="px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={!clozeWord.trim()}
+                onClick={() => handleConfirmCloze(clozeWord, clozeHint)}
+                className="px-4 py-1.5 text-xs font-bold bg-purple-600 hover:bg-purple-500 text-white rounded-xl disabled:opacity-50"
+              >
+                Inserir Cloze
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para Inserção de HTML Seguro (Iframe Sandbox) */}
+      <SafeHtmlInsertModal
+        isOpen={showSafeHtmlModal}
+        onClose={() => setShowSafeHtmlModal(false)}
+        onSave={handleInsertSafeHtml}
+      />
     </div>
   );
 };

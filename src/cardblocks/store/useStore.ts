@@ -113,6 +113,8 @@ export interface Question {
   userNotes?: string;
   associatedNoteIds?: string[];
   isFlagged?: boolean;
+  isFromExtension?: boolean;
+  source?: 'extension' | 'qbank' | 'manual';
   createdAt?: number;
   updatedAt?: number;
 }
@@ -255,6 +257,7 @@ export interface StudyDeskQuestionRecord {
   reviewTimeSeconds: number;
   subject?: string;
   system?: string;
+  isFromExtension?: boolean;
   answeredAt: number;
 }
 
@@ -417,6 +420,9 @@ export interface StoreState {
   ) => void;
   resetQuestionStats: (questionId: string) => void;
   resetBankStats: (bankId: string) => void;
+  resetExtensionStats: () => void;
+  resetSubjectStats: (subject: string) => void;
+  resetSystemStats: (system: string) => void;
   updateQuestionNotes: (questionId: string, notes: string) => void;
   toggleQuestionFlag: (questionId: string) => void;
 
@@ -1297,6 +1303,8 @@ export const useStore = create<StoreState>()(
               images: qData.images && qData.images.length > 0 ? qData.images : current.images,
               links: qData.links && qData.links.length > 0 ? qData.links : current.links,
               tags: qData.tags && qData.tags.length > 0 ? Array.from(new Set([...(current.tags || []), ...qData.tags])) : current.tags,
+              isFromExtension: qData.isFromExtension !== undefined ? qData.isFromExtension : current.isFromExtension,
+              source: qData.source || current.source,
               updatedAt: Date.now(),
             };
 
@@ -1324,6 +1332,8 @@ export const useStore = create<StoreState>()(
               attempts: [],
               resolutionTimeSeconds: 0,
               reviewTimeSeconds: 0,
+              isFromExtension: qData.isFromExtension ?? false,
+              source: qData.source || (qData.isFromExtension ? 'extension' : 'manual'),
               createdAt: Date.now(),
               updatedAt: Date.now(),
             };
@@ -1397,6 +1407,73 @@ export const useStore = create<StoreState>()(
                 updatedAt: Date.now(),
               };
             })
+          }));
+        },
+
+        resetExtensionStats: () => {
+          set(state => ({
+            questions: state.questions.map(q => {
+              const isExt = q.isFromExtension || q.source === 'extension' || q.tags?.some(t => t.includes('extensao') || t.includes('extension') || t.startsWith('qid:'));
+              if (!isExt) return q;
+              return {
+                ...q,
+                status: 'unused',
+                selectedChoiceId: undefined,
+                resolutionTimeSeconds: 0,
+                reviewTimeSeconds: 0,
+                attempts: [],
+                lastAnsweredAt: undefined,
+                updatedAt: Date.now(),
+              };
+            }),
+            studyDeskSessions: (state.studyDeskSessions || []).map(s => ({
+              ...s,
+              questionRecords: (s.questionRecords || []).filter(r => !r.isFromExtension && !r.qid?.startsWith('q-') && !r.qid?.startsWith('sample-')),
+            }))
+          }));
+        },
+
+        resetSubjectStats: (subjectName) => {
+          set(state => ({
+            questions: state.questions.map(q => {
+              if ((q.subject || '').trim().toLowerCase() !== subjectName.trim().toLowerCase()) return q;
+              return {
+                ...q,
+                status: 'unused',
+                selectedChoiceId: undefined,
+                resolutionTimeSeconds: 0,
+                reviewTimeSeconds: 0,
+                attempts: [],
+                lastAnsweredAt: undefined,
+                updatedAt: Date.now(),
+              };
+            }),
+            studyDeskSessions: (state.studyDeskSessions || []).map(s => ({
+              ...s,
+              questionRecords: (s.questionRecords || []).filter(r => (r.subject || '').trim().toLowerCase() !== subjectName.trim().toLowerCase()),
+            }))
+          }));
+        },
+
+        resetSystemStats: (systemName) => {
+          set(state => ({
+            questions: state.questions.map(q => {
+              if ((q.system || '').trim().toLowerCase() !== systemName.trim().toLowerCase()) return q;
+              return {
+                ...q,
+                status: 'unused',
+                selectedChoiceId: undefined,
+                resolutionTimeSeconds: 0,
+                reviewTimeSeconds: 0,
+                attempts: [],
+                lastAnsweredAt: undefined,
+                updatedAt: Date.now(),
+              };
+            }),
+            studyDeskSessions: (state.studyDeskSessions || []).map(s => ({
+              ...s,
+              questionRecords: (s.questionRecords || []).filter(r => (r.system || '').trim().toLowerCase() !== systemName.trim().toLowerCase()),
+            }))
           }));
         },
 
@@ -2005,6 +2082,7 @@ ${objective ? `<blockquote><p><b>Educational Objective:</b> ${objective}</p></bl
               reviewTimeSeconds: Math.max(0, Math.round(reviewTimeSeconds || 0)),
               subject: subject || '',
               system: system || '',
+              isFromExtension: true,
               answeredAt: Date.now(),
             };
 
@@ -2055,6 +2133,8 @@ ${objective ? `<blockquote><p><b>Educational Objective:</b> ${objective}</p></bl
                 lastAnsweredAt: Date.now(),
                 subject: subject || q.subject,
                 system: system || q.system,
+                isFromExtension: q.isFromExtension ?? true,
+                source: q.source || 'extension',
                 updatedAt: Date.now(),
               };
             });

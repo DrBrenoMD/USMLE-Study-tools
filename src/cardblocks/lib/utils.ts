@@ -52,12 +52,26 @@ export function sanitizeHtml(html?: string) {
 
 export function renderCardText(html?: string, forceRevealCloze: boolean = false) {
   if (!html) return '';
-  // Replace {{c1::answer}} with interactive cloze span
-  let parsed = html.replace(/{{c\d*::(.*?)(?:::.*?)?}}/g, (match, p1) => {
-    const safeAnswer = escapeHtml(p1);
-    const content = forceRevealCloze ? safeAnswer : '[...]';
+  // Replace {{c1::answer}} or {{c1::answer::hint}} with interactive cloze span
+  let parsed = html.replace(/{{c(\d*)::(.*?)(?:::([^}]+))?}}/g, (match, cNum, p1, p2) => {
+    const safeAnswer = escapeHtml(p1 || '');
+    const hint = p2 ? escapeHtml(p2.trim()) : '';
+    const hiddenText = hint ? `[...${hint}...]` : '[...]';
+    const content = forceRevealCloze ? safeAnswer : hiddenText;
     const classes = forceRevealCloze ? 'cloze-hole cloze-revealed' : 'cloze-hole';
-    return `<span class="${classes}" onclick="this.classList.add('cloze-revealed'); this.innerHTML = this.getAttribute('data-answer'); event.stopPropagation();" data-answer="${safeAnswer}">${content}</span>`;
+    return `<span class="${classes}" data-cnum="${cNum || '1'}" data-answer="${safeAnswer}" data-hint="${hint}" onclick="if (this.classList.contains('cloze-revealed')) { this.classList.remove('cloze-revealed'); this.innerHTML = this.getAttribute('data-hint') ? '[...' + this.getAttribute('data-hint') + '...]' : '[...]'; } else { this.classList.add('cloze-revealed'); this.innerHTML = this.getAttribute('data-answer'); } event.stopPropagation();" title="${hint ? 'Dica: ' + hint : 'Clique para revelar / ocultar'}">${content}</span>`;
   });
   return sanitizeHtml(parsed);
+}
+
+export function extractNextClozeIndex(html: string): number {
+  if (!html) return 1;
+  const regex = /{{c(\d+)::/g;
+  let max = 0;
+  let match;
+  while ((match = regex.exec(html)) !== null) {
+    const num = parseInt(match[1], 10);
+    if (!isNaN(num) && num > max) max = num;
+  }
+  return max + 1;
 }

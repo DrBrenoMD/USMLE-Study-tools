@@ -46,12 +46,13 @@ import {
   CornerDownRight,
   FolderTree
 } from 'lucide-react';
-import { sanitizeHtml, cn } from '../../lib/utils';
+import { sanitizeHtml, renderCardText, cn } from '../../lib/utils';
 import { format } from 'date-fns';
 import { PdfExportModal } from '../../components/PdfExportModal';
 import { NoteAssociationsPreviewModal } from '../../components/NoteAssociationsPreviewModal';
 import { EmbeddedFlashcardBlock } from '../../components/EmbeddedFlashcardBlock';
 import { CodeSandboxRunner } from '../../components/CodeSandboxRunner';
+import { SafeIsolatedHtmlBlock } from '../../components/SafeIsolatedHtmlBlock';
 import { VideoEmbedPlayer } from '../../components/VideoEmbedPlayer';
 import { AudioVoiceRecorder } from '../../components/AudioVoiceRecorder';
 import { InlineNoteRichEditor } from './InlineNoteRichEditor';
@@ -118,6 +119,7 @@ export const StudyNotebooksView: React.FC<StudyNotebooksViewProps> = ({
 
   // Layout switcher: Document (default Notion continuous), Grid (Blocos), List
   const [viewLayout, setViewLayout] = useState<'document' | 'grid' | 'list'>('document');
+  const [revealAllClozes, setRevealAllClozes] = useState(false);
 
   // Persisted Collapsed States (Notes & Sections)
   const [collapsedNotes, setCollapsedNotes] = useState<Record<string, boolean>>(() => {
@@ -949,6 +951,21 @@ export const StudyNotebooksView: React.FC<StudyNotebooksViewProps> = ({
               </button>
             </div>
 
+            {/* Toggle Clozes Ocultos / Revelados */}
+            <button
+              onClick={() => setRevealAllClozes(!revealAllClozes)}
+              className={cn(
+                "px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border cursor-pointer",
+                revealAllClozes
+                  ? "bg-purple-100 dark:bg-purple-950/60 border-purple-300 dark:border-purple-800 text-purple-700 dark:text-purple-300 shadow-2xs"
+                  : "bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-750 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300"
+              )}
+              title={revealAllClozes ? "Ocultar lacunas de omissão de palavras (clozes)" : "Revelar todas as omissões de palavras (clozes)"}
+            >
+              {revealAllClozes ? <Eye className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" /> : <EyeOff className="w-3.5 h-3.5" />}
+              <span className="hidden md:inline">{revealAllClozes ? 'Clozes: Revelados' : 'Clozes: Ocultos'}</span>
+            </button>
+
             {/* Nova Nota Button */}
             <button
               onClick={() => handleCreateNoteInline(selectedAreaId !== 'all' ? selectedAreaId : (notebookAreas[0]?.id || 'area-clinica'))}
@@ -1284,9 +1301,24 @@ export const StudyNotebooksView: React.FC<StudyNotebooksViewProps> = ({
                                         <div
                                           onDoubleClick={() => setEditingNoteId(note.id)}
                                           className="prose dark:prose-invert max-w-none text-sm text-gray-900 dark:text-gray-100 leading-relaxed cursor-text min-h-[32px]"
-                                          dangerouslySetInnerHTML={{ __html: sanitizeHtml(note.content) || '<p class="text-gray-400 italic">Nota vazia. Clique duas vezes para escrever...</p>' }}
+                                          dangerouslySetInnerHTML={{ __html: renderCardText(note.content, revealAllClozes) || '<p class="text-gray-400 italic">Nota vazia. Clique duas vezes para escrever...</p>' }}
                                           title="Dê duplo clique para editar"
                                         />
+                                      )}
+
+                                      {/* Blocos de HTML Seguro / Sandbox da Nota */}
+                                      {note.mediaItems && note.mediaItems.filter(m => m.type === "code_sandbox").length > 0 && (
+                                        <div className="mt-4 space-y-2">
+                                          {note.mediaItems.filter(m => m.type === "code_sandbox").map((item) => (
+                                            <SafeIsolatedHtmlBlock
+                                              key={item.id}
+                                              html={item.codeHtml || ""}
+                                              css={item.codeCss}
+                                              js={item.codeJs}
+                                              title={item.title || "Bloco de HTML Seguro"}
+                                            />
+                                          ))}
+                                        </div>
                                       )}
 
                                       {/* Embedded Flashcards in Note */}
@@ -1407,7 +1439,7 @@ export const StudyNotebooksView: React.FC<StudyNotebooksViewProps> = ({
 
                     <div
                       className="text-xs text-gray-600 dark:text-gray-400 line-clamp-4 leading-relaxed"
-                      dangerouslySetInnerHTML={{ __html: sanitizeHtml(note.content) || '<span class="text-gray-400 italic">Sem conteúdo ainda.</span>' }}
+                      dangerouslySetInnerHTML={{ __html: renderCardText(note.content, revealAllClozes) || '<span class="text-gray-400 italic">Sem conteúdo ainda.</span>' }}
                     />
                   </div>
 

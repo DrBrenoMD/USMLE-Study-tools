@@ -30,6 +30,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     { name: 'Mesa de Estudos', path: '/desk', icon: Compass },
     { name: 'Navegador Geral', path: '/browse', icon: Search },
     { name: 'Heatmap de Estudos', path: '/tracker?tab=heatmap', icon: Flame },
+    { name: 'Gráficos & Acompanhamento', path: '/tracker?tab=analytics', icon: LineChart },
     { name: 'Study Tracker', path: '/tracker', icon: BarChart2 },
     { name: 'Cadernos de Estudo', path: '/notebooks', icon: FileText },
     { name: 'Flashcards', path: '/flashcards', icon: Layers },
