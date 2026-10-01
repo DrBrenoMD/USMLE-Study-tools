@@ -15,30 +15,13 @@ export const RichContentRenderer: React.FC<RichContentRendererProps> = ({
 
   const isHtml = useMemo(() => {
     if (!content) return false;
-    return /<(?:table|thead|tbody|tr|td|th|img|figure|figcaption|div|p|ul|ol|li|b|strong|i|em|h[1-6]|mark|span|br|a)\b/i.test(content) || /\{\{c\d+::/i.test(content);
+    return /<(?:table|thead|tbody|tr|td|th|img|figure|figcaption|div|p|ul|ol|li|b|strong|i|em|h[1-6]|mark|span|br|a)\b/i.test(content);
   }, [content]);
 
   if (!content) return null;
 
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
-
-    // Handle interactive cloze click
-    const clozeTarget = target.closest('.cloze-hole, .cloze-item') as HTMLElement;
-    if (clozeTarget) {
-      e.stopPropagation();
-      e.preventDefault();
-      const isRevealed = clozeTarget.classList.toggle('cloze-revealed');
-      const answer = clozeTarget.getAttribute('data-answer') || '';
-      const hint = clozeTarget.getAttribute('data-hint') || '';
-      if (isRevealed) {
-        clozeTarget.textContent = answer;
-      } else {
-        clozeTarget.textContent = hint ? `[${hint}]` : '[...]';
-      }
-      return;
-    }
-
     if (target && target.tagName === 'IMG') {
       const isMini = target.getAttribute('data-miniaturized') === 'true';
       if (!isMini) {
@@ -51,15 +34,8 @@ export const RichContentRenderer: React.FC<RichContentRendererProps> = ({
   };
 
   if (isHtml) {
-    // Processa tabelas, imagens, trechos com highlight e clozes
+    // Processa tabelas, imagens e trechos com highlight
     let processedHtml = content
-      // Transform Anki {{c1::termo}} and {{c1::termo::dica}} into interactive cloze-hole elements
-      .replace(/\{\{c(\d+)::([^}:]+)(?:::([^}]+))?\}\}/gi, (match, cNum, answer, hint) => {
-        const hintText = hint ? `[${hint}]` : '[...]';
-        const safeAns = answer.replace(/"/g, '&quot;');
-        const safeHint = (hint || '').replace(/"/g, '&quot;');
-        return `<span class="cloze-hole" data-answer="${safeAns}" data-hint="${safeHint}" data-cloze-index="${cNum}" title="Clique para revelar / ocultar">${hintText}</span>`;
-      })
       .replace(/<table\b/gi, '<div class="overflow-x-auto my-3 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xs"><table class="w-full border-collapse text-xs sm:text-sm text-left"')
       .replace(/<\/table>/gi, '</table></div>')
       .replace(/<th\b/gi, '<th class="p-2.5 sm:p-3 bg-gray-100 dark:bg-gray-800 font-bold border-b border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100"')

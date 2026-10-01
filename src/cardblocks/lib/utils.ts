@@ -47,64 +47,17 @@ const escapeHtml = (unsafe: string) => {
 
 export function sanitizeHtml(html?: string) {
   if (!html) return '';
-  return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: [
-      'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'span', 'div', 'b', 'strong',
-      'i', 'em', 'u', 's', 'strike', 'ul', 'ol', 'li', 'blockquote', 'hr',
-      'br', 'pre', 'code', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
-      'img', 'video', 'audio', 'details', 'summary', 'mark', 'sub', 'sup',
-      'svg', 'path', 'input', 'button', 'a', 'section', 'article', 'aside',
-      'figure', 'figcaption', 'kbd', 'abbr'
-    ],
-    ALLOWED_ATTR: [
-      'class', 'style', 'src', 'alt', 'title', 'href', 'target', 'rel',
-      'data-*', 'data-cloze', 'data-answer', 'data-hint', 'data-revealed',
-      'width', 'height', 'controls', 'type', 'checked', 'disabled',
-      'viewBox', 'fill', 'stroke', 'stroke-width', 'id', 'name', 'colspan', 'rowspan'
-    ],
-    FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form', 'base', 'meta', 'link'],
-    FORBID_ATTR: ['onerror', 'onload', 'onmouseover', 'onfocus', 'onblur'],
-    ALLOW_DATA_ATTR: true,
-  });
+  return html;
 }
 
 export function renderCardText(html?: string, forceRevealCloze: boolean = false) {
   if (!html) return '';
   // Replace {{c1::answer}} with interactive cloze span
-  let parsed = html.replace(/{{c(\d*)::(.*?)(?:::.*?)?}}/g, (_match, _num, p1) => {
+  let parsed = html.replace(/{{c\d*::(.*?)(?:::.*?)?}}/g, (match, p1) => {
     const safeAnswer = escapeHtml(p1);
     const content = forceRevealCloze ? safeAnswer : '[...]';
     const classes = forceRevealCloze ? 'cloze-hole cloze-revealed' : 'cloze-hole';
-    return `<span class="${classes}" data-answer="${safeAnswer}" data-revealed="${forceRevealCloze}">${content}</span>`;
+    return `<span class="${classes}" onclick="this.classList.add('cloze-revealed'); this.innerHTML = this.getAttribute('data-answer'); event.stopPropagation();" data-answer="${safeAnswer}">${content}</span>`;
   });
   return sanitizeHtml(parsed);
-}
-
-export function hasInteractiveHtml(html?: string): boolean {
-  if (!html) return false;
-  return /<(?:style|script|link|iframe|canvas|svg|table|details|form)\b/i.test(html) ||
-         /on\w+\s*=/i.test(html) ||
-         html.includes('data-html-widget') ||
-         html.includes('interactive-note-widget') ||
-         html.includes('class="card"');
-}
-
-export function renderNoteContentWithClozes(html?: string, forceRevealCloze: boolean = false, preserveInteractive: boolean = false) {
-  if (!html) return '';
-  // Se contiver elementos interativos (scripts/estilos/widgets) ou preserveInteractive for true,
-  // preservamos a integridade dos scripts/estilos sem deletar via DOMPurify agressivo
-  const baseHtml = (preserveInteractive || hasInteractiveHtml(html)) ? html : sanitizeHtml(html);
-  
-  // Replaces Anki style cloze deletions {{c1::answer}} or {{c1::answer::hint}} with interactive cloze spans
-  return baseHtml.replace(/{{c(\d*)::(.*?)(?:::([^}]*))?}}/g, (_match, clozeNum, answer, hint) => {
-    const safeAnswer = escapeHtml(answer);
-    const safeHint = hint ? escapeHtml(hint) : '';
-    const clozeLabel = safeHint ? `[${safeHint}]` : `[...]`;
-    const content = forceRevealCloze ? safeAnswer : clozeLabel;
-    const classes = forceRevealCloze
-      ? 'cloze-hole cloze-revealed px-1.5 py-0.5 rounded font-bold cursor-pointer transition-all inline-flex items-center text-emerald-700 bg-emerald-100 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
-      : 'cloze-hole px-1.5 py-0.5 rounded font-bold cursor-pointer transition-all inline-flex items-center text-blue-700 bg-blue-100 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-300 dark:border-blue-800 hover:scale-105';
-
-    return `<span class="${classes}" data-note-cloze="true" data-cloze-num="${clozeNum || '1'}" data-answer="${safeAnswer}" data-hint="${safeHint}" data-revealed="${forceRevealCloze ? 'true' : 'false'}" title="${forceRevealCloze ? 'Clique para ocultar' : 'Clique para revelar a resposta'}">${content}</span>`;
-  });
 }

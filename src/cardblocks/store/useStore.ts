@@ -417,15 +417,6 @@ export interface StoreState {
   ) => void;
   resetQuestionStats: (questionId: string) => void;
   resetBankStats: (bankId: string) => void;
-  resetSubjectStats: (subjectName?: string) => void;
-  resetSystemStats: (systemName?: string) => void;
-  resetDateStats: (dateStr: string) => void;
-  resetStatusStats: (status: 'correct' | 'incorrect') => void;
-  resetPerformanceTimes: () => void;
-  resetStudyDeskSessions: () => void;
-  resetManualStudyLogs: () => void;
-  resetChronologicalStats: () => void;
-  resetAllQuestionStats: () => void;
   updateQuestionNotes: (questionId: string, notes: string) => void;
   toggleQuestionFlag: (questionId: string) => void;
 
@@ -1409,242 +1400,6 @@ export const useStore = create<StoreState>()(
           }));
         },
 
-        resetSubjectStats: (subjectName) => {
-          set(state => {
-            const matchSubj = (s?: string) => {
-              if (!subjectName || subjectName === 'all') return true;
-              return (s || '').trim().toLowerCase() === subjectName.trim().toLowerCase();
-            };
-
-            const updatedQuestions = state.questions.map(q => {
-              if (!matchSubj(q.subject)) return q;
-              return {
-                ...q,
-                status: 'unused' as const,
-                selectedChoiceId: undefined,
-                resolutionTimeSeconds: 0,
-                reviewTimeSeconds: 0,
-                attempts: [],
-                lastAnsweredAt: undefined,
-                updatedAt: Date.now(),
-              };
-            });
-
-            const updatedSessions = (state.studyDeskSessions || []).map(sess => {
-              const remainingRecords = (sess.questionRecords || []).filter(r => !matchSubj(r.subject));
-              const correct = remainingRecords.filter(r => r.isCorrect).length;
-              return {
-                ...sess,
-                questionRecords: remainingRecords,
-                completedQuestions: remainingRecords.length,
-                correctCount: correct,
-                incorrectCount: remainingRecords.length - correct,
-              };
-            }).filter(s => s.questionRecords.length > 0);
-
-            return {
-              questions: updatedQuestions,
-              studyDeskSessions: updatedSessions,
-            };
-          });
-        },
-
-        resetSystemStats: (systemName) => {
-          set(state => {
-            const matchSys = (s?: string) => {
-              if (!systemName || systemName === 'all') return true;
-              return (s || '').trim().toLowerCase() === systemName.trim().toLowerCase();
-            };
-
-            const updatedQuestions = state.questions.map(q => {
-              if (!matchSys(q.system)) return q;
-              return {
-                ...q,
-                status: 'unused' as const,
-                selectedChoiceId: undefined,
-                resolutionTimeSeconds: 0,
-                reviewTimeSeconds: 0,
-                attempts: [],
-                lastAnsweredAt: undefined,
-                updatedAt: Date.now(),
-              };
-            });
-
-            const updatedSessions = (state.studyDeskSessions || []).map(sess => {
-              const remainingRecords = (sess.questionRecords || []).filter(r => !matchSys(r.system));
-              const correct = remainingRecords.filter(r => r.isCorrect).length;
-              return {
-                ...sess,
-                questionRecords: remainingRecords,
-                completedQuestions: remainingRecords.length,
-                correctCount: correct,
-                incorrectCount: remainingRecords.length - correct,
-              };
-            }).filter(s => s.questionRecords.length > 0);
-
-            return {
-              questions: updatedQuestions,
-              studyDeskSessions: updatedSessions,
-            };
-          });
-        },
-
-        resetDateStats: (dateStr) => {
-          set(state => {
-            const updatedQuestions = state.questions.map(q => {
-              if (!q.lastAnsweredAt) return q;
-              const d = new Date(q.lastAnsweredAt);
-              const qDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-              if (qDate !== dateStr) return q;
-              return {
-                ...q,
-                status: 'unused' as const,
-                selectedChoiceId: undefined,
-                resolutionTimeSeconds: 0,
-                reviewTimeSeconds: 0,
-                attempts: (q.attempts || []).filter(att => {
-                  const attDate = new Date(att.timestamp);
-                  const attStr = `${attDate.getFullYear()}-${String(attDate.getMonth() + 1).padStart(2, '0')}-${String(attDate.getDate()).padStart(2, '0')}`;
-                  return attStr !== dateStr;
-                }),
-                lastAnsweredAt: undefined,
-                updatedAt: Date.now(),
-              };
-            });
-
-            const updatedSessions = (state.studyDeskSessions || []).map(sess => {
-              const remainingRecords = (sess.questionRecords || []).filter(r => {
-                if (!r.answeredAt) return true;
-                const rDate = new Date(r.answeredAt);
-                const rStr = `${rDate.getFullYear()}-${String(rDate.getMonth() + 1).padStart(2, '0')}-${String(rDate.getDate()).padStart(2, '0')}`;
-                return rStr !== dateStr;
-              });
-              const correct = remainingRecords.filter(r => r.isCorrect).length;
-              return {
-                ...sess,
-                questionRecords: remainingRecords,
-                completedQuestions: remainingRecords.length,
-                correctCount: correct,
-                incorrectCount: remainingRecords.length - correct,
-              };
-            }).filter(s => s.questionRecords.length > 0);
-
-            return {
-              questions: updatedQuestions,
-              studyDeskSessions: updatedSessions,
-            };
-          });
-        },
-
-        resetStatusStats: (status) => {
-          set(state => {
-            const updatedQuestions = state.questions.map(q => {
-              if (q.status !== status) return q;
-              return {
-                ...q,
-                status: 'unused' as const,
-                selectedChoiceId: undefined,
-                resolutionTimeSeconds: 0,
-                reviewTimeSeconds: 0,
-                attempts: [],
-                lastAnsweredAt: undefined,
-                updatedAt: Date.now(),
-              };
-            });
-
-            const updatedSessions = (state.studyDeskSessions || []).map(sess => {
-              const remainingRecords = (sess.questionRecords || []).filter(r => {
-                if (status === 'correct' && r.isCorrect) return false;
-                if (status === 'incorrect' && !r.isCorrect) return false;
-                return true;
-              });
-              const correct = remainingRecords.filter(r => r.isCorrect).length;
-              return {
-                ...sess,
-                questionRecords: remainingRecords,
-                completedQuestions: remainingRecords.length,
-                correctCount: correct,
-                incorrectCount: remainingRecords.length - correct,
-              };
-            }).filter(s => s.questionRecords.length > 0);
-
-            return {
-              questions: updatedQuestions,
-              studyDeskSessions: updatedSessions,
-            };
-          });
-        },
-
-        resetPerformanceTimes: () => {
-          set(state => ({
-            questions: state.questions.map(q => ({
-              ...q,
-              resolutionTimeSeconds: 0,
-              reviewTimeSeconds: 0,
-              updatedAt: Date.now(),
-            })),
-            studyDeskSessions: (state.studyDeskSessions || []).map(s => ({
-              ...s,
-              totalResolutionTimeSeconds: 0,
-              totalReviewTimeSeconds: 0,
-              questionRecords: (s.questionRecords || []).map(r => ({
-                ...r,
-                resolutionTimeSeconds: 0,
-                reviewTimeSeconds: 0,
-              }))
-            }))
-          }));
-        },
-
-        resetStudyDeskSessions: () => {
-          set({
-            studyDeskSessions: [],
-            activeDeskSessionId: null,
-          });
-        },
-
-        resetManualStudyLogs: () => {
-          try {
-            localStorage.removeItem('usmle_study_logs_v4');
-            localStorage.removeItem('usmle_study_logs_v3');
-            window.dispatchEvent(new Event('usmle_logs_updated'));
-          } catch (e) {}
-        },
-
-        resetChronologicalStats: () => {
-          set(state => ({
-            studyDeskSessions: [],
-            activeDeskSessionId: null,
-            questions: state.questions.map(q => ({
-              ...q,
-              lastAnsweredAt: undefined,
-              attempts: [],
-              status: 'unused' as const,
-              resolutionTimeSeconds: 0,
-              reviewTimeSeconds: 0,
-              selectedChoiceId: undefined,
-              updatedAt: Date.now(),
-            }))
-          }));
-        },
-
-        resetAllQuestionStats: () => {
-          set(state => ({
-            studyDeskSessions: [],
-            activeDeskSessionId: null,
-            questions: state.questions.map(q => ({
-              ...q,
-              status: 'unused' as const,
-              selectedChoiceId: undefined,
-              resolutionTimeSeconds: 0,
-              reviewTimeSeconds: 0,
-              attempts: [],
-              lastAnsweredAt: undefined,
-              updatedAt: Date.now(),
-            }))
-          }));
-        },
-
         updateQuestionNotes: (questionId, notes) => {
           set(state => ({
             questions: state.questions.map(q => {
@@ -2248,8 +2003,8 @@ ${objective ? `<blockquote><p><b>Educational Objective:</b> ${objective}</p></bl
               isCorrect,
               resolutionTimeSeconds: Math.max(1, Math.round(resolutionTimeSeconds || 0)),
               reviewTimeSeconds: Math.max(0, Math.round(reviewTimeSeconds || 0)),
-              subject: (subject || '').trim() || 'Geral',
-              system: (system || '').trim() || 'Geral',
+              subject: subject || '',
+              system: system || '',
               answeredAt: Date.now(),
             };
 
@@ -2277,49 +2032,6 @@ ${objective ? `<blockquote><p><b>Educational Objective:</b> ${objective}</p></bl
 
               updatedSessions = [...sessions];
               updatedSessions[activeIdx] = updatedSession;
-            } else {
-              // Cria ou atualiza uma sessão contínua para sincronização automática da extensão
-              const extSessionId = 'desk-sess-ext-live';
-              const existingExtIdx = sessions.findIndex(s => s.id === extSessionId);
-              if (existingExtIdx !== -1) {
-                const current = sessions[existingExtIdx];
-                const prevRecords = current.questionRecords || [];
-                const withoutThis = prevRecords.filter(r => r.qid !== qid);
-                const updatedRecords = [...withoutThis, record];
-                const correctCount = updatedRecords.filter(r => r.isCorrect).length;
-                const incorrectCount = updatedRecords.filter(r => !r.isCorrect).length;
-                const totalResolutionTimeSeconds = updatedRecords.reduce((acc, r) => acc + r.resolutionTimeSeconds, 0);
-                const totalReviewTimeSeconds = updatedRecords.reduce((acc, r) => acc + r.reviewTimeSeconds, 0);
-
-                const updatedSession: StudyDeskSession = {
-                  ...current,
-                  totalQuestions: Math.max(current.totalQuestions || 1, updatedRecords.length),
-                  completedQuestions: updatedRecords.length,
-                  correctCount,
-                  incorrectCount,
-                  totalResolutionTimeSeconds,
-                  totalReviewTimeSeconds,
-                  questionRecords: updatedRecords,
-                };
-                updatedSessions = [...sessions];
-                updatedSessions[existingExtIdx] = updatedSession;
-              } else {
-                const newExtSession: StudyDeskSession = {
-                  id: extSessionId,
-                  name: 'Questões Capturadas pela Extensão',
-                  startedAt: Date.now(),
-                  totalQuestions: 1,
-                  completedQuestions: 1,
-                  correctCount: isCorrect ? 1 : 0,
-                  incorrectCount: isCorrect ? 0 : 1,
-                  totalResolutionTimeSeconds: record.resolutionTimeSeconds,
-                  totalReviewTimeSeconds: record.reviewTimeSeconds,
-                  targetResolutionTimeSeconds: 75,
-                  targetReviewTimeSeconds: 150,
-                  questionRecords: [record],
-                };
-                updatedSessions = [newExtSession, ...sessions];
-              }
             }
 
             // Atualiza também na questão correspondente no banco
@@ -2336,13 +2048,13 @@ ${objective ? `<blockquote><p><b>Educational Objective:</b> ${objective}</p></bl
               return {
                 ...q,
                 status: isCorrect ? ('correct' as const) : ('incorrect' as const),
-                selectedChoiceId: selectedChoiceId || q.selectedChoiceId,
+                selectedChoiceId,
                 resolutionTimeSeconds: (q.resolutionTimeSeconds || 0) + record.resolutionTimeSeconds,
                 reviewTimeSeconds: (q.reviewTimeSeconds || 0) + record.reviewTimeSeconds,
                 attempts: [...attempts, newAttempt],
                 lastAnsweredAt: Date.now(),
-                subject: (subject || '').trim() || q.subject || 'Geral',
-                system: (system || '').trim() || q.system || 'Geral',
+                subject: subject || q.subject,
+                system: system || q.system,
                 updatedAt: Date.now(),
               };
             });

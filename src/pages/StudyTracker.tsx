@@ -50,7 +50,6 @@ import { DailyLogSection } from "../components/DailyLogSection";
 import { StudyTimeline } from "../components/StudyTimeline";
 import { StudyCalendar } from "../components/StudyCalendar";
 import { ScoreChart } from "../components/ScoreChart";
-import { SubjectSystemsBreakdown } from "../components/SubjectSystemsBreakdown";
 
 const DAYS_OF_WEEK = [
   { id: 0, name: 'Dom', short: 'D' },
@@ -1491,9 +1490,6 @@ export default function StudyTracker({ initialTab }: { initialTab?: 'planner' | 
             />
 
             <ScoreChart logs={studyLogs} />
-
-            {/* Nova Seção: Avaliação de desempenho de cada System dentro dos Subjects */}
-            <SubjectSystemsBreakdown />
 
           </div>
         )}

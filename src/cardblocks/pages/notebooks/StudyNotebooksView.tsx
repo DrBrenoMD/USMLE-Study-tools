@@ -46,7 +46,7 @@ import {
   CornerDownRight,
   FolderTree
 } from 'lucide-react';
-import { sanitizeHtml, renderNoteContentWithClozes, cn } from '../../lib/utils';
+import { sanitizeHtml, cn } from '../../lib/utils';
 import { format } from 'date-fns';
 import { PdfExportModal } from '../../components/PdfExportModal';
 import { NoteAssociationsPreviewModal } from '../../components/NoteAssociationsPreviewModal';
@@ -55,7 +55,6 @@ import { CodeSandboxRunner } from '../../components/CodeSandboxRunner';
 import { VideoEmbedPlayer } from '../../components/VideoEmbedPlayer';
 import { AudioVoiceRecorder } from '../../components/AudioVoiceRecorder';
 import { InlineNoteRichEditor } from './InlineNoteRichEditor';
-import { NoteContentViewer } from './NoteContentViewer';
 
 interface StudyNotebooksViewProps {
   onNavigate: (page: Page) => void;
@@ -158,33 +157,6 @@ export const StudyNotebooksView: React.FC<StudyNotebooksViewProps> = ({
   // Fast inline title editing
   const [editingTitleNoteId, setEditingTitleNoteId] = useState<string | null>(null);
   const [inlineTitleValue, setInlineTitleValue] = useState('');
-
-  // Per-note Clozes Reveal state for active recall in notes
-  const [revealedClozeNotes, setRevealedClozeNotes] = useState<Record<string, boolean>>({});
-
-  const handleNoteContentClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const target = e.target as HTMLElement;
-    const clozeSpan = target.closest('[data-note-cloze="true"]') as HTMLElement | null;
-    if (clozeSpan) {
-      e.stopPropagation();
-      const isRevealed = clozeSpan.getAttribute('data-revealed') === 'true';
-      const answer = clozeSpan.getAttribute('data-answer') || '';
-      const hint = clozeSpan.getAttribute('data-hint') || '';
-      if (isRevealed) {
-        clozeSpan.setAttribute('data-revealed', 'false');
-        clozeSpan.classList.remove('cloze-revealed', 'text-emerald-700', 'bg-emerald-100', 'dark:bg-emerald-950/60', 'dark:text-emerald-300', 'border-emerald-300', 'dark:border-emerald-800');
-        clozeSpan.classList.add('text-blue-700', 'bg-blue-100', 'dark:bg-blue-950/60', 'dark:text-blue-300', 'border-blue-300', 'dark:border-blue-800');
-        clozeSpan.innerHTML = hint ? `[${hint}]` : '[...]';
-        clozeSpan.title = 'Clique para revelar a resposta';
-      } else {
-        clozeSpan.setAttribute('data-revealed', 'true');
-        clozeSpan.classList.remove('text-blue-700', 'bg-blue-100', 'dark:bg-blue-950/60', 'dark:text-blue-300', 'border-blue-300', 'dark:border-blue-800');
-        clozeSpan.classList.add('cloze-revealed', 'text-emerald-700', 'bg-emerald-100', 'dark:bg-emerald-950/60', 'dark:text-emerald-300', 'border-emerald-300', 'dark:border-emerald-800');
-        clozeSpan.innerHTML = answer;
-        clozeSpan.title = 'Clique para ocultar';
-      }
-    }
-  };
 
   // Drag and Drop Reordering States
   const [draggedNoteId, setDraggedNoteId] = useState<string | null>(null);
@@ -1269,27 +1241,6 @@ export const StudyNotebooksView: React.FC<StudyNotebooksViewProps> = ({
                                         <FolderTree className="w-3.5 h-3.5" />
                                       </button>
 
-                                      {/* Toggle Clozes na Nota para Estudo Ativo */}
-                                      {note.content && /{{c\d*::/.test(note.content) && (
-                                        <button
-                                          type="button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setRevealedClozeNotes(prev => ({ ...prev, [note.id]: !prev[note.id] }));
-                                          }}
-                                          className={cn(
-                                            "px-2.5 py-1 rounded-xl text-xs font-bold flex items-center gap-1 transition-all cursor-pointer",
-                                            revealedClozeNotes[note.id]
-                                              ? "bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-800 shadow-xs"
-                                              : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-purple-50 hover:text-purple-600"
-                                          )}
-                                          title={revealedClozeNotes[note.id] ? "Ocultar Clozes na nota (Modo Teste)" : "Revelar todos os Clozes na nota"}
-                                        >
-                                          {revealedClozeNotes[note.id] ? <EyeOff className="w-3.5 h-3.5 text-purple-600" /> : <Eye className="w-3.5 h-3.5 text-purple-600" />}
-                                          <span className="hidden sm:inline">{revealedClozeNotes[note.id] ? 'Ocultar Clozes' : 'Ver Clozes'}</span>
-                                        </button>
-                                      )}
-
                                       {/* Edit Button */}
                                       <button
                                         type="button"
@@ -1330,12 +1281,11 @@ export const StudyNotebooksView: React.FC<StudyNotebooksViewProps> = ({
                                           onCancel={() => setEditingNoteId(null)}
                                         />
                                       ) : (
-                                        <NoteContentViewer
-                                          content={note.content}
-                                          forceRevealClozes={Boolean(revealedClozeNotes[note.id])}
+                                        <div
                                           onDoubleClick={() => setEditingNoteId(note.id)}
-                                          onClick={handleNoteContentClick}
-                                          title="Dê duplo clique para editar ou interaja com clozes/widgets"
+                                          className="prose dark:prose-invert max-w-none text-sm text-gray-900 dark:text-gray-100 leading-relaxed cursor-text min-h-[32px]"
+                                          dangerouslySetInnerHTML={{ __html: sanitizeHtml(note.content) || '<p class="text-gray-400 italic">Nota vazia. Clique duas vezes para escrever...</p>' }}
+                                          title="Dê duplo clique para editar"
                                         />
                                       )}
 

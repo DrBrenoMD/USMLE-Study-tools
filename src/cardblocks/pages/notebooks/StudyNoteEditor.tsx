@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStore, StudyNote, Flashcard, Question } from '../../store/useStore';
 import { Page } from '../../App';
 import {
@@ -23,8 +23,7 @@ import {
   EyeOff,
   Palette,
   Pin,
-  Printer,
-  Brackets
+  Printer
 } from 'lucide-react';
 import { RichEditor } from '../../components/RichEditor';
 import { AudioVoiceRecorder } from '../../components/AudioVoiceRecorder';
@@ -33,8 +32,7 @@ import { CodeSandboxRunner } from '../../components/CodeSandboxRunner';
 import { EmbeddedFlashcardBlock } from '../../components/EmbeddedFlashcardBlock';
 import { IsolatedHtml } from '../../components/IsolatedHtml';
 import { PdfExportModal } from '../../components/PdfExportModal';
-import { sanitizeHtml, renderNoteContentWithClozes } from '../../lib/utils';
-import { NoteContentViewer } from './NoteContentViewer';
+import { sanitizeHtml } from '../../lib/utils';
 
 interface StudyNoteEditorProps {
   noteId: string;
@@ -95,54 +93,6 @@ export const StudyNoteEditor: React.FC<StudyNoteEditorProps> = ({
   const [activeDrawer, setActiveDrawer] = useState<'none' | 'questions' | 'cards' | 'addQuestion' | 'addCard'>('none');
   const [savedFeedback, setSavedFeedback] = useState(false);
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
-  const [studyModeActive, setStudyModeActive] = useState(false);
-  const [forceRevealClozes, setForceRevealClozes] = useState(false);
-
-  // Auto-save do conteúdo da nota com debouncing e flush ao desmontar
-  const contentRef = useRef(content);
-  contentRef.current = content;
-
-  useEffect(() => {
-    if (!note) return;
-    const timer = setTimeout(() => {
-      if (content !== note.content) {
-        updateStudyNote(note.id, { content });
-      }
-    }, 450);
-    return () => clearTimeout(timer);
-  }, [content, note?.id, note?.content, updateStudyNote]);
-
-  useEffect(() => {
-    return () => {
-      if (note && contentRef.current !== note.content) {
-        updateStudyNote(note.id, { content: contentRef.current });
-      }
-    };
-  }, [note?.id, updateStudyNote]);
-
-  const handleNoteContentClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const target = e.target as HTMLElement;
-    const clozeSpan = target.closest('[data-note-cloze="true"]') as HTMLElement | null;
-    if (clozeSpan) {
-      e.stopPropagation();
-      const isRevealed = clozeSpan.getAttribute('data-revealed') === 'true';
-      const answer = clozeSpan.getAttribute('data-answer') || '';
-      const hint = clozeSpan.getAttribute('data-hint') || '';
-      if (isRevealed) {
-        clozeSpan.setAttribute('data-revealed', 'false');
-        clozeSpan.classList.remove('cloze-revealed', 'text-emerald-700', 'bg-emerald-100', 'dark:bg-emerald-950/60', 'dark:text-emerald-300', 'border-emerald-300', 'dark:border-emerald-800');
-        clozeSpan.classList.add('text-blue-700', 'bg-blue-100', 'dark:bg-blue-950/60', 'dark:text-blue-300', 'border-blue-300', 'dark:border-blue-800');
-        clozeSpan.innerHTML = hint ? `[${hint}]` : '[...]';
-        clozeSpan.title = 'Clique para revelar a resposta';
-      } else {
-        clozeSpan.setAttribute('data-revealed', 'true');
-        clozeSpan.classList.remove('text-blue-700', 'bg-blue-100', 'dark:bg-blue-950/60', 'dark:text-blue-300', 'border-blue-300', 'dark:border-blue-800');
-        clozeSpan.classList.add('cloze-revealed', 'text-emerald-700', 'bg-emerald-100', 'dark:bg-emerald-950/60', 'dark:text-emerald-300', 'border-emerald-300', 'dark:border-emerald-800');
-        clozeSpan.innerHTML = answer;
-        clozeSpan.title = 'Clique para ocultar';
-      }
-    }
-  };
 
   // Mídias
   const [mediaItems, setMediaItems] = useState(note?.mediaItems || []);
@@ -864,75 +814,14 @@ export const StudyNoteEditor: React.FC<StudyNoteEditorProps> = ({
         </div>
       </div>
 
-      {/* View Switcher: Modo Edição vs Modo Estudo / Clozes */}
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-2xl text-xs font-bold">
-          <button
-            type="button"
-            onClick={() => setStudyModeActive(false)}
-            className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
-              !studyModeActive
-                ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-300 shadow-xs'
-                : 'text-gray-500 hover:text-gray-900 dark:text-gray-400'
-            }`}
-          >
-            ✏️ Modo Edição
-          </button>
-          <button
-            type="button"
-            onClick={() => setStudyModeActive(true)}
-            className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
-              studyModeActive
-                ? 'bg-white dark:bg-gray-700 text-purple-600 dark:text-purple-300 shadow-xs'
-                : 'text-gray-500 hover:text-gray-900 dark:text-gray-400'
-            }`}
-          >
-            <Brackets className="w-3.5 h-3.5 text-purple-600" />
-            <span>Modo Estudo (Active Recall)</span>
-          </button>
-        </div>
-
-        {studyModeActive && (
-          <button
-            type="button"
-            onClick={() => setForceRevealClozes(!forceRevealClozes)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
-              forceRevealClozes
-                ? 'bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-300'
-                : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200'
-            }`}
-          >
-            {forceRevealClozes ? <EyeOff className="w-3.5 h-3.5 text-purple-600" /> : <Eye className="w-3.5 h-3.5 text-purple-600" />}
-            <span>{forceRevealClozes ? 'Ocultar Respostas' : 'Revelar Todas Respostas'}</span>
-          </button>
-        )}
-      </div>
-
-      {/* Notion-Style Rich Text Editor / Modo Estudo Ativo */}
+      {/* Notion-Style Rich Text Editor */}
       <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-200 dark:border-gray-800 p-6 shadow-xs min-h-[400px]">
-        {studyModeActive ? (
-          <div className="space-y-4">
-            <div className="p-3 bg-purple-50/70 dark:bg-purple-950/30 border border-purple-100 dark:border-purple-900/40 rounded-2xl flex items-center justify-between text-xs text-purple-900 dark:text-purple-200">
-              <span className="flex items-center gap-2">
-                <span>🎯</span>
-                <span><b>Modo Estudo Ativo:</b> Clique nas caixas ocultas <code>[...]</code> para testar e revelar suas respostas.</span>
-              </span>
-            </div>
-            <NoteContentViewer
-              content={content}
-              forceRevealClozes={forceRevealClozes}
-              onClick={handleNoteContentClick}
-              className="min-h-[250px]"
-            />
-          </div>
-        ) : (
-          <RichEditor
-            value={content}
-            onChange={setContent}
-            placeholder="Comece a escrever sua nota ou pressione as opções acima para inserir vídeos, áudios, flashcards..."
-            minHeight="350px"
-          />
-        )}
+        <RichEditor
+          value={content}
+          onChange={setContent}
+          placeholder="Comece a escrever sua nota ou pressione as opções acima para inserir vídeos, áudios, flashcards..."
+          minHeight="350px"
+        />
       </div>
 
       {/* Flashcards Embutidos Exibidos na Nota com Botão Revelar/Ocultar Verso */}
