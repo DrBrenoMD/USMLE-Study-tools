@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useStore, StudyNote, Flashcard, Question } from '../../store/useStore';
 import { Page } from '../../App';
 import {
@@ -34,6 +34,7 @@ import { EmbeddedFlashcardBlock } from '../../components/EmbeddedFlashcardBlock'
 import { IsolatedHtml } from '../../components/IsolatedHtml';
 import { PdfExportModal } from '../../components/PdfExportModal';
 import { sanitizeHtml, renderNoteContentWithClozes } from '../../lib/utils';
+import { NoteContentViewer } from './NoteContentViewer';
 
 interface StudyNoteEditorProps {
   noteId: string;
@@ -96,6 +97,28 @@ export const StudyNoteEditor: React.FC<StudyNoteEditorProps> = ({
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
   const [studyModeActive, setStudyModeActive] = useState(false);
   const [forceRevealClozes, setForceRevealClozes] = useState(false);
+
+  // Auto-save do conteúdo da nota com debouncing e flush ao desmontar
+  const contentRef = useRef(content);
+  contentRef.current = content;
+
+  useEffect(() => {
+    if (!note) return;
+    const timer = setTimeout(() => {
+      if (content !== note.content) {
+        updateStudyNote(note.id, { content });
+      }
+    }, 450);
+    return () => clearTimeout(timer);
+  }, [content, note?.id, note?.content, updateStudyNote]);
+
+  useEffect(() => {
+    return () => {
+      if (note && contentRef.current !== note.content) {
+        updateStudyNote(note.id, { content: contentRef.current });
+      }
+    };
+  }, [note?.id, updateStudyNote]);
 
   const handleNoteContentClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
@@ -895,10 +918,11 @@ export const StudyNoteEditor: React.FC<StudyNoteEditorProps> = ({
                 <span><b>Modo Estudo Ativo:</b> Clique nas caixas ocultas <code>[...]</code> para testar e revelar suas respostas.</span>
               </span>
             </div>
-            <div
+            <NoteContentViewer
+              content={content}
+              forceRevealClozes={forceRevealClozes}
               onClick={handleNoteContentClick}
-              className="prose dark:prose-invert max-w-none text-base text-gray-900 dark:text-gray-100 leading-relaxed cursor-pointer"
-              dangerouslySetInnerHTML={{ __html: renderNoteContentWithClozes(content, forceRevealClozes) || '<p class="text-gray-400 italic">Nota vazia. Mude para o Modo Edição para digitar.</p>' }}
+              className="min-h-[250px]"
             />
           </div>
         ) : (

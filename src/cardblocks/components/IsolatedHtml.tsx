@@ -6,7 +6,17 @@ function SafeHtmlPiece({ html, className }: { html?: string, className?: string 
   const [themeColor, setThemeColor] = useState('inherit');
   const [bgColor, setBgColor] = useState('transparent');
 
-  const needsIsolation = html && (/<(style|script|link|iframe)\b/i.test(html) || html.includes('class="card"') || html.includes('nightMode') || html.includes("tab-content"));
+  const needsIsolation = Boolean(
+    html && (
+      /<(?:style|script|link|iframe|canvas|svg|table|details)\b/i.test(html) ||
+      /on\w+\s*=/i.test(html) ||
+      html.includes('class="card"') ||
+      html.includes('nightMode') ||
+      html.includes('tab-content') ||
+      html.includes('data-html-widget') ||
+      html.includes('interactive-note-widget')
+    )
+  );
 
   useEffect(() => {
     if (!needsIsolation) return;
@@ -114,6 +124,22 @@ function SafeHtmlPiece({ html, className }: { html?: string, className?: string 
           }
         });
       });
+
+      // Interactive Cloze support inside IsolatedHtml
+      document.addEventListener('click', function(e) {
+        const cloze = e.target.closest('.cloze-hole, [data-note-cloze="true"]');
+        if (cloze) {
+          const revealed = cloze.classList.toggle('cloze-revealed');
+          const answer = cloze.getAttribute('data-answer');
+          const hint = cloze.getAttribute('data-hint');
+          if (revealed) {
+            cloze.textContent = answer || cloze.textContent;
+          } else {
+            cloze.textContent = hint ? '[' + hint + ']' : '[...]';
+          }
+          sendHeight();
+        }
+      });
     </script>
   `;
 
@@ -134,13 +160,57 @@ function SafeHtmlPiece({ html, className }: { html?: string, className?: string 
             :root {
               color-scheme: dark;
             }
+            *, *::before, *::after {
+              box-sizing: border-box !important;
+            }
             html, body {
               margin: 0;
-              padding: 8px; /* Added padding for better visualization in iframes */
-              font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+              padding: 10px;
+              font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
               color: ${themeColor} !important;
+              max-width: 100vw;
+              box-sizing: border-box;
+              overflow-x: auto;
               overflow-y: hidden;
               background: ${bgColor} !important;
+              word-break: break-word;
+              overflow-wrap: break-word;
+            }
+            #content {
+              max-width: 100%;
+              box-sizing: border-box;
+            }
+            /* Table formatting and container bounds: never burst outside */
+            table {
+              width: 100%;
+              max-width: 100% !important;
+              border-collapse: collapse;
+              margin: 8px 0;
+              font-size: 0.9em;
+              display: table;
+            }
+            th, td {
+              padding: 8px 12px;
+              border: 1px solid rgba(156, 163, 175, 0.25);
+              text-align: left;
+            }
+            th {
+              background: rgba(156, 163, 175, 0.12);
+              font-weight: 700;
+            }
+            /* Interactive widgets & cards containment */
+            .interactive-note-widget, .card, .widget, .calculator-box {
+              max-width: 100% !important;
+              box-sizing: border-box !important;
+              overflow-x: auto;
+            }
+            button, input, select, textarea {
+              font-family: inherit;
+              box-sizing: border-box;
+              max-width: 100%;
+            }
+            button {
+              cursor: pointer;
             }
             /* Override common Anki wrapper class backgrounds so they don't break dark mode */
             .card, .nightMode, #content, #front, #back, #details {
@@ -212,7 +282,8 @@ function SafeHtmlPiece({ html, className }: { html?: string, className?: string 
       allowTransparency={true}
       style={{
         width: '100%',
-        minHeight: '20px',
+        maxWidth: '100%',
+        minHeight: '24px',
         height,
         border: 'none',
         overflow: 'hidden',

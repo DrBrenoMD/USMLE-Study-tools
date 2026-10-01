@@ -264,9 +264,20 @@ export function useQBankSync() {
       });
 
       // Se a questão veio com resultado de resolução da extensão ou submit
-      if (payload.isAnswered || payload.isCorrect !== undefined || payload.selectedChoice || payload.selectedChoiceId) {
-        const isCorrect = Boolean(payload.isCorrect);
-        const resolutionTimeSeconds = Number(payload.resolutionTimeSeconds || payload.solveTime || payload.timeSeconds || 0);
+      const isAnswered = Boolean(
+        payload.isAnswered ||
+        payload.isCorrect !== undefined ||
+        payload.status === 'correct' ||
+        payload.status === 'incorrect' ||
+        payload.selectedChoice ||
+        payload.selectedChoiceId
+      );
+
+      if (isAnswered) {
+        const isCorrect = payload.isCorrect !== undefined
+          ? Boolean(payload.isCorrect)
+          : (payload.status === 'correct' || (Boolean(payload.selectedChoice) && Boolean(payload.correctChoice) && payload.selectedChoice.toString().toUpperCase() === payload.correctChoice.toString().toUpperCase()));
+        const resolutionTimeSeconds = Number(payload.resolutionTimeSeconds || payload.solveTime || payload.timeSeconds || 60);
         const reviewTimeSeconds = Number(payload.reviewTimeSeconds || payload.reviewTime || 0);
         const selectedChoiceId = (payload.selectedChoiceId || payload.selectedChoice || '').toString();
         const correctChoiceId = alternatives.find(a => a.isCorrect)?.id;
@@ -279,8 +290,8 @@ export function useQBankSync() {
           isCorrect,
           resolutionTimeSeconds,
           reviewTimeSeconds,
-          subject,
-          system,
+          subject: (subject || '').trim() || 'Geral',
+          system: (system || '').trim() || 'Geral',
         });
 
         // Sincroniza com os logs do Study Tracker (Heatmap e Gráfico de Desempenho)

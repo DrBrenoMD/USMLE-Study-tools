@@ -33,6 +33,7 @@ import {
   HelpCircle
 } from 'lucide-react';
 import { cn, sanitizeHtml } from '../../lib/utils';
+import { IsolatedHtml } from '../../components/IsolatedHtml';
 
 interface InlineNoteRichEditorProps {
   initialContent: string;
@@ -88,8 +89,9 @@ export const InlineNoteRichEditor: React.FC<InlineNoteRichEditorProps> = ({
   const [rawHtmlInput, setRawHtmlInput] = useState('');
   const [htmlPreviewTab, setHtmlPreviewTab] = useState<'code' | 'preview'>('code');
 
-  // Debounced auto-save timer ref
+  // Debounced auto-save timer ref and content ref
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const contentRef = useRef<string>(initialContent || '');
 
   // Initialize content
   useEffect(() => {
@@ -100,6 +102,7 @@ export const InlineNoteRichEditor: React.FC<InlineNoteRichEditorProps> = ({
       
       editorRef.current.innerHTML = cleanContent;
       setContent(cleanContent);
+      contentRef.current = cleanContent;
 
       if (autoFocus) {
         editorRef.current.focus();
@@ -115,6 +118,7 @@ export const InlineNoteRichEditor: React.FC<InlineNoteRichEditorProps> = ({
 
   // Trigger debounced auto-save on content change
   const triggerAutoSave = useCallback((newHtml: string) => {
+    contentRef.current = newHtml;
     setSaveStatus('saving');
     if (autoSaveTimeoutRef.current) {
       clearTimeout(autoSaveTimeoutRef.current);
@@ -122,21 +126,25 @@ export const InlineNoteRichEditor: React.FC<InlineNoteRichEditorProps> = ({
     autoSaveTimeoutRef.current = setTimeout(() => {
       onSave(newHtml);
       setSaveStatus('saved');
-    }, 450);
+    }, 400);
   }, [onSave]);
 
-  // Clean up on unmount and save final state
+  // Clean up on unmount and flush pending save
   useEffect(() => {
     return () => {
       if (autoSaveTimeoutRef.current) {
         clearTimeout(autoSaveTimeoutRef.current);
       }
+      if (contentRef.current !== initialContent) {
+        onSave(contentRef.current);
+      }
     };
-  }, []);
+  }, [onSave, initialContent]);
 
   const handleInput = () => {
     if (editorRef.current) {
       const newHtml = editorRef.current.innerHTML;
+      contentRef.current = newHtml;
       setContent(newHtml);
       triggerAutoSave(newHtml);
     }
@@ -145,6 +153,7 @@ export const InlineNoteRichEditor: React.FC<InlineNoteRichEditorProps> = ({
   const handleBlur = () => {
     if (editorRef.current) {
       const currentHtml = editorRef.current.innerHTML;
+      contentRef.current = currentHtml;
       onSave(currentHtml);
       setSaveStatus('saved');
     }
@@ -155,6 +164,7 @@ export const InlineNoteRichEditor: React.FC<InlineNoteRichEditorProps> = ({
     if (editorRef.current) {
       editorRef.current.focus();
       const newHtml = editorRef.current.innerHTML;
+      contentRef.current = newHtml;
       setContent(newHtml);
       triggerAutoSave(newHtml);
     }
@@ -219,6 +229,7 @@ export const InlineNoteRichEditor: React.FC<InlineNoteRichEditorProps> = ({
   };
 
   const handlePaste = (e: React.ClipboardEvent) => {
+    // 1. Imagens coladas
     const items = e.clipboardData?.items;
     if (items) {
       for (let i = 0; i < items.length; i++) {
@@ -239,6 +250,18 @@ export const InlineNoteRichEditor: React.FC<InlineNoteRichEditorProps> = ({
           }
         }
       }
+    }
+
+    // 2. Colagem de código HTML / JS / Tabelas / Widgets
+    const plainText = e.clipboardData?.getData('text/plain') || '';
+    if (plainText && /<(?:div|table|script|style|p|span|h[1-6]|ul|ol|iframe|blockquote|canvas|svg|form|section|article|button|input|pre|code)\b/i.test(plainText.trim())) {
+      e.preventDefault();
+      const hasInteractive = /<(?:script|style|canvas|svg|iframe)\b/i.test(plainText) || /on\w+\s*=/i.test(plainText);
+      const htmlToInsert = hasInteractive
+        ? `<div class="interactive-note-widget my-3 p-1 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-850/50 max-w-full overflow-hidden" data-html-widget="true">${plainText.trim()}</div><p><br/></p>`
+        : plainText.trim();
+      exec('insertHTML', htmlToInsert);
+      return;
     }
   };
 
@@ -275,8 +298,11 @@ export const InlineNoteRichEditor: React.FC<InlineNoteRichEditorProps> = ({
 
   const handleInsertSafeHtml = (rawHtml: string) => {
     if (!rawHtml.trim()) return;
-    const cleanHtml = sanitizeHtml(rawHtml);
-    exec('insertHTML', cleanHtml);
+    const hasInteractive = /<(?:script|style|canvas|svg|iframe)\b/i.test(rawHtml) || /on\w+\s*=/i.test(rawHtml);
+    const widgetHtml = hasInteractive
+      ? `<div class="interactive-note-widget my-3 p-1 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-850/50 max-w-full overflow-hidden" data-html-widget="true">${rawHtml.trim()}</div><p><br/></p>`
+      : rawHtml.trim();
+    exec('insertHTML', widgetHtml);
     setShowHtmlModal(false);
     setRawHtmlInput('');
   };
@@ -683,24 +709,24 @@ export const InlineNoteRichEditor: React.FC<InlineNoteRichEditorProps> = ({
         </div>
       )}
 
-      {/* Modal Inserir HTML Seguro */}
+      {/* Modal Inserir HTML / JS Interativo */}
       {showHtmlModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="bg-white dark:bg-gray-900 border border-emerald-200 dark:border-emerald-800 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-800 bg-emerald-50/50 dark:bg-emerald-950/20">
               <div className="flex items-center gap-2">
                 <div className="p-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400">
-                  <ShieldCheck className="w-4 h-4" />
+                  <Code className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-gray-900 dark:text-white">Inserir Código HTML Seguro</h3>
-                  <p className="text-[11px] text-gray-500">Sanitização automática via DOMPurify conforme regras de segurança</p>
+                  <h3 className="text-sm font-bold text-gray-900 dark:text-white">Inserir Código HTML / JS Interativo</h3>
+                  <p className="text-[11px] text-gray-500">Suporte completo para códigos HTML, estilos CSS, scripts JavaScript, tabelas e calculadoras clínicas</p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setShowHtmlModal(false)}
-                className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg"
+                className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -709,6 +735,33 @@ export const InlineNoteRichEditor: React.FC<InlineNoteRichEditorProps> = ({
             {/* Presets Rápidos */}
             <div className="px-4 py-2.5 bg-gray-50/80 dark:bg-gray-850 border-b border-gray-200 dark:border-gray-800 flex items-center gap-2 overflow-x-auto text-[11px]">
               <span className="font-bold text-gray-500 shrink-0">Modelos prontos:</span>
+              <button
+                type="button"
+                onClick={() => setRawHtmlInput(`<div style="padding: 14px; background: rgba(59, 130, 246, 0.08); border: 1px solid #3b82f6; border-radius: 12px; font-family: system-ui, sans-serif;">
+  <h4 style="margin: 0 0 8px 0; color: #2563eb; font-size: 14px; font-weight: bold;">🧮 Calculadora de Osmolaridade Plasmática</h4>
+  <p style="margin: 0 0 10px 0; font-size: 12px; opacity: 0.85;">Fórmula: 2 × Na + Glicose/18 + BUN/2.8</p>
+  <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px;">
+    <input id="na_val" type="number" placeholder="Na (ex: 140)" value="140" style="padding: 6px 10px; border-radius: 8px; border: 1px solid #cbd5e1; width: 110px; font-size: 12px; background: #fff; color: #1e293b;" />
+    <input id="gli_val" type="number" placeholder="Glicose (ex: 90)" value="90" style="padding: 6px 10px; border-radius: 8px; border: 1px solid #cbd5e1; width: 120px; font-size: 12px; background: #fff; color: #1e293b;" />
+    <input id="bun_val" type="number" placeholder="BUN (ex: 14)" value="14" style="padding: 6px 10px; border-radius: 8px; border: 1px solid #cbd5e1; width: 110px; font-size: 12px; background: #fff; color: #1e293b;" />
+  </div>
+  <button id="btn_calc" style="padding: 6px 14px; background: #2563eb; color: #fff; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 12px;">Calcular</button>
+  <div id="res_osm" style="margin-top: 10px; font-weight: bold; color: #059669; font-size: 13px;"></div>
+  <script>
+    document.getElementById('btn_calc').onclick = function() {
+      var na = parseFloat(document.getElementById('na_val').value) || 140;
+      var gli = parseFloat(document.getElementById('gli_val').value) || 90;
+      var bun = parseFloat(document.getElementById('bun_val').value) || 14;
+      var osm = (2 * na) + (gli / 18) + (bun / 2.8);
+      document.getElementById('res_osm').innerText = 'Osmolaridade: ' + osm.toFixed(1) + ' mOsm/kg (Normal: 275-295)';
+    };
+  </script>
+</div>`)}
+                className="px-2.5 py-1 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-gray-700 dark:text-gray-300 font-medium shrink-0 cursor-pointer"
+              >
+                🧮 Calculadora Clínica (com JS)
+              </button>
+
               <button
                 type="button"
                 onClick={() => setRawHtmlInput(`<table style="width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 13px;">
@@ -732,7 +785,7 @@ export const InlineNoteRichEditor: React.FC<InlineNoteRichEditorProps> = ({
     </tr>
   </tbody>
 </table>`)}
-                className="px-2.5 py-1 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-gray-700 dark:text-gray-300 font-medium shrink-0"
+                className="px-2.5 py-1 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-gray-700 dark:text-gray-300 font-medium shrink-0 cursor-pointer"
               >
                 📊 Tabela Comparativa
               </button>
@@ -743,7 +796,7 @@ export const InlineNoteRichEditor: React.FC<InlineNoteRichEditorProps> = ({
   <b style="color: #15803d; font-size: 14px;">✅ Pérola USMLE (High-Yield):</b>
   <p style="margin: 4px 0 0 0; font-size: 13px;">A tríade clássica de dor torácica, síncope e dispneia aos esforços indica estenose aórtica grave descompensada.</p>
 </div>`)}
-                className="px-2.5 py-1 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-gray-700 dark:text-gray-300 font-medium shrink-0"
+                className="px-2.5 py-1 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-gray-700 dark:text-gray-300 font-medium shrink-0 cursor-pointer"
               >
                 💡 Card High-Yield
               </button>
@@ -753,7 +806,7 @@ export const InlineNoteRichEditor: React.FC<InlineNoteRichEditorProps> = ({
                 onClick={() => setRawHtmlInput(`<div style="background: #fff1f2; border: 1px solid #fecdd3; padding: 10px 14px; border-radius: 10px; margin: 8px 0; color: #9f1239; font-size: 13px;">
   <b>⚠️ Pegadinha Frequente:</b> Não administrar betabloqueadores em pacientes com feocromocitoma antes de bloqueio alfa-adrenérgico completo!
 </div>`)}
-                className="px-2.5 py-1 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-gray-700 dark:text-gray-300 font-medium shrink-0"
+                className="px-2.5 py-1 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-gray-700 dark:text-gray-300 font-medium shrink-0 cursor-pointer"
               >
                 ⚠️ Alerta / Pegadinha
               </button>
@@ -765,22 +818,22 @@ export const InlineNoteRichEditor: React.FC<InlineNoteRichEditorProps> = ({
                 type="button"
                 onClick={() => setHtmlPreviewTab('code')}
                 className={cn(
-                  "py-2 px-3 border-b-2 transition-colors",
+                  "py-2 px-3 border-b-2 transition-colors cursor-pointer",
                   htmlPreviewTab === 'code' ? "border-emerald-600 text-emerald-600 dark:text-emerald-400" : "border-transparent text-gray-500 hover:text-gray-800"
                 )}
               >
-                Código HTML
+                Código HTML / JS
               </button>
               <button
                 type="button"
                 onClick={() => setHtmlPreviewTab('preview')}
                 className={cn(
-                  "py-2 px-3 border-b-2 transition-colors flex items-center gap-1.5",
+                  "py-2 px-3 border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer",
                   htmlPreviewTab === 'preview' ? "border-emerald-600 text-emerald-600 dark:text-emerald-400" : "border-transparent text-gray-500 hover:text-gray-800"
                 )}
               >
                 <Eye className="w-3.5 h-3.5" />
-                <span>Pré-visualização Segura</span>
+                <span>Pré-visualização Interativa (com JS ativo)</span>
               </button>
             </div>
 
@@ -791,24 +844,24 @@ export const InlineNoteRichEditor: React.FC<InlineNoteRichEditorProps> = ({
                     rows={8}
                     value={rawHtmlInput}
                     onChange={(e) => setRawHtmlInput(e.target.value)}
-                    placeholder="Cole ou digite seu código HTML aqui (ex: tabelas, caixas estilizadas, listas, etc.)..."
+                    placeholder="Cole ou digite seu código HTML/JS aqui (tabelas, scripts, calculadoras interativas, estilos CSS, etc.)..."
                     className="w-full p-3 font-mono text-xs bg-gray-900 text-emerald-400 rounded-xl border border-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-y"
                     autoFocus
                   />
                   <div className="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400">
                     <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span>Scripts, iframes não autorizados e atributos perigosos (como onerror) serão sanitizados com segurança.</span>
+                    <span>Ambiente seguro e isolado: tags de script, CSS e tabelas são executados com contenção automática.</span>
                   </div>
                 </div>
               ) : (
-                <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 min-h-[180px]">
+                <div className="p-2 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 min-h-[180px] max-w-full overflow-hidden">
                   {rawHtmlInput.trim() ? (
-                    <div
-                      className="prose dark:prose-invert max-w-none text-sm"
-                      dangerouslySetInnerHTML={{ __html: sanitizeHtml(rawHtmlInput) }}
+                    <IsolatedHtml
+                      html={rawHtmlInput}
+                      className="w-full max-w-full rounded-xl overflow-hidden min-h-[160px]"
                     />
                   ) : (
-                    <p className="text-xs text-gray-400 italic text-center py-8">Nenhum código HTML informado ainda.</p>
+                    <p className="text-xs text-gray-400 italic text-center py-8">Nenhum código HTML/JS informado ainda.</p>
                   )}
                 </div>
               )}
@@ -816,13 +869,13 @@ export const InlineNoteRichEditor: React.FC<InlineNoteRichEditorProps> = ({
 
             <div className="p-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-850 flex items-center justify-between">
               <span className="text-[11px] text-gray-500 font-medium">
-                Regras de integridade ativas
+                Execução interativa habilitada
               </span>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setShowHtmlModal(false)}
-                  className="px-3 py-1.5 rounded-xl text-xs font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                  className="px-3 py-1.5 rounded-xl text-xs font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors cursor-pointer"
                 >
                   Cancelar
                 </button>

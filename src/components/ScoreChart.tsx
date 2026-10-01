@@ -84,6 +84,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
     filter: StatisticQuestionsFilter;
   } | null>(null);
   const [showResetModal, setShowResetModal] = useState(false);
+  const [dataSourceMode, setDataSourceMode] = useState<'all' | 'questions' | 'logs'>('all');
 
   const {
     questions,
@@ -93,7 +94,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
     resetDateStats
   } = useStore();
 
-  // 1. Processa dados reais consolidados de resolução de questões (ESTRITAMENTE das questões capturadas)
+  // 1. Processa dados reais consolidados de resolução de questões e logs do tracker
   const {
     allRealRecords,
     chartData,
@@ -123,7 +124,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
             questionId: q.id,
             selectedChoiceId: q.selectedChoiceId,
             correctChoiceId: q.correctChoiceId,
-            isCorrect: q.status === 'correct',
+            isCorrect: q.status === 'correct' || (q.attempts && q.attempts.length > 0 ? q.attempts[q.attempts.length - 1].isCorrect : false),
             resolutionTimeSeconds: q.resolutionTimeSeconds || 0,
             reviewTimeSeconds: q.reviewTimeSeconds || 0,
             subject: (q.subject || '').trim() || 'Geral',
@@ -134,21 +135,43 @@ export function ScoreChart({ logs }: ScoreChartProps) {
       }
     });
 
-    // Mapeamento estrito por data real
-    const byDate = new Map<string, { total: number; correct: number; solveSum: number; revSum: number }>();
+    // Mapeamento consolidado por data real
+    const byDate = new Map<string, { total: number; correct: number; solveSum: number; revSum: number; isFromLogs?: boolean }>();
 
-    records.forEach(r => {
-      if (!r.answeredAt) return;
-      const dateStr = format(new Date(r.answeredAt), 'yyyy-MM-dd');
-      const cur = byDate.get(dateStr) || { total: 0, correct: 0, solveSum: 0, revSum: 0 };
-      cur.total += 1;
-      if (r.isCorrect) cur.correct += 1;
-      cur.solveSum += (r.resolutionTimeSeconds || 0);
-      cur.revSum += (r.reviewTimeSeconds || 0);
-      byDate.set(dateStr, cur);
-    });
+    // Processa resoluções do QBank se não estiver no modo exclusivo de logs
+    if (dataSourceMode !== 'logs') {
+      records.forEach(r => {
+        if (!r.answeredAt) return;
+        const dateStr = format(new Date(r.answeredAt), 'yyyy-MM-dd');
+        const cur = byDate.get(dateStr) || { total: 0, correct: 0, solveSum: 0, revSum: 0 };
+        cur.total += 1;
+        if (r.isCorrect) cur.correct += 1;
+        cur.solveSum += (r.resolutionTimeSeconds || 0);
+        cur.revSum += (r.reviewTimeSeconds || 0);
+        byDate.set(dateStr, cur);
+      });
+    }
 
-    // NENHUMA agregação de logs manuais do planner: os dados vêm 100% das questões capturadas!
+    // Processa logs do tracker se modo for 'all' ou 'logs'
+    if (dataSourceMode !== 'questions' && logs && logs.length > 0) {
+      logs.forEach(l => {
+        if (!l.date) return;
+        const dateStr = l.date;
+        const cur = byDate.get(dateStr) || { total: 0, correct: 0, solveSum: 0, revSum: 0, isFromLogs: true };
+        const amount = Number(l.amount) || (l.minutesSpent ? Math.max(1, Math.round(l.minutesSpent / 2)) : 1);
+        
+        if (cur.total === 0 || dataSourceMode === 'logs') {
+          cur.total = amount;
+          if (l.scorePercent !== undefined && l.scorePercent !== null && !isNaN(l.scorePercent)) {
+            cur.correct = Math.round((amount * l.scorePercent) / 100);
+          } else {
+            cur.correct = Math.round(amount * 0.7);
+          }
+          cur.solveSum = (l.minutesSpent || 0) * 60;
+          byDate.set(dateStr, cur);
+        }
+      });
+    }
 
     const today = startOfDay(new Date());
     const startDate = subDays(today, Math.max(1, daysToShow - 1));
@@ -239,7 +262,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
       summaryStats: summary,
       hasAnyData: cumulativeTotalQuestions > 0 || records.length > 0,
     };
-  }, [daysToShow, questions, studyDeskSessions]);
+  }, [daysToShow, questions, studyDeskSessions, logs, dataSourceMode]);
 
   // 2. Processa dados reais por Subject e por System (ESTRITAMENTE SEM DADOS INVENTADOS)
   const { subjectBreakdown, systemBreakdown } = useMemo(() => {
@@ -475,6 +498,51 @@ export function ScoreChart({ logs }: ScoreChartProps) {
             >
               🩺 Por System
             </button>
+          </div>
+
+          {/* Fonte de Dados: Consolidado vs Questões vs Logs */}
+          <div className="flex bg-gray-100 dark:bg-gray-800 p-0.5 rounded-xl text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => setDataSourceMode('all')}
+              className={cn(
+                "px-2.5 py-1 rounded-lg transition-colors cursor-pointer",
+                dataSourceMode === 'all'
+                  ? "bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-300 font-bold shadow-xs"
+                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900"
+              )}
+              title="Exibe dados consolidados de Questões capturadas e Logs de Estudo do Tracker"
+            >
+              ⚡ Geral
+            </button>
+            <button
+              type="button"
+              onClick={() => setDataSourceMode('questions')}
+              className={cn(
+                "px-2.5 py-1 rounded-lg transition-colors cursor-pointer",
+                dataSourceMode === 'questions'
+                  ? "bg-white dark:bg-gray-700 text-emerald-600 dark:text-emerald-300 font-bold shadow-xs"
+                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900"
+              )}
+              title="Exibe apenas questões reais capturadas pela extensão e resolvidas no Desk"
+            >
+              🎯 Questões
+            </button>
+            {logs && logs.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setDataSourceMode('logs')}
+                className={cn(
+                  "px-2.5 py-1 rounded-lg transition-colors cursor-pointer",
+                  dataSourceMode === 'logs'
+                    ? "bg-white dark:bg-gray-700 text-purple-600 dark:text-purple-300 font-bold shadow-xs"
+                    : "text-gray-600 dark:text-gray-400 hover:text-gray-900"
+                )}
+                title="Exibe apenas os logs manuais e automáticos registrados no Study Tracker"
+              >
+                📋 Logs
+              </button>
+            )}
           </div>
 
           {/* Metric Selector (for Subject/System views) */}

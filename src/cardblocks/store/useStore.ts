@@ -2248,8 +2248,8 @@ ${objective ? `<blockquote><p><b>Educational Objective:</b> ${objective}</p></bl
               isCorrect,
               resolutionTimeSeconds: Math.max(1, Math.round(resolutionTimeSeconds || 0)),
               reviewTimeSeconds: Math.max(0, Math.round(reviewTimeSeconds || 0)),
-              subject: subject || '',
-              system: system || '',
+              subject: (subject || '').trim() || 'Geral',
+              system: (system || '').trim() || 'Geral',
               answeredAt: Date.now(),
             };
 
@@ -2277,6 +2277,49 @@ ${objective ? `<blockquote><p><b>Educational Objective:</b> ${objective}</p></bl
 
               updatedSessions = [...sessions];
               updatedSessions[activeIdx] = updatedSession;
+            } else {
+              // Cria ou atualiza uma sessão contínua para sincronização automática da extensão
+              const extSessionId = 'desk-sess-ext-live';
+              const existingExtIdx = sessions.findIndex(s => s.id === extSessionId);
+              if (existingExtIdx !== -1) {
+                const current = sessions[existingExtIdx];
+                const prevRecords = current.questionRecords || [];
+                const withoutThis = prevRecords.filter(r => r.qid !== qid);
+                const updatedRecords = [...withoutThis, record];
+                const correctCount = updatedRecords.filter(r => r.isCorrect).length;
+                const incorrectCount = updatedRecords.filter(r => !r.isCorrect).length;
+                const totalResolutionTimeSeconds = updatedRecords.reduce((acc, r) => acc + r.resolutionTimeSeconds, 0);
+                const totalReviewTimeSeconds = updatedRecords.reduce((acc, r) => acc + r.reviewTimeSeconds, 0);
+
+                const updatedSession: StudyDeskSession = {
+                  ...current,
+                  totalQuestions: Math.max(current.totalQuestions || 1, updatedRecords.length),
+                  completedQuestions: updatedRecords.length,
+                  correctCount,
+                  incorrectCount,
+                  totalResolutionTimeSeconds,
+                  totalReviewTimeSeconds,
+                  questionRecords: updatedRecords,
+                };
+                updatedSessions = [...sessions];
+                updatedSessions[existingExtIdx] = updatedSession;
+              } else {
+                const newExtSession: StudyDeskSession = {
+                  id: extSessionId,
+                  name: 'Questões Capturadas pela Extensão',
+                  startedAt: Date.now(),
+                  totalQuestions: 1,
+                  completedQuestions: 1,
+                  correctCount: isCorrect ? 1 : 0,
+                  incorrectCount: isCorrect ? 0 : 1,
+                  totalResolutionTimeSeconds: record.resolutionTimeSeconds,
+                  totalReviewTimeSeconds: record.reviewTimeSeconds,
+                  targetResolutionTimeSeconds: 75,
+                  targetReviewTimeSeconds: 150,
+                  questionRecords: [record],
+                };
+                updatedSessions = [newExtSession, ...sessions];
+              }
             }
 
             // Atualiza também na questão correspondente no banco
@@ -2293,13 +2336,13 @@ ${objective ? `<blockquote><p><b>Educational Objective:</b> ${objective}</p></bl
               return {
                 ...q,
                 status: isCorrect ? ('correct' as const) : ('incorrect' as const),
-                selectedChoiceId,
+                selectedChoiceId: selectedChoiceId || q.selectedChoiceId,
                 resolutionTimeSeconds: (q.resolutionTimeSeconds || 0) + record.resolutionTimeSeconds,
                 reviewTimeSeconds: (q.reviewTimeSeconds || 0) + record.reviewTimeSeconds,
                 attempts: [...attempts, newAttempt],
                 lastAnsweredAt: Date.now(),
-                subject: subject || q.subject,
-                system: system || q.system,
+                subject: (subject || '').trim() || q.subject || 'Geral',
+                system: (system || '').trim() || q.system || 'Geral',
                 updatedAt: Date.now(),
               };
             });

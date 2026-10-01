@@ -80,12 +80,23 @@ export function renderCardText(html?: string, forceRevealCloze: boolean = false)
   return sanitizeHtml(parsed);
 }
 
-export function renderNoteContentWithClozes(html?: string, forceRevealCloze: boolean = false) {
+export function hasInteractiveHtml(html?: string): boolean {
+  if (!html) return false;
+  return /<(?:style|script|link|iframe|canvas|svg|table|details|form)\b/i.test(html) ||
+         /on\w+\s*=/i.test(html) ||
+         html.includes('data-html-widget') ||
+         html.includes('interactive-note-widget') ||
+         html.includes('class="card"');
+}
+
+export function renderNoteContentWithClozes(html?: string, forceRevealCloze: boolean = false, preserveInteractive: boolean = false) {
   if (!html) return '';
-  const sanitized = sanitizeHtml(html);
+  // Se contiver elementos interativos (scripts/estilos/widgets) ou preserveInteractive for true,
+  // preservamos a integridade dos scripts/estilos sem deletar via DOMPurify agressivo
+  const baseHtml = (preserveInteractive || hasInteractiveHtml(html)) ? html : sanitizeHtml(html);
   
   // Replaces Anki style cloze deletions {{c1::answer}} or {{c1::answer::hint}} with interactive cloze spans
-  return sanitized.replace(/{{c(\d*)::(.*?)(?:::([^}]*))?}}/g, (_match, clozeNum, answer, hint) => {
+  return baseHtml.replace(/{{c(\d*)::(.*?)(?:::([^}]*))?}}/g, (_match, clozeNum, answer, hint) => {
     const safeAnswer = escapeHtml(answer);
     const safeHint = hint ? escapeHtml(hint) : '';
     const clozeLabel = safeHint ? `[${safeHint}]` : `[...]`;

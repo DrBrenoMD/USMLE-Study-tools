@@ -55,6 +55,7 @@ import { CodeSandboxRunner } from '../../components/CodeSandboxRunner';
 import { VideoEmbedPlayer } from '../../components/VideoEmbedPlayer';
 import { AudioVoiceRecorder } from '../../components/AudioVoiceRecorder';
 import { InlineNoteRichEditor } from './InlineNoteRichEditor';
+import { NoteContentViewer } from './NoteContentViewer';
 
 interface StudyNotebooksViewProps {
   onNavigate: (page: Page) => void;
@@ -1329,12 +1330,12 @@ export const StudyNotebooksView: React.FC<StudyNotebooksViewProps> = ({
                                           onCancel={() => setEditingNoteId(null)}
                                         />
                                       ) : (
-                                        <div
+                                        <NoteContentViewer
+                                          content={note.content}
+                                          forceRevealClozes={Boolean(revealedClozeNotes[note.id])}
                                           onDoubleClick={() => setEditingNoteId(note.id)}
                                           onClick={handleNoteContentClick}
-                                          className="prose dark:prose-invert max-w-none text-sm text-gray-900 dark:text-gray-100 leading-relaxed cursor-text min-h-[32px]"
-                                          dangerouslySetInnerHTML={{ __html: renderNoteContentWithClozes(note.content, Boolean(revealedClozeNotes[note.id])) || '<p class="text-gray-400 italic">Nota vazia. Clique duas vezes para escrever...</p>' }}
-                                          title="Dê duplo clique para editar ou clique nas palavras ocultas para revelar"
+                                          title="Dê duplo clique para editar ou interaja com clozes/widgets"
                                         />
                                       )}
 

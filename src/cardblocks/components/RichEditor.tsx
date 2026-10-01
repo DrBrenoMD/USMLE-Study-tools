@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { cn, sanitizeHtml } from '../lib/utils';
 import { ImageOcclusionTool } from './ImageOcclusionTool';
+import { IsolatedHtml } from './IsolatedHtml';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface RichEditorProps {
@@ -280,6 +281,17 @@ export function RichEditor({ value, onChange, placeholder, className, minHeight,
         contentEditable
         onInput={handleInput}
         onBlur={handleInput}
+        onPaste={(e) => {
+          const plainText = e.clipboardData?.getData('text/plain') || '';
+          if (plainText && /<(?:div|table|script|style|p|span|h[1-6]|ul|ol|iframe|blockquote|canvas|svg|form|section|article|button|input|pre|code)\b/i.test(plainText.trim())) {
+            e.preventDefault();
+            const hasInteractive = /<(?:script|style|canvas|svg|iframe)\b/i.test(plainText) || /on\w+\s*=/i.test(plainText);
+            const htmlToInsert = hasInteractive
+              ? `<div class="interactive-note-widget my-3 p-1 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-850/50 max-w-full overflow-hidden" data-html-widget="true">${plainText.trim()}</div><p><br/></p>`
+              : plainText.trim();
+            exec('insertHTML', htmlToInsert);
+          }
+        }}
         onKeyDown={(e) => {
           if (e.key === 'Tab') {
             e.preventDefault();
@@ -448,8 +460,15 @@ function HTMLModal({ initialHtml, onClose, onSave }: { initialHtml: string, onCl
   const [tab, setTab] = useState<'code' | 'preview'>('code');
 
   const handleApply = () => {
-    const clean = sanitizeHtml(val);
-    onSave(clean);
+    if (!val.trim()) {
+      onSave('');
+      return;
+    }
+    const hasInteractive = /<(?:script|style|canvas|svg|iframe)\b/i.test(val) || /on\w+\s*=/i.test(val);
+    const payload = hasInteractive
+      ? `<div class="interactive-note-widget my-3 p-1 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-850/50 max-w-full overflow-hidden" data-html-widget="true">${val.trim()}</div><p><br/></p>`
+      : val.trim();
+    onSave(payload);
   };
 
   return (
@@ -457,26 +476,26 @@ function HTMLModal({ initialHtml, onClose, onSave }: { initialHtml: string, onCl
       <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-ui-surface border border-ui-border rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col">
         <div className="flex items-center justify-between p-4 border-b border-ui-border">
           <div>
-            <h2 className="text-base font-bold text-ui-text">Editar Código HTML Seguro</h2>
-            <p className="text-xs text-ui-muted">Sanitizado via DOMPurify conforme regras de segurança</p>
+            <h2 className="text-base font-bold text-ui-text">Editar Código HTML / JS Interativo</h2>
+            <p className="text-xs text-ui-muted">Ambiente isolado para tags HTML, formatação CSS e execução de scripts JS</p>
           </div>
-          <button onClick={onClose} className="p-1 text-ui-muted hover:text-ui-text rounded bg-ui-surface hover:bg-ui-surface-hover"><XCircle className="w-5 h-5"/></button>
+          <button onClick={onClose} className="p-1 text-ui-muted hover:text-ui-text rounded bg-ui-surface hover:bg-ui-surface-hover cursor-pointer"><XCircle className="w-5 h-5"/></button>
         </div>
 
         <div className="flex border-b border-ui-border bg-ui-background px-4 text-xs font-bold">
           <button
             type="button"
             onClick={() => setTab('code')}
-            className={`py-2 px-3 border-b-2 transition-colors ${tab === 'code' ? 'border-primary text-primary' : 'border-transparent text-ui-muted'}`}
+            className={`py-2 px-3 border-b-2 transition-colors cursor-pointer ${tab === 'code' ? 'border-primary text-primary' : 'border-transparent text-ui-muted'}`}
           >
-            Código HTML
+            Código HTML / JS
           </button>
           <button
             type="button"
             onClick={() => setTab('preview')}
-            className={`py-2 px-3 border-b-2 transition-colors ${tab === 'preview' ? 'border-primary text-primary' : 'border-transparent text-ui-muted'}`}
+            className={`py-2 px-3 border-b-2 transition-colors cursor-pointer ${tab === 'preview' ? 'border-primary text-primary' : 'border-transparent text-ui-muted'}`}
           >
-            Pré-visualização Segura
+            Pré-visualização Interativa (com JS ativo)
           </button>
         </div>
 
@@ -486,23 +505,24 @@ function HTMLModal({ initialHtml, onClose, onSave }: { initialHtml: string, onCl
               value={val}
               onChange={(e) => setVal(e.target.value)}
               className="w-full h-72 p-3 bg-gray-900 text-emerald-400 font-mono text-xs rounded-lg resize-none focus:outline-none border border-gray-700"
-              placeholder="Cole seu código HTML aqui..."
+              placeholder="Cole seu código HTML/JS aqui (tabelas, scripts, estilos CSS, etc.)..."
             />
           ) : (
-            <div className="h-72 p-4 border border-ui-border rounded-lg overflow-y-auto bg-ui-background">
-              <div
-                className="prose dark:prose-invert max-w-none text-sm"
-                dangerouslySetInnerHTML={{ __html: sanitizeHtml(val) }}
-              />
+            <div className="h-72 p-2 border border-ui-border rounded-lg overflow-y-auto bg-ui-background max-w-full overflow-hidden">
+              {val.trim() ? (
+                <IsolatedHtml html={val} className="w-full max-w-full rounded-xl overflow-hidden min-h-[220px]" />
+              ) : (
+                <p className="text-xs text-gray-400 italic text-center py-8">Nenhum código HTML informado ainda.</p>
+              )}
             </div>
           )}
         </div>
 
         <div className="p-3 border-t border-ui-border bg-ui-surface flex items-center justify-between">
-          <span className="text-[11px] text-ui-muted">Scripts e tags de risco serão sanitizados</span>
+          <span className="text-[11px] text-ui-muted">Contenção e execução isolada ativas</span>
           <div className="flex justify-end gap-2">
-            <button onClick={onClose} className="px-3 py-1.5 text-xs font-medium text-ui-text hover:bg-ui-surface-hover border border-ui-border rounded-lg">Cancelar</button>
-            <button onClick={handleApply} className="px-4 py-1.5 text-xs font-bold bg-primary text-primary-foreground rounded-lg">Aplicar HTML Seguro</button>
+            <button onClick={onClose} className="px-3 py-1.5 text-xs font-medium text-ui-text hover:bg-ui-surface-hover border border-ui-border rounded-lg cursor-pointer">Cancelar</button>
+            <button onClick={handleApply} className="px-4 py-1.5 text-xs font-bold bg-primary text-primary-foreground rounded-lg cursor-pointer">Aplicar na Nota</button>
           </div>
         </div>
       </motion.div>

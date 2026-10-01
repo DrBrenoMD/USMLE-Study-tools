@@ -86,17 +86,17 @@ export function SubjectSystemsBreakdown() {
     (studyDeskSessions || []).forEach(s => {
       if (s.questionRecords) {
         s.questionRecords.forEach(r => {
-          if (r.subject && r.system) {
-            records.push({
-              qid: r.qid,
-              questionId: r.questionId,
-              subject: r.subject.trim(),
-              system: r.system.trim(),
-              isCorrect: Boolean(r.isCorrect),
-              solveTime: r.resolutionTimeSeconds || 0,
-              revTime: r.reviewTimeSeconds || 0,
-            });
-          }
+          const subject = (r.subject || '').trim() || 'Geral';
+          const system = (r.system || '').trim() || 'Geral';
+          records.push({
+            qid: r.qid,
+            questionId: r.questionId,
+            subject,
+            system,
+            isCorrect: Boolean(r.isCorrect),
+            solveTime: r.resolutionTimeSeconds || 0,
+            revTime: r.reviewTimeSeconds || 0,
+          });
         });
       }
     });
@@ -104,15 +104,18 @@ export function SubjectSystemsBreakdown() {
     // Carrega questões do banco respondidas
     (questions || []).forEach(q => {
       const isAnswered = q.status === 'correct' || q.status === 'incorrect' || (q.attempts && q.attempts.length > 0) || Boolean(q.lastAnsweredAt);
-      if (isAnswered && q.subject && q.system) {
+      if (isAnswered) {
         const alreadyIn = records.some(r => r.qid === q.qid || r.questionId === q.id);
         if (!alreadyIn) {
+          const subject = (q.subject || '').trim() || 'Geral';
+          const system = (q.system || '').trim() || 'Geral';
+          const isCorrect = q.status === 'correct' || (q.attempts && q.attempts.length > 0 ? q.attempts[q.attempts.length - 1].isCorrect : false);
           records.push({
             qid: q.qid || q.id,
             questionId: q.id,
-            subject: q.subject.trim(),
-            system: q.system.trim(),
-            isCorrect: q.status === 'correct',
+            subject,
+            system,
+            isCorrect,
             solveTime: q.resolutionTimeSeconds || 0,
             revTime: q.reviewTimeSeconds || 0,
           });
