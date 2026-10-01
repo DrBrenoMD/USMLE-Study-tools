@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useLocation, useNavigate, Link } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import {
   Play,
   Pause,
@@ -113,16 +113,15 @@ export default function StudyDesk() {
   } = useTimerStore();
 
   // Mode: 'external' (default: Qbankly, UWorld, Amboss) or 'internal' (site bank)
+  const [searchParams] = useSearchParams();
   const [sourceMode, setSourceMode] = useState<'external' | 'internal'>('external');
 
   // External live status & last received question info
   const [externalSourcePlatform, setExternalSourcePlatform] = useState<string>('Qbankly / UWorld / Amboss');
-  const [lastSyncedQid, setLastSyncedQid] = useState<string>('10420');
-  const [lastSyncedSubject, setLastSyncedSubject] = useState<string>('Cardiologia');
-  const [lastSyncedSystem, setLastSyncedSystem] = useState<string>('Cardiovascular');
-  const [lastSyncedObjective, setLastSyncedObjective] = useState<string>(
-    'A Estenose Aórtica gera aumento da pós-carga de VE, hipertrofia ventricular concêntrica, sopro sistólico com irradiação carotídea e pulso parvus et tardus.'
-  );
+  const [lastSyncedQid, setLastSyncedQid] = useState<string>('');
+  const [lastSyncedSubject, setLastSyncedSubject] = useState<string>('');
+  const [lastSyncedSystem, setLastSyncedSystem] = useState<string>('');
+  const [lastSyncedObjective, setLastSyncedObjective] = useState<string>('');
 
   // Local State
   const [selectedBankId, setSelectedBankId] = useState<string>('all');
@@ -136,6 +135,27 @@ export default function StudyDesk() {
   const [statsBreakdownType, setStatsBreakdownType] = useState<'subject' | 'system'>('subject');
   const [statsMetricType, setStatsMetricType] = useState<'accuracy' | 'solveTime' | 'reviewTime' | 'count'>('accuracy');
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+
+  // Sincroniza via URL ?qid=... para abrir diretamente a questão solicitada
+  useEffect(() => {
+    const qidParam = searchParams.get('qid');
+    if (qidParam && questions.length > 0) {
+      const idx = questions.findIndex(q => (q.qid && q.qid.toString() === qidParam) || q.id === qidParam);
+      if (idx !== -1) {
+        setSourceMode('internal');
+        setSelectedBankId('all');
+        setActiveQuestionIndex(idx);
+        const targetQ = questions[idx];
+        if (targetQ.selectedChoiceId) {
+          setSelectedChoiceId(targetQ.selectedChoiceId);
+          setIsAnswerRevealed(true);
+        } else {
+          setSelectedChoiceId(null);
+          setIsAnswerRevealed(false);
+        }
+      }
+    }
+  }, [searchParams, questions]);
 
   // Flashcard quick create form state
   const [showQuickCardForm, setShowQuickCardForm] = useState<boolean>(false);

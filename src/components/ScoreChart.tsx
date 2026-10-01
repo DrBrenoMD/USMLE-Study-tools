@@ -32,10 +32,16 @@ import {
   Flame,
   CheckCircle2,
   Eye,
-  EyeOff
+  EyeOff,
+  RotateCcw,
+  HelpCircle,
+  ExternalLink,
+  ChevronRight
 } from 'lucide-react';
 import { useStore, StudyDeskQuestionRecord } from '../cardblocks/store/useStore';
 import { cn } from '../lib/utils';
+import { StatisticQuestionsModal, StatisticQuestionsFilter } from './StatisticQuestionsModal';
+import { ResetStatsModal } from './ResetStatsModal';
 
 export const SUBJECT_COLORS: Record<string, string> = {
   'Cardiologia': '#3b82f6',
@@ -53,85 +59,119 @@ export const SUBJECT_COLORS: Record<string, string> = {
   'Psiquiatria': '#84cc16',
 };
 
-const FALLBACK_PALETTE = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#6366f1', '#e11d48', '#14b8a6'];
+const FALLBACK_PALETTE = [
+  '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899',
+  '#06b6d4', '#f97316', '#6366f1', '#e11d48', '#14b8a6',
+  '#a855f7', '#d946ef', '#84cc16'
+];
 
 interface ScoreChartProps {
-  logs: StudyLogEntry[];
+  logs?: StudyLogEntry[];
 }
 
 export function ScoreChart({ logs }: ScoreChartProps) {
   const [daysToShow, setDaysToShow] = useState<number>(30);
   const [chartViewMode, setChartViewMode] = useState<'chronological' | 'subject' | 'system'>('subject');
-  const [selectedMetric, setSelectedMetric] = useState<'accuracy' | 'solveTime' | 'reviewTime' | 'count'>('accuracy');
+  const [selectedMetric, setSelectedMetric] = useState<'accuracy' | 'solveTime' | 'count'>('accuracy');
   const [subjectChartType, setSubjectChartType] = useState<'line' | 'bar'>('line');
   const [hiddenSubjects, setHiddenSubjects] = useState<Set<string>>(new Set());
 
-  const { questions, studyDeskSessions } = useStore();
+  // Modais de detalhamento de questões e reset individual
+  const [statModal, setStatModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    subtitle?: string;
+    filter: StatisticQuestionsFilter;
+  } | null>(null);
+  const [showResetModal, setShowResetModal] = useState(false);
 
-  // 1. Processa dados do modo cronológico tradicional
-  const { chartData, summaryStats, hasAnyData } = useMemo(() => {
-    const qbankLogs = logs.filter(
-      (l) => l.resourceType === 'qbank' || l.unit === 'questões' || l.unit === 'questoes'
-    );
+  const {
+    questions,
+    studyDeskSessions,
+    resetSubjectStats,
+    resetSystemStats,
+    resetDateStats
+  } = useStore();
 
-    const byDate = new Map<
-      string,
-      {
-        totalAmount: number;
-        scoredAmount: number;
-        weightedScoreSum: number;
+  // 1. Processa dados reais consolidados de resolução de questões (ESTRITAMENTE das questões capturadas)
+  const {
+    allRealRecords,
+    chartData,
+    activeDaysList,
+    summaryStats,
+    hasAnyData
+  } = useMemo(() => {
+    const records: StudyDeskQuestionRecord[] = [];
+
+    // Extrai registros de sessões do Desk
+    (studyDeskSessions || []).forEach(s => {
+      if (s.questionRecords && s.questionRecords.length > 0) {
+        records.push(...s.questionRecords);
       }
-    >();
-
-    qbankLogs.forEach((log) => {
-      if (!log.date) return;
-      const existing = byDate.get(log.date) || {
-        totalAmount: 0,
-        scoredAmount: 0,
-        weightedScoreSum: 0,
-      };
-
-      const amt = Number(log.amount) || 0;
-      existing.totalAmount += amt;
-
-      if (log.scorePercent !== undefined && log.scorePercent !== null) {
-        const score = Number(log.scorePercent);
-        existing.scoredAmount += amt;
-        existing.weightedScoreSum += score * amt;
-      }
-
-      byDate.set(log.date, existing);
     });
+
+    // Extrai questões respondidas do banco
+    questions.forEach(q => {
+      const isAnswered = q.status === 'correct' || q.status === 'incorrect' || (q.attempts && q.attempts.length > 0) || Boolean(q.lastAnsweredAt);
+      if (isAnswered) {
+        const alreadyIn = records.some(r => r.qid === q.qid || r.questionId === q.id);
+        if (!alreadyIn) {
+          // Determina a data real comprovada de resposta
+          const realAnsweredAt = q.lastAnsweredAt || (q.attempts && q.attempts.length > 0 ? q.attempts[q.attempts.length - 1].timestamp : undefined);
+          records.push({
+            qid: q.qid || q.id,
+            questionId: q.id,
+            selectedChoiceId: q.selectedChoiceId,
+            correctChoiceId: q.correctChoiceId,
+            isCorrect: q.status === 'correct',
+            resolutionTimeSeconds: q.resolutionTimeSeconds || 0,
+            reviewTimeSeconds: q.reviewTimeSeconds || 0,
+            subject: (q.subject || '').trim() || 'Geral',
+            system: (q.system || '').trim() || 'Geral',
+            answeredAt: realAnsweredAt, // NUNCA injeta Date.now() fictício!
+          });
+        }
+      }
+    });
+
+    // Mapeamento estrito por data real
+    const byDate = new Map<string, { total: number; correct: number; solveSum: number; revSum: number }>();
+
+    records.forEach(r => {
+      if (!r.answeredAt) return;
+      const dateStr = format(new Date(r.answeredAt), 'yyyy-MM-dd');
+      const cur = byDate.get(dateStr) || { total: 0, correct: 0, solveSum: 0, revSum: 0 };
+      cur.total += 1;
+      if (r.isCorrect) cur.correct += 1;
+      cur.solveSum += (r.resolutionTimeSeconds || 0);
+      cur.revSum += (r.reviewTimeSeconds || 0);
+      byDate.set(dateStr, cur);
+    });
+
+    // NENHUMA agregação de logs manuais do planner: os dados vêm 100% das questões capturadas!
 
     const today = startOfDay(new Date());
     const startDate = subDays(today, Math.max(1, daysToShow - 1));
     const allDaysInInterval = eachDayOfInterval({ start: startDate, end: today });
 
     let cumulativeTotalQuestions = 0;
-    let cumulativeScoredQuestions = 0;
-    let cumulativeWeightedScore = 0;
+    let cumulativeCorrectQuestions = 0;
     let activeDaysCount = 0;
 
-    const rawDailyData = allDaysInInterval.map((dayDate) => {
+    const rawDailyData = allDaysInInterval.map(dayDate => {
       const dateStr = format(dayDate, 'yyyy-MM-dd');
       const dateFormatted = format(dayDate, 'dd/MM');
       const stats = byDate.get(dateStr);
 
-      const hasQuestions = Boolean(stats && stats.totalAmount > 0);
-      const questionsCount = stats ? stats.totalAmount : 0;
-      
-      let avgScore: number | null = null;
-      if (stats && stats.scoredAmount > 0) {
-        avgScore = Math.round(stats.weightedScoreSum / stats.scoredAmount);
-      }
+      const hasQuestions = Boolean(stats && stats.total > 0);
+      const questionsCount = stats ? stats.total : 0;
+      const score = hasQuestions && stats ? Math.round((stats.correct / stats.total) * 100) : null;
+      const avgSolveTime = hasQuestions && stats && stats.total > 0 ? Math.round(stats.solveSum / stats.total) : 0;
 
-      if (hasQuestions) {
+      if (hasQuestions && stats) {
         activeDaysCount++;
-        cumulativeTotalQuestions += questionsCount;
-        if (stats && stats.scoredAmount > 0) {
-          cumulativeScoredQuestions += stats.scoredAmount;
-          cumulativeWeightedScore += stats.weightedScoreSum;
-        }
+        cumulativeTotalQuestions += stats.total;
+        cumulativeCorrectQuestions += stats.correct;
       }
 
       return {
@@ -139,11 +179,13 @@ export function ScoreChart({ logs }: ScoreChartProps) {
         dateStr,
         dateFormatted,
         questions: questionsCount,
-        score: avgScore,
+        score,
+        avgSolveTime,
         hasQuestions,
       };
     });
 
+    // Média móvel real calculada apenas sobre dias em que houve questões
     const finalData = rawDailyData.map((d, index, arr) => {
       if (!d.hasQuestions || d.score === null) {
         return {
@@ -170,13 +212,13 @@ export function ScoreChart({ logs }: ScoreChartProps) {
       };
     });
 
-    const overallAvgScore =
-      cumulativeScoredQuestions > 0
-        ? Math.round(cumulativeWeightedScore / cumulativeScoredQuestions)
-        : null;
+    const overallAvgScore = cumulativeTotalQuestions > 0
+      ? Math.round((cumulativeCorrectQuestions / cumulativeTotalQuestions) * 100)
+      : null;
 
-    const avgQuestionsPerActiveDay =
-      activeDaysCount > 0 ? Math.round(cumulativeTotalQuestions / activeDaysCount) : 0;
+    const avgQuestionsPerActiveDay = activeDaysCount > 0
+      ? Math.round(cumulativeTotalQuestions / activeDaysCount)
+      : 0;
 
     const summary = {
       totalQuestions: cumulativeTotalQuestions,
@@ -186,78 +228,33 @@ export function ScoreChart({ logs }: ScoreChartProps) {
       avgQuestionsPerActiveDay,
     };
 
-    const hasData = cumulativeTotalQuestions > 0 || qbankLogs.length > 0 || questions.some(q => q.status && q.status !== 'unused');
+    const activeDays = rawDailyData
+      .filter(d => d.hasQuestions && d.questions > 0)
+      .sort((a, b) => b.dateStr.localeCompare(a.dateStr));
 
     return {
+      allRealRecords: records,
       chartData: finalData,
+      activeDaysList: activeDays,
       summaryStats: summary,
-      hasAnyData: hasData,
+      hasAnyData: cumulativeTotalQuestions > 0 || records.length > 0,
     };
-  }, [logs, daysToShow, questions]);
+  }, [daysToShow, questions, studyDeskSessions]);
 
-  // 2. Processa dados por Subject e por System
-  const { subjectBreakdown, systemBreakdown, totalAggregatedRecords } = useMemo(() => {
-    const allRecords: StudyDeskQuestionRecord[] = [];
-
-    // Desk sessions
-    (studyDeskSessions || []).forEach(s => {
-      if (s.questionRecords) {
-        allRecords.push(...s.questionRecords);
-      }
-    });
-
-    // Directly answered questions from store
-    questions.forEach(q => {
-      if (q.status && q.status !== 'unused') {
-        const alreadyIn = allRecords.some(r => r.qid === q.qid || r.questionId === q.id);
-        if (!alreadyIn) {
-          allRecords.push({
-            qid: q.qid || q.id,
-            questionId: q.id,
-            selectedChoiceId: q.selectedChoiceId,
-            isCorrect: q.status === 'correct',
-            resolutionTimeSeconds: q.resolutionTimeSeconds || 65,
-            reviewTimeSeconds: q.reviewTimeSeconds || 120,
-            subject: q.subject || 'Clínica Médica',
-            system: q.system || 'Geral',
-            answeredAt: q.lastAnsweredAt || Date.now(),
-          });
-        }
-      }
-    });
-
-    // Se ainda não houver dados gravados, adiciona dados representativos estruturados para que os gráficos fiquem ricos
-    if (allRecords.length === 0) {
-      const sampleSeeds = [
-        { subject: 'Cardiologia', system: 'Cardiovascular', correct: 18, total: 24, solveTime: 62, revTime: 110 },
-        { subject: 'Pneumologia', system: 'Respiratório', correct: 14, total: 20, solveTime: 71, revTime: 130 },
-        { subject: 'Gastroenterologia', system: 'Gastrointestinal', correct: 15, total: 22, solveTime: 68, revTime: 115 },
-        { subject: 'Farmacologia', system: 'Cardiovascular', correct: 12, total: 16, solveTime: 55, revTime: 95 },
-        { subject: 'Infectologia', system: 'Imunológico & Infecto', correct: 16, total: 20, solveTime: 64, revTime: 105 },
-        { subject: 'Nefrologia', system: 'Renal & Urinário', correct: 10, total: 15, solveTime: 79, revTime: 140 },
-        { subject: 'Pediatria', system: 'Neonatologia & Puericultura', correct: 11, total: 14, solveTime: 58, revTime: 90 },
-      ];
-
-      sampleSeeds.forEach(s => {
-        for (let i = 0; i < s.total; i++) {
-          allRecords.push({
-            qid: `sample-${s.subject}-${i}`,
-            isCorrect: i < s.correct,
-            resolutionTimeSeconds: s.solveTime + (i % 5) * 3,
-            reviewTimeSeconds: s.revTime + (i % 4) * 6,
-            subject: s.subject,
-            system: s.system,
-            answeredAt: Date.now(),
-          });
-        }
-      });
+  // 2. Processa dados reais por Subject e por System (ESTRITAMENTE SEM DADOS INVENTADOS)
+  const { subjectBreakdown, systemBreakdown } = useMemo(() => {
+    if (allRealRecords.length === 0) {
+      return {
+        subjectBreakdown: [],
+        systemBreakdown: []
+      };
     }
 
     const bySubj = new Map<string, { total: number; correct: number; solveSum: number; revSum: number }>();
     const bySys = new Map<string, { total: number; correct: number; solveSum: number; revSum: number }>();
 
-    allRecords.forEach(r => {
-      const subj = (r.subject || 'Outros').trim();
+    allRealRecords.forEach(r => {
+      const subj = (r.subject || 'Sem Matéria Definida').trim();
       const sys = (r.system || 'Geral').trim();
 
       const subEntry = bySubj.get(subj) || { total: 0, correct: 0, solveSum: 0, revSum: 0 };
@@ -281,8 +278,8 @@ export function ScoreChart({ logs }: ScoreChartProps) {
       correct: data.correct,
       incorrect: data.total - data.correct,
       accuracy: Math.round((data.correct / data.total) * 100),
-      avgSolveTime: Math.round(data.solveSum / data.total),
-      avgRevTime: Math.round(data.revSum / data.total),
+      avgSolveTime: data.total > 0 ? Math.round(data.solveSum / data.total) : 0,
+      avgRevTime: data.total > 0 ? Math.round(data.revSum / data.total) : 0,
     })).sort((a, b) => b.total - a.total);
 
     const systemBreakdown = Array.from(bySys.entries()).map(([name, data]) => ({
@@ -291,25 +288,55 @@ export function ScoreChart({ logs }: ScoreChartProps) {
       correct: data.correct,
       incorrect: data.total - data.correct,
       accuracy: Math.round((data.correct / data.total) * 100),
-      avgSolveTime: Math.round(data.solveSum / data.total),
-      avgRevTime: Math.round(data.revSum / data.total),
+      avgSolveTime: data.total > 0 ? Math.round(data.solveSum / data.total) : 0,
+      avgRevTime: data.total > 0 ? Math.round(data.revSum / data.total) : 0,
     })).sort((a, b) => b.total - a.total);
 
     return {
       subjectBreakdown,
       systemBreakdown,
-      totalAggregatedRecords: allRecords.length,
     };
-  }, [studyDeskSessions, questions]);
+  }, [allRealRecords]);
 
-  // 3. Processa dados multi-série de todos os Subjects ao longo do tempo para o gráfico unificado
+  // 3. Processa dados multi-série dos Subjects ao longo do tempo (apenas dados reais capturados)
   const { multiSubjectTimelineData, availableSubjectsList } = useMemo(() => {
     const subjects = subjectBreakdown.map(s => s.name);
+    if (subjects.length === 0 || allRealRecords.length === 0) {
+      return {
+        multiSubjectTimelineData: [],
+        availableSubjectsList: [],
+      };
+    }
+
     const today = startOfDay(new Date());
     const startDate = subDays(today, Math.max(1, daysToShow - 1));
     const allDaysInInterval = eachDayOfInterval({ start: startDate, end: today });
 
-    const timeline = allDaysInInterval.map((dayDate, dayIdx) => {
+    // Mapeamento diário real: dateStr -> subject -> stats
+    const dailyMap = new Map<string, Map<string, { total: number; correct: number; solveSum: number }>>();
+
+    allRealRecords.forEach(r => {
+      if (!r.answeredAt) return;
+      const dStr = format(new Date(r.answeredAt), 'yyyy-MM-dd');
+      if (!dailyMap.has(dStr)) {
+        dailyMap.set(dStr, new Map());
+      }
+      const sMap = dailyMap.get(dStr)!;
+      const subj = (r.subject || 'Sem Matéria Definida').trim();
+      const cur = sMap.get(subj) || { total: 0, correct: 0, solveSum: 0 };
+      cur.total += 1;
+      if (r.isCorrect) cur.correct += 1;
+      cur.solveSum += (r.resolutionTimeSeconds || 0);
+      sMap.set(subj, cur);
+    });
+
+    // Constrói linha do tempo estritamente baseada nas questões reais acumuladas ou pontuais
+    const runningSubj: Record<string, { total: number; correct: number; solveSum: number }> = {};
+    subjects.forEach(s => {
+      runningSubj[s] = { total: 0, correct: 0, solveSum: 0 };
+    });
+
+    const timeline = allDaysInInterval.map(dayDate => {
       const dateStr = format(dayDate, 'yyyy-MM-dd');
       const dateFormatted = format(dayDate, 'dd/MM');
       const row: Record<string, any> = {
@@ -317,24 +344,35 @@ export function ScoreChart({ logs }: ScoreChartProps) {
         dateFormatted,
       };
 
-      subjects.forEach((subj, sIdx) => {
-        const base = subjectBreakdown.find(b => b.name === subj);
-        const baseAcc = base ? base.accuracy : 70;
-        const baseSolve = base ? base.avgSolveTime : 65;
-        const baseTotal = base ? base.total : 15;
+      const daySubjs = dailyMap.get(dateStr);
 
-        // Realistic medical study progression curve with slight authentic variance
-        const variance = Math.sin((dayIdx * 1.5 + sIdx * 2.8) / 2) * 4 + ((dayIdx / allDaysInInterval.length) * 3);
-        const acc = Math.min(99, Math.max(30, Math.round(baseAcc + variance)));
-        const solve = Math.max(40, Math.round(baseSolve + (Math.cos(dayIdx + sIdx) * 3)));
-        const count = Math.max(0, Math.round((baseTotal / 12) + ((dayIdx + sIdx) % 3)));
+      subjects.forEach(subj => {
+        if (daySubjs && daySubjs.has(subj)) {
+          const item = daySubjs.get(subj)!;
+          runningSubj[subj].total += item.total;
+          runningSubj[subj].correct += item.correct;
+          runningSubj[subj].solveSum += item.solveSum;
 
-        if (selectedMetric === 'accuracy') {
-          row[subj] = acc;
-        } else if (selectedMetric === 'solveTime') {
-          row[subj] = solve;
+          if (selectedMetric === 'accuracy') {
+            row[subj] = Math.round((runningSubj[subj].correct / runningSubj[subj].total) * 100);
+          } else if (selectedMetric === 'solveTime') {
+            row[subj] = Math.round(item.solveSum / item.total);
+          } else {
+            row[subj] = item.total;
+          }
         } else {
-          row[subj] = count;
+          // Se não houve questões respondidas nesse dia para essa matéria
+          if (runningSubj[subj].total > 0) {
+            // Mantém a precisão acumulada até agora
+            row[subj] = selectedMetric === 'accuracy'
+              ? Math.round((runningSubj[subj].correct / runningSubj[subj].total) * 100)
+              : selectedMetric === 'count'
+              ? 0
+              : null;
+          } else {
+            // Matéria ainda não foi respondida nessa data
+            row[subj] = null;
+          }
         }
       });
 
@@ -345,7 +383,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
       multiSubjectTimelineData: timeline,
       availableSubjectsList: subjects,
     };
-  }, [subjectBreakdown, daysToShow, selectedMetric]);
+  }, [allRealRecords, subjectBreakdown, daysToShow, selectedMetric]);
 
   const toggleSubjectFilter = (subjName: string) => {
     setHiddenSubjects(prev => {
@@ -362,6 +400,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
   };
 
   const formatSec = (sec: number) => {
+    if (!sec) return '—';
     const s = Math.round(sec);
     const m = Math.floor(s / 60);
     const rem = s % 60;
@@ -371,7 +410,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
 
   return (
     <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5 sm:p-6 shadow-xs mt-6 flex flex-col gap-6">
-      {/* Header with View Switcher (Geral vs Subject vs System) */}
+      {/* Header com Switcher de Modo e Botão de Reset Individual */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-gray-100 dark:border-gray-800">
         <div>
           <div className="flex items-center gap-2">
@@ -379,19 +418,34 @@ export function ScoreChart({ logs }: ScoreChartProps) {
             <h2 className="text-base font-extrabold text-gray-900 dark:text-white tracking-tight">
               Gráfico de Desempenho & Métricas
             </h2>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
+              Dados 100% Reais
+            </span>
           </div>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-            Visualize taxa de acertos (%), tempo de resolução e revisão no total e separado por Subject e System.
+            Estatísticas geradas exclusivamente a partir das questões capturadas pela extensão e resolvidas por você.
           </p>
         </div>
 
-        {/* View Mode Pills */}
+        {/* Action Toolbar */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* Botão de Reset Granular de Estatísticas */}
+          <button
+            type="button"
+            onClick={() => setShowResetModal(true)}
+            className="px-3 py-1.5 rounded-xl text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900/40 flex items-center gap-1.5 transition-colors cursor-pointer"
+            title="Abrir painel para zerar estatísticas com controle individual"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
+            <span>Resetar Estatísticas</span>
+          </button>
+
+          {/* Abas de visualização */}
           <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
             <button
               onClick={() => setChartViewMode('chronological')}
               className={cn(
-                "px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
+                "px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
                 chartViewMode === 'chronological'
                   ? "bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-300 shadow-xs"
                   : "text-gray-600 dark:text-gray-400 hover:text-gray-900"
@@ -402,7 +456,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
             <button
               onClick={() => setChartViewMode('subject')}
               className={cn(
-                "px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5",
+                "px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer",
                 chartViewMode === 'subject'
                   ? "bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-300 shadow-xs"
                   : "text-gray-600 dark:text-gray-400 hover:text-gray-900"
@@ -413,7 +467,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
             <button
               onClick={() => setChartViewMode('system')}
               className={cn(
-                "px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
+                "px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
                 chartViewMode === 'system'
                   ? "bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-300 shadow-xs"
                   : "text-gray-600 dark:text-gray-400 hover:text-gray-900"
@@ -432,7 +486,6 @@ export function ScoreChart({ logs }: ScoreChartProps) {
             >
               <option value="accuracy">🎯 Taxa de Acertos (%)</option>
               <option value="solveTime">⏱️ Tempo de Resolução (seg)</option>
-              {chartViewMode === 'system' && <option value="reviewTime">📖 Tempo de Revisão (seg)</option>}
               <option value="count">📊 Volume de Questões</option>
             </select>
           )}
@@ -444,7 +497,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
                   key={days}
                   onClick={() => setDaysToShow(days)}
                   className={cn(
-                    "px-2.5 py-1 rounded-lg transition-colors",
+                    "px-2.5 py-1 rounded-lg transition-colors cursor-pointer",
                     daysToShow === days
                       ? "bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-300 font-bold shadow-xs"
                       : "text-gray-600 dark:text-gray-400 hover:text-gray-900"
@@ -458,482 +511,780 @@ export function ScoreChart({ logs }: ScoreChartProps) {
         </div>
       </div>
 
-      {/* SUMMARY STATS TILES */}
+      {/* SUMMARY STATS TILES (Clicáveis para inspecionar questões) */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="p-3.5 rounded-xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40">
-          <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 text-xs font-bold mb-1">
-            <CheckSquare className="w-3.5 h-3.5" />
-            <span>Total de Questões</span>
+        <div
+          onClick={() => {
+            setStatModal({
+              isOpen: true,
+              title: 'Todas as Questões Respondidas',
+              subtitle: 'Todas as questões capturadas pela extensão que possuem respostas computadas.',
+              filter: {}
+            });
+          }}
+          className="p-3.5 rounded-xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40 hover:border-blue-300 transition-all cursor-pointer group"
+          title="Clique para ver todas as questões respondidas"
+        >
+          <div className="flex items-center justify-between text-blue-600 dark:text-blue-400 text-xs font-bold mb-1">
+            <div className="flex items-center gap-1.5">
+              <CheckSquare className="w-3.5 h-3.5" />
+              <span>Total de Questões</span>
+            </div>
+            <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
           <div className="text-xl sm:text-2xl font-extrabold text-blue-950 dark:text-blue-100">
-            {chartViewMode === 'chronological' ? summaryStats.totalQuestions : totalAggregatedRecords}
+            {chartViewMode === 'chronological' ? summaryStats.totalQuestions : allRealRecords.length}
           </div>
-          <span className="text-[11px] text-gray-500 dark:text-gray-400">
-            {chartViewMode === 'chronological' ? `${summaryStats.activeDaysCount} dias ativos` : 'Registros analisados'}
+          <span className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center justify-between">
+            <span>{summaryStats.activeDaysCount} dias com questões</span>
+            <span className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold group-hover:underline">Ver questões →</span>
           </span>
         </div>
 
-        <div className="p-3.5 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900/40">
-          <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 text-xs font-bold mb-1">
-            <Award className="w-3.5 h-3.5" />
-            <span>Taxa Média de Acerto</span>
+        <div
+          onClick={() => {
+            setStatModal({
+              isOpen: true,
+              title: 'Questões Corretas (Acertos)',
+              subtitle: 'Lista de todas as questões respondidas corretamente.',
+              filter: { status: 'correct' }
+            });
+          }}
+          className="p-3.5 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900/40 hover:border-emerald-300 transition-all cursor-pointer group"
+          title="Clique para ver apenas as questões acertadas"
+        >
+          <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-400 text-xs font-bold mb-1">
+            <div className="flex items-center gap-1.5">
+              <Award className="w-3.5 h-3.5" />
+              <span>Taxa Média de Acerto</span>
+            </div>
+            <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
           <div className="text-xl sm:text-2xl font-extrabold text-emerald-950 dark:text-emerald-100">
-            {summaryStats.overallAvgScore !== null ? `${summaryStats.overallAvgScore}%` : '74%'}
+            {summaryStats.overallAvgScore !== null ? `${summaryStats.overallAvgScore}%` : '—'}
           </div>
-          <span className="text-[11px] text-gray-500 dark:text-gray-400">Média ponderada</span>
+          <span className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center justify-between">
+            <span>Média ponderada real</span>
+            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold group-hover:underline">Ver acertos →</span>
+          </span>
         </div>
 
-        <div className="p-3.5 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/40">
-          <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 text-xs font-bold mb-1">
-            <Clock className="w-3.5 h-3.5" />
-            <span>Média de Resolução</span>
+        <div
+          onClick={() => {
+            setStatModal({
+              isOpen: true,
+              title: 'Questões Incorretas (Erros)',
+              subtitle: 'Lista de todas as questões que precisam de revisão.',
+              filter: { status: 'incorrect' }
+            });
+          }}
+          className="p-3.5 rounded-xl bg-rose-50/70 dark:bg-rose-950/30 border border-rose-100 dark:border-rose-900/40 hover:border-rose-300 transition-all cursor-pointer group"
+          title="Clique para ver as questões incorretas"
+        >
+          <div className="flex items-center justify-between text-rose-600 dark:text-rose-400 text-xs font-bold mb-1">
+            <div className="flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5" />
+              <span>Questões Incorretas</span>
+            </div>
+            <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
-          <div className="text-xl sm:text-2xl font-extrabold font-mono text-amber-950 dark:text-amber-100">
-            {formatSec(64)}
+          <div className="text-xl sm:text-2xl font-extrabold font-mono text-rose-950 dark:text-rose-100">
+            {allRealRecords.filter(r => !r.isCorrect).length}
           </div>
-          <span className="text-[11px] text-gray-500 dark:text-gray-400">Alvo recomendado: 75s</span>
+          <span className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center justify-between">
+            <span>Para revisão ativa</span>
+            <span className="text-[10px] text-rose-600 dark:text-rose-400 font-semibold group-hover:underline">Ver erros →</span>
+          </span>
         </div>
 
-        <div className="p-3.5 rounded-xl bg-purple-50/70 dark:bg-purple-950/30 border border-purple-100 dark:border-purple-900/40">
-          <div className="flex items-center gap-1.5 text-purple-600 dark:text-purple-400 text-xs font-bold mb-1">
-            <BookOpen className="w-3.5 h-3.5" />
-            <span>Média de Revisão</span>
+        <div
+          onClick={() => {
+            setStatModal({
+              isOpen: true,
+              title: 'Total de Matérias Registradas',
+              subtitle: 'Subjects identificados a partir das questões capturadas.',
+              filter: {}
+            });
+          }}
+          className="p-3.5 rounded-xl bg-purple-50/70 dark:bg-purple-950/30 border border-purple-100 dark:border-purple-900/40 hover:border-purple-300 transition-all cursor-pointer group"
+          title="Clique para ver o inventário completo"
+        >
+          <div className="flex items-center justify-between text-purple-600 dark:text-purple-400 text-xs font-bold mb-1">
+            <div className="flex items-center gap-1.5">
+              <BookOpen className="w-3.5 h-3.5" />
+              <span>Matérias (Subjects)</span>
+            </div>
+            <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
           <div className="text-xl sm:text-2xl font-extrabold font-mono text-purple-950 dark:text-purple-100">
-            {formatSec(118)}
+            {subjectBreakdown.length}
           </div>
-          <span className="text-[11px] text-gray-500 dark:text-gray-400">Alvo recomendado: 150s</span>
+          <span className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center justify-between">
+            <span>{systemBreakdown.length} sistemas detectados</span>
+            <span className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold group-hover:underline">Explorar →</span>
+          </span>
         </div>
       </div>
 
-      {/* CHART RENDERING SECTION */}
-      {chartViewMode === 'chronological' ? (
-        /* Modo 1: Histórico Geral Cronológico */
-        <div className="space-y-3">
-          <div className="h-72 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
-                <XAxis dataKey="dateFormatted" tick={{ fontSize: 11 }} />
-                <YAxis
-                  yAxisId="left"
-                  orientation="left"
-                  stroke="#3b82f6"
-                  domain={[0, 'auto']}
-                  tick={{ fontSize: 11 }}
-                  label={{ value: 'Questões', angle: -90, position: 'insideLeft', fontSize: 10, fill: '#3b82f6' }}
-                />
-                <YAxis
-                  yAxisId="right"
-                  orientation="right"
-                  stroke="#10b981"
-                  domain={[0, 100]}
-                  tick={{ fontSize: 11 }}
-                  label={{ value: 'Acerto (%)', angle: 90, position: 'insideRight', fontSize: 10, fill: '#10b981' }}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#1f2937',
-                    color: '#fff',
-                    borderRadius: '8px',
-                    border: 'none',
-                    fontSize: '12px',
-                  }}
-                  formatter={(value: any, name: string) => {
-                    if (name === 'Questões Resolvidas') return [`${value} questões`, name];
-                    if (name === 'Taxa de Acertos') return [value !== null ? `${value}%` : 'Sem acertos', name];
-                    if (name === 'Tendência (Média Móvel)') return [value !== null ? `${value}%` : '—', name];
-                    return [value, name];
-                  }}
-                />
-                <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-                <Bar yAxisId="left" dataKey="questions" name="Questões Resolvidas" fill="#3b82f6" opacity={0.8} radius={[4, 4, 0, 0]} />
-                <Line yAxisId="right" type="monotone" dataKey="score" name="Taxa de Acertos" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} connectNulls={true} />
-                <Line yAxisId="right" type="monotone" dataKey="trend" name="Tendência (Média Móvel)" stroke="#f59e0b" strokeWidth={2.5} strokeDasharray="4 4" dot={false} connectNulls={true} />
-              </ComposedChart>
-            </ResponsiveContainer>
+      {/* CASO NÃO HAJA DADOS REAIS AINDA: EMPTY STATE LIMPO */}
+      {!hasAnyData && (
+        <div className="p-10 rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 text-center flex flex-col items-center justify-center gap-3 bg-gray-50/50 dark:bg-gray-850/30">
+          <div className="p-3 rounded-2xl bg-blue-50 dark:bg-blue-950/50 text-blue-500">
+            <HelpCircle className="w-8 h-8" />
           </div>
+          <h3 className="font-extrabold text-sm text-gray-900 dark:text-white">
+            Nenhuma questão respondida ainda
+          </h3>
+          <p className="text-xs text-gray-500 dark:text-gray-400 max-w-md leading-relaxed">
+            O sistema agora não inventa nem simula dados. Conforme você capturar questões com a extensão e respondê-las, este gráfico exibirá com exatidão sua taxa real de acertos por matéria e por data.
+          </p>
         </div>
-      ) : chartViewMode === 'subject' ? (
-        /* Modo 2: GRÁFICO ÚNICO COM TODOS OS SUBJECTS E LEGENDA FILTRÁVEL */
-        <div className="space-y-5">
-          {/* Sub-header com tipo de gráfico (Linhas vs Barras) e dica */}
-          <div className="flex items-center justify-between flex-wrap gap-2 pt-1 pb-2">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Formato:</span>
-              <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg text-xs font-bold">
-                <button
-                  type="button"
-                  onClick={() => setSubjectChartType('line')}
-                  className={cn(
-                    "px-2.5 py-1 rounded-md transition-all cursor-pointer",
-                    subjectChartType === 'line'
-                      ? "bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-300 shadow-xs"
-                      : "text-gray-500 hover:text-gray-900"
-                  )}
-                >
-                  📈 Multi-Linhas (Evolução)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSubjectChartType('bar')}
-                  className={cn(
-                    "px-2.5 py-1 rounded-md transition-all cursor-pointer",
-                    subjectChartType === 'bar'
-                      ? "bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-300 shadow-xs"
-                      : "text-gray-500 hover:text-gray-900"
-                  )}
-                >
-                  📊 Barras Comparativas
-                </button>
+      )}
+
+      {/* RENDERIZAÇÃO DOS GRÁFICOS (APENAS QUANDO HOUVER DADOS REAIS) */}
+      {hasAnyData && (
+        <>
+          {chartViewMode === 'chronological' ? (
+            /* Modo 1: Histórico Geral Cronológico */
+            <div className="space-y-3">
+              <div className="h-72 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart
+                    data={chartData}
+                    margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+                    <XAxis dataKey="dateFormatted" tick={{ fontSize: 11 }} />
+                    <YAxis
+                      yAxisId="left"
+                      orientation="left"
+                      stroke="#3b82f6"
+                      domain={[0, 'auto']}
+                      tick={{ fontSize: 11 }}
+                      label={{ value: 'Questões', angle: -90, position: 'insideLeft', fontSize: 10, fill: '#3b82f6' }}
+                    />
+                    <YAxis
+                      yAxisId="right"
+                      orientation="right"
+                      stroke="#10b981"
+                      domain={[0, 100]}
+                      tick={{ fontSize: 11 }}
+                      label={{ value: 'Acerto (%)', angle: 90, position: 'insideRight', fontSize: 10, fill: '#10b981' }}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#1f2937',
+                        color: '#fff',
+                        borderRadius: '8px',
+                        border: 'none',
+                        fontSize: '12px',
+                      }}
+                      formatter={(value: any, name: string) => {
+                        if (name === 'Questões Resolvidas') return [`${value} questões`, name];
+                        if (name === 'Taxa de Acertos') return [value !== null ? `${value}%` : 'Sem questões', name];
+                        if (name === 'Tendência (Média Móvel)') return [value !== null ? `${value}%` : '—', name];
+                        return [value, name];
+                      }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+                    <Bar
+                      yAxisId="left"
+                      dataKey="questions"
+                      name="Questões Resolvidas"
+                      fill="#3b82f6"
+                      opacity={0.85}
+                      radius={[4, 4, 0, 0]}
+                      cursor="pointer"
+                      onClick={(data: any) => {
+                        if (data && data.dateStr) {
+                          setStatModal({
+                            isOpen: true,
+                            title: `Questões Resolvidas em ${data.dateFormatted}`,
+                            subtitle: `Questões computadas na data ${data.dateStr}`,
+                            filter: { dateStr: data.dateStr }
+                          });
+                        }
+                      }}
+                    />
+                    <Line yAxisId="right" type="monotone" dataKey="score" name="Taxa de Acertos" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} connectNulls={false} />
+                    <Line yAxisId="right" type="monotone" dataKey="trend" name="Tendência (Média Móvel)" stroke="#f59e0b" strokeWidth={2.5} strokeDasharray="4 4" dot={false} connectNulls={true} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Tabela de Dias em que Houve Resolução Real de Questões */}
+              <div className="space-y-2.5 pt-3">
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-1.5 font-bold text-gray-700 dark:text-gray-300">
+                    <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Detalhamento dos Dias com Questões Resolvidas:</span>
+                  </div>
+                  <span className="text-gray-400">
+                    {activeDaysList.length} {activeDaysList.length === 1 ? 'dia ativo' : 'dias ativos'} no período
+                  </span>
+                </div>
+
+                {activeDaysList.length === 0 ? (
+                  <div className="p-6 rounded-xl border border-gray-100 dark:border-gray-800 text-center text-xs text-gray-400 bg-gray-50/50 dark:bg-gray-850/30">
+                    Nenhuma questão respondida nos últimos {daysToShow} dias. Conforme você resolver questões, os dias aparecerão aqui.
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-gray-50 dark:bg-gray-800/80 text-gray-500 font-bold uppercase tracking-wider">
+                        <tr>
+                          <th className="p-3">Data</th>
+                          <th className="p-3 text-center">Questões Resolvidas</th>
+                          <th className="p-3 text-center">Aproveitamento (%)</th>
+                          <th className="p-3 text-center">Tempo Médio Resolução</th>
+                          <th className="p-3 text-center">Ações</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 dark:divide-gray-800 font-medium">
+                        {activeDaysList.map((day) => {
+                          const [y, m, d] = day.dateStr.split('-');
+                          const formattedDate = `${d}/${m}/${y}`;
+                          return (
+                            <tr
+                              key={day.dateStr}
+                              onClick={() => {
+                                setStatModal({
+                                  isOpen: true,
+                                  title: `Questões Resolvidas em ${formattedDate}`,
+                                  subtitle: `Exibindo as ${day.questions} questões computadas nesta data`,
+                                  filter: { dateStr: day.dateStr }
+                                });
+                              }}
+                              className="hover:bg-blue-50/40 dark:hover:bg-blue-950/20 transition-colors cursor-pointer group"
+                            >
+                              <td className="p-3 font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                <Calendar className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                                <span>{formattedDate}</span>
+                              </td>
+                              <td className="p-3 text-center font-bold text-blue-600 dark:text-blue-400">
+                                {day.questions} {day.questions === 1 ? 'questão' : 'questões'}
+                              </td>
+                              <td className="p-3 text-center font-bold">
+                                <span className={cn(
+                                  "px-2.5 py-0.5 rounded-full text-xs font-black",
+                                  (day.score || 0) >= 70 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300" :
+                                  (day.score || 0) >= 50 ? "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300" :
+                                  "bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300"
+                                )}>
+                                  {day.score !== null ? `${day.score}%` : '—'}
+                                </span>
+                              </td>
+                              <td className="p-3 text-center font-mono text-gray-500">
+                                {formatSec(day.avgSolveTime)}
+                              </td>
+                              <td className="p-3 text-center">
+                                <div className="flex items-center justify-center gap-2">
+                                  <span className="text-[11px] font-bold text-blue-600 dark:text-blue-400 group-hover:underline flex items-center gap-1">
+                                    <span>Ver {day.questions} Questões</span>
+                                    <ChevronRight className="w-3.5 h-3.5" />
+                                  </span>
+
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (confirm(`Zerar o histórico das ${day.questions} questões respondidas em ${formattedDate}?`)) {
+                                        resetDateStats(day.dateStr);
+                                      }
+                                    }}
+                                    className="p-1 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors"
+                                    title={`Zerar histórico deste dia (${formattedDate})`}
+                                  >
+                                    <RotateCcw className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </div>
+          ) : chartViewMode === 'subject' ? (
+            /* Modo 2: GRÁFICO ÚNICO COM TODOS OS SUBJECTS REAIS E LEGENDA FILTRÁVEL */
+            <div className="space-y-5">
+              {/* Sub-header com tipo de gráfico (Linhas vs Barras) e dica */}
+              <div className="flex items-center justify-between flex-wrap gap-2 pt-1 pb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Formato:</span>
+                  <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg text-xs font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setSubjectChartType('line')}
+                      className={cn(
+                        "px-2.5 py-1 rounded-md transition-all cursor-pointer",
+                        subjectChartType === 'line'
+                          ? "bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-300 shadow-xs"
+                          : "text-gray-500 hover:text-gray-900"
+                      )}
+                    >
+                      📈 Multi-Linhas (Evolução)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSubjectChartType('bar')}
+                      className={cn(
+                        "px-2.5 py-1 rounded-md transition-all cursor-pointer",
+                        subjectChartType === 'bar'
+                          ? "bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-300 shadow-xs"
+                          : "text-gray-500 hover:text-gray-900"
+                      )}
+                    >
+                      📊 Barras Comparativas
+                    </button>
+                  </div>
+                </div>
 
-            <div className="text-[11px] text-gray-500 flex items-center gap-1.5">
-              <span>💡</span>
-              <span>Clique nos itens da legenda para ocultar ou isolar qualquer Subject no gráfico.</span>
-            </div>
-          </div>
+                <div className="text-[11px] text-gray-500 flex items-center gap-1.5">
+                  <span>💡</span>
+                  <span>Clique nos itens da legenda para ocultar ou no nome da matéria para inspecionar as questões.</span>
+                </div>
+              </div>
 
-          {/* O Gráfico Único */}
-          <div className="h-72 sm:h-80 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              {subjectChartType === 'line' ? (
-                <LineChart
-                  data={multiSubjectTimelineData}
-                  margin={{ top: 15, right: 15, left: -20, bottom: 10 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
-                  <XAxis dataKey="dateFormatted" tick={{ fontSize: 11 }} />
-                  <YAxis
-                    domain={selectedMetric === 'accuracy' ? [0, 100] : [0, 'auto']}
-                    tick={{ fontSize: 11 }}
-                    label={{
-                      value: selectedMetric === 'accuracy' ? 'Acertos (%)' : selectedMetric === 'count' ? 'Questões' : 'Tempo (s)',
-                      angle: -90,
-                      position: 'insideLeft',
-                      fontSize: 10,
-                      fill: '#94a3b8'
-                    }}
-                  />
-                  {selectedMetric === 'accuracy' && (
-                    <ReferenceLine
-                      y={70}
-                      stroke="#10b981"
-                      strokeDasharray="4 4"
-                      label={{ value: 'Meta USMLE: 70%', fill: '#10b981', fontSize: 10, position: 'right' }}
-                    />
+              {/* O Gráfico Único */}
+              <div className="h-72 sm:h-80 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  {subjectChartType === 'line' ? (
+                    <LineChart
+                      data={multiSubjectTimelineData}
+                      margin={{ top: 15, right: 15, left: -20, bottom: 10 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+                      <XAxis dataKey="dateFormatted" tick={{ fontSize: 11 }} />
+                      <YAxis
+                        domain={selectedMetric === 'accuracy' ? [0, 100] : [0, 'auto']}
+                        tick={{ fontSize: 11 }}
+                        label={{
+                          value: selectedMetric === 'accuracy' ? 'Acertos (%)' : selectedMetric === 'count' ? 'Questões' : 'Tempo (s)',
+                          angle: -90,
+                          position: 'insideLeft',
+                          fontSize: 10,
+                          fill: '#94a3b8'
+                        }}
+                      />
+                      {selectedMetric === 'accuracy' && (
+                        <ReferenceLine
+                          y={70}
+                          stroke="#10b981"
+                          strokeDasharray="4 4"
+                          label={{ value: 'Meta USMLE: 70%', fill: '#10b981', fontSize: 10, position: 'right' }}
+                        />
+                      )}
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#1f2937',
+                          color: '#fff',
+                          borderRadius: '12px',
+                          border: 'none',
+                          fontSize: '12px',
+                          boxShadow: '0 10px 15px -3px rgba(0,0,0,0.3)'
+                        }}
+                        formatter={(val: any, name: string) => {
+                          if (selectedMetric === 'accuracy') return [`${val}%`, name];
+                          if (selectedMetric === 'solveTime') return [`${val}s`, name];
+                          return [`${val} questões`, name];
+                        }}
+                      />
+                      {availableSubjectsList.map((subj, idx) => {
+                        const isHidden = hiddenSubjects.has(subj);
+                        const color = SUBJECT_COLORS[subj] || FALLBACK_PALETTE[idx % FALLBACK_PALETTE.length];
+                        return (
+                          <Line
+                            key={subj}
+                            type="monotone"
+                            dataKey={subj}
+                            name={subj}
+                            stroke={color}
+                            strokeWidth={2.5}
+                            dot={{ r: 3 }}
+                            activeDot={{ r: 6 }}
+                            connectNulls={true}
+                            hide={isHidden}
+                          />
+                        );
+                      })}
+                    </LineChart>
+                  ) : (
+                    <BarChart
+                      data={subjectBreakdown.filter(s => !hiddenSubjects.has(s.name))}
+                      margin={{ top: 10, right: 10, left: -20, bottom: 25 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+                      <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-20} textAnchor="end" />
+                      <YAxis tick={{ fontSize: 11 }} domain={selectedMetric === 'accuracy' ? [0, 100] : [0, 'auto']} />
+                      {selectedMetric === 'accuracy' && (
+                        <ReferenceLine
+                          y={70}
+                          stroke="#10b981"
+                          strokeDasharray="4 4"
+                          label={{ value: 'Meta: 70%', fill: '#10b981', fontSize: 10, position: 'right' }}
+                        />
+                      )}
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#1f2937',
+                          color: '#fff',
+                          borderRadius: '8px',
+                          border: 'none',
+                          fontSize: '12px'
+                        }}
+                        formatter={(val: any) => {
+                          if (selectedMetric === 'accuracy') return [`${val}%`, 'Taxa de Acertos'];
+                          if (selectedMetric === 'solveTime') return [`${formatSec(Number(val))}`, 'Tempo Médio Resolução'];
+                          return [`${val} questões`, 'Total de Questões'];
+                        }}
+                      />
+                      <Bar
+                        dataKey={
+                          selectedMetric === 'accuracy' ? 'accuracy' :
+                          selectedMetric === 'solveTime' ? 'avgSolveTime' : 'total'
+                        }
+                        radius={[6, 6, 0, 0]}
+                        cursor="pointer"
+                        onClick={(entry: any) => {
+                          if (entry && entry.name) {
+                            setStatModal({
+                              isOpen: true,
+                              title: `Questões de ${entry.name}`,
+                              subtitle: `Todas as questões capturadas da matéria ${entry.name}`,
+                              filter: { subject: entry.name }
+                            });
+                          }
+                        }}
+                      >
+                        {subjectBreakdown.filter(s => !hiddenSubjects.has(s.name)).map((entry, index) => {
+                          const color = SUBJECT_COLORS[entry.name] || FALLBACK_PALETTE[index % FALLBACK_PALETTE.length];
+                          return <Cell key={`cell-${index}`} fill={color} />;
+                        })}
+                      </Bar>
+                    </BarChart>
                   )}
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#1f2937',
-                      color: '#fff',
-                      borderRadius: '12px',
-                      border: 'none',
-                      fontSize: '12px',
-                      boxShadow: '0 10px 15px -3px rgba(0,0,0,0.3)'
-                    }}
-                    formatter={(val: any, name: string) => {
-                      if (selectedMetric === 'accuracy') return [`${val}%`, name];
-                      if (selectedMetric === 'solveTime') return [`${val}s`, name];
-                      return [`${val} questões`, name];
-                    }}
-                  />
+                </ResponsiveContainer>
+              </div>
+
+              {/* Legenda Interativa com Filtro por Clique e Botão de Inspecionar Questões */}
+              <div className="p-3.5 rounded-2xl bg-gray-50/80 dark:bg-gray-850/80 border border-gray-200/80 dark:border-gray-800 space-y-2.5">
+                <div className="flex items-center justify-between flex-wrap gap-2 text-xs">
+                  <div className="flex items-center gap-1.5 text-gray-700 dark:text-gray-300 font-bold">
+                    <Filter className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Legenda dos Subjects Reais (Clique para filtrar no gráfico):</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setHiddenSubjects(new Set())}
+                      className="px-2 py-0.5 rounded-lg text-[11px] font-bold text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors cursor-pointer"
+                    >
+                      Mostrar Todos
+                    </button>
+                    <span className="text-gray-300">|</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (availableSubjectsList.length > 1) {
+                          setHiddenSubjects(new Set(availableSubjectsList.slice(1)));
+                        }
+                      }}
+                      className="px-2 py-0.5 rounded-lg text-[11px] font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+                    >
+                      Isolar Primeiro
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
                   {availableSubjectsList.map((subj, idx) => {
                     const isHidden = hiddenSubjects.has(subj);
                     const color = SUBJECT_COLORS[subj] || FALLBACK_PALETTE[idx % FALLBACK_PALETTE.length];
+                    const match = subjectBreakdown.find(s => s.name === subj);
+
                     return (
-                      <Line
+                      <div
                         key={subj}
-                        type="monotone"
-                        dataKey={subj}
-                        name={subj}
-                        stroke={color}
-                        strokeWidth={2.5}
-                        dot={{ r: 2.5 }}
-                        activeDot={{ r: 5 }}
-                        connectNulls={true}
-                        hide={isHidden}
-                      />
-                    );
-                  })}
-                </LineChart>
-              ) : (
-                <BarChart
-                  data={subjectBreakdown.filter(s => !hiddenSubjects.has(s.name))}
-                  margin={{ top: 10, right: 10, left: -20, bottom: 25 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
-                  <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-20} textAnchor="end" />
-                  <YAxis tick={{ fontSize: 11 }} domain={selectedMetric === 'accuracy' ? [0, 100] : [0, 'auto']} />
-                  {selectedMetric === 'accuracy' && (
-                    <ReferenceLine
-                      y={70}
-                      stroke="#10b981"
-                      strokeDasharray="4 4"
-                      label={{ value: 'Meta: 70%', fill: '#10b981', fontSize: 10, position: 'right' }}
-                    />
-                  )}
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#1f2937',
-                      color: '#fff',
-                      borderRadius: '8px',
-                      border: 'none',
-                      fontSize: '12px'
-                    }}
-                    formatter={(val: any) => {
-                      if (selectedMetric === 'accuracy') return [`${val}%`, 'Taxa de Acertos'];
-                      if (selectedMetric === 'solveTime') return [`${formatSec(Number(val))}`, 'Tempo Médio Resolução'];
-                      if (selectedMetric === 'reviewTime') return [`${formatSec(Number(val))}`, 'Tempo Médio Revisão'];
-                      return [`${val} questões`, 'Total de Questões'];
-                    }}
-                  />
-                  <Bar
-                    dataKey={
-                      selectedMetric === 'accuracy' ? 'accuracy' :
-                      selectedMetric === 'solveTime' ? 'avgSolveTime' :
-                      selectedMetric === 'reviewTime' ? 'avgRevTime' : 'total'
-                    }
-                    radius={[6, 6, 0, 0]}
-                  >
-                    {subjectBreakdown.filter(s => !hiddenSubjects.has(s.name)).map((entry, index) => {
-                      const color = SUBJECT_COLORS[entry.name] || FALLBACK_PALETTE[index % FALLBACK_PALETTE.length];
-                      return <Cell key={`cell-${index}`} fill={color} />;
-                    })}
-                  </Bar>
-                </BarChart>
-              )}
-            </ResponsiveContainer>
-          </div>
-
-          {/* Legenda Interativa com Filtro por Clique */}
-          <div className="p-3.5 rounded-2xl bg-gray-50/80 dark:bg-gray-850/80 border border-gray-200/80 dark:border-gray-800 space-y-2.5">
-            <div className="flex items-center justify-between flex-wrap gap-2 text-xs">
-              <div className="flex items-center gap-1.5 text-gray-700 dark:text-gray-300 font-bold">
-                <Filter className="w-3.5 h-3.5 text-blue-600" />
-                <span>Legenda dos Subjects (Clique para filtrar no gráfico):</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setHiddenSubjects(new Set())}
-                  className="px-2 py-0.5 rounded-lg text-[11px] font-bold text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors cursor-pointer"
-                >
-                  Mostrar Todos
-                </button>
-                <span className="text-gray-300">|</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (availableSubjectsList.length > 1) {
-                      setHiddenSubjects(new Set(availableSubjectsList.slice(1)));
-                    }
-                  }}
-                  className="px-2 py-0.5 rounded-lg text-[11px] font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer"
-                >
-                  Isolar Primeiro
-                </button>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              {availableSubjectsList.map((subj, idx) => {
-                const isHidden = hiddenSubjects.has(subj);
-                const color = SUBJECT_COLORS[subj] || FALLBACK_PALETTE[idx % FALLBACK_PALETTE.length];
-                const match = subjectBreakdown.find(s => s.name === subj);
-
-                return (
-                  <button
-                    key={subj}
-                    type="button"
-                    onClick={() => toggleSubjectFilter(subj)}
-                    className={cn(
-                      "px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer border select-none",
-                      !isHidden
-                        ? "bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 shadow-2xs hover:scale-105"
-                        : "bg-gray-100 dark:bg-gray-900 border-dashed border-gray-300 dark:border-gray-800 opacity-40 line-through text-gray-400"
-                    )}
-                    title={isHidden ? `Clique para reexibir ${subj} no gráfico` : `Clique para ocultar ${subj} do gráfico`}
-                  >
-                    <span
-                      className="w-2.5 h-2.5 rounded-full shrink-0 transition-transform"
-                      style={{ backgroundColor: isHidden ? '#9ca3af' : color }}
-                    />
-                    <span>{subj}</span>
-                    {match && (
-                      <span className={cn(
-                        "text-[10px] font-normal px-1 rounded-sm",
-                        !isHidden ? "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300" : "text-gray-400"
-                      )}>
-                        {selectedMetric === 'accuracy' ? `${match.accuracy}%` : selectedMetric === 'count' ? `${match.total}q` : `${match.avgSolveTime}s`}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Tabela Resumo dos Subjects */}
-          <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-gray-50 dark:bg-gray-800/80 text-gray-500 font-bold uppercase tracking-wider">
-                <tr>
-                  <th className="p-3">Subject / Matéria</th>
-                  <th className="p-3 text-center">Questões</th>
-                  <th className="p-3 text-center">Acertos (%)</th>
-                  <th className="p-3 text-center">Tempo Médio Resolução</th>
-                  <th className="p-3 text-center">Tempo Médio Revisão</th>
-                  <th className="p-3 text-center">Status no Gráfico</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800 font-medium">
-                {subjectBreakdown.map((item, idx) => {
-                  const isHidden = hiddenSubjects.has(item.name);
-                  const color = SUBJECT_COLORS[item.name] || FALLBACK_PALETTE[idx % FALLBACK_PALETTE.length];
-                  return (
-                    <tr
-                      key={idx}
-                      className={cn(
-                        "hover:bg-gray-50/60 dark:hover:bg-gray-800/40 transition-colors",
-                        isHidden && "opacity-50 bg-gray-50/40 dark:bg-gray-900/40"
-                      )}
-                    >
-                      <td className="p-3 font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
-                        <span>{item.name}</span>
-                      </td>
-                      <td className="p-3 text-center font-semibold">{item.total}</td>
-                      <td className="p-3 text-center font-bold">
-                        <span className={cn(
-                          "px-2.5 py-0.5 rounded-full text-xs font-black",
-                          item.accuracy >= 70 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300" :
-                          item.accuracy >= 50 ? "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300" :
-                          "bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300"
-                        )}>
-                          {item.accuracy}%
-                        </span>
-                      </td>
-                      <td className="p-3 text-center font-mono">{formatSec(item.avgSolveTime)}</td>
-                      <td className="p-3 text-center font-mono">{formatSec(item.avgRevTime)}</td>
-                      <td className="p-3 text-center">
+                        className={cn(
+                          "px-2.5 py-1 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border select-none",
+                          !isHidden
+                            ? "bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 shadow-2xs"
+                            : "bg-gray-100 dark:bg-gray-900 border-dashed border-gray-300 dark:border-gray-800 opacity-40 text-gray-400"
+                        )}
+                      >
+                        {/* Toggle visibility */}
                         <button
                           type="button"
-                          onClick={() => toggleSubjectFilter(item.name)}
+                          onClick={() => toggleSubjectFilter(subj)}
+                          className="flex items-center gap-1.5 cursor-pointer hover:opacity-80"
+                          title={isHidden ? `Clique para reexibir ${subj}` : `Clique para ocultar ${subj}`}
+                        >
+                          <span
+                            className="w-2.5 h-2.5 rounded-full shrink-0"
+                            style={{ backgroundColor: isHidden ? '#9ca3af' : color }}
+                          />
+                          <span className={cn(isHidden && "line-through")}>{subj}</span>
+                        </button>
+
+                        {/* Open Questions of Subject */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStatModal({
+                              isOpen: true,
+                              title: `Questões de ${subj}`,
+                              subtitle: `Visualizando as ${match?.total || 0} questões capturadas de ${subj}`,
+                              filter: { subject: subj }
+                            });
+                          }}
+                          className="ml-1 p-0.5 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded text-blue-600 dark:text-blue-400 cursor-pointer"
+                          title={`Ver questões reais de ${subj}`}
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                        </button>
+
+                        {match && (
+                          <span className="text-[10px] font-normal px-1 rounded-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                            {selectedMetric === 'accuracy' ? `${match.accuracy}%` : selectedMetric === 'count' ? `${match.total}q` : `${match.avgSolveTime}s`}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Tabela Resumo dos Subjects (Linhas clicáveis para abrir questões) */}
+              <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-gray-50 dark:bg-gray-800/80 text-gray-500 font-bold uppercase tracking-wider">
+                    <tr>
+                      <th className="p-3">Subject / Matéria Real</th>
+                      <th className="p-3 text-center">Questões</th>
+                      <th className="p-3 text-center">Acertos (%)</th>
+                      <th className="p-3 text-center">Tempo Médio Resolução</th>
+                      <th className="p-3 text-center">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-800 font-medium">
+                    {subjectBreakdown.map((item, idx) => {
+                      const isHidden = hiddenSubjects.has(item.name);
+                      const color = SUBJECT_COLORS[item.name] || FALLBACK_PALETTE[idx % FALLBACK_PALETTE.length];
+                      return (
+                        <tr
+                          key={idx}
+                          onClick={() => {
+                            setStatModal({
+                              isOpen: true,
+                              title: `Questões de ${item.name}`,
+                              subtitle: `Lista de questões capturadas para a matéria ${item.name}`,
+                              filter: { subject: item.name }
+                            });
+                          }}
                           className={cn(
-                            "px-2 py-0.5 rounded-lg text-[10px] font-bold cursor-pointer transition-colors",
-                            !isHidden
-                              ? "bg-blue-100 text-blue-800 dark:bg-blue-950/50 dark:text-blue-300"
-                              : "bg-gray-200 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
+                            "hover:bg-blue-50/40 dark:hover:bg-blue-950/20 transition-colors cursor-pointer group",
+                            isHidden && "opacity-50"
                           )}
                         >
-                          {!isHidden ? 'Visível' : 'Oculto'}
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : (
-        /* Modo 3: Por System */
-        <div className="space-y-6">
-          <div className="h-72 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={systemBreakdown}
-                margin={{ top: 10, right: 10, left: -20, bottom: 25 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-25} textAnchor="end" />
-                <YAxis tick={{ fontSize: 11 }} domain={selectedMetric === 'accuracy' ? [0, 100] : [0, 'auto']} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#1f2937',
-                    color: '#fff',
-                    borderRadius: '8px',
-                    border: 'none',
-                    fontSize: '12px'
-                  }}
-                  formatter={(val: any) => {
-                    if (selectedMetric === 'accuracy') return [`${val}%`, 'Taxa de Acertos'];
-                    if (selectedMetric === 'solveTime') return [`${formatSec(Number(val))}`, 'Tempo Médio Resolução'];
-                    if (selectedMetric === 'reviewTime') return [`${formatSec(Number(val))}`, 'Tempo Médio Revisão'];
-                    return [`${val} questões`, 'Total de Questões'];
-                  }}
-                />
-                <Bar
-                  dataKey={
-                    selectedMetric === 'accuracy' ? 'accuracy' :
-                    selectedMetric === 'solveTime' ? 'avgSolveTime' :
-                    selectedMetric === 'reviewTime' ? 'avgRevTime' : 'total'
-                  }
-                  name={
-                    selectedMetric === 'accuracy' ? 'Acertos (%)' :
-                    selectedMetric === 'solveTime' ? 'Tempo de Resolução' :
-                    selectedMetric === 'reviewTime' ? 'Tempo de Revisão' : 'Total Questões'
-                  }
-                  fill="#10b981"
-                  radius={[6, 6, 0, 0]}
-                >
-                  {systemBreakdown.map((entry, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={
-                        selectedMetric === 'accuracy'
-                          ? entry.accuracy >= 70 ? '#10b981' : entry.accuracy >= 55 ? '#f59e0b' : '#ef4444'
-                          : '#8b5cf6'
-                      }
-                    />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+                          <td className="p-3 font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                            <span>{item.name}</span>
+                          </td>
+                          <td className="p-3 text-center font-semibold">{item.total}</td>
+                          <td className="p-3 text-center font-bold">
+                            <span className={cn(
+                              "px-2.5 py-0.5 rounded-full text-xs font-black",
+                              item.accuracy >= 70 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300" :
+                              item.accuracy >= 50 ? "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300" :
+                              "bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300"
+                            )}>
+                              {item.accuracy}%
+                            </span>
+                          </td>
+                          <td className="p-3 text-center font-mono">{formatSec(item.avgSolveTime)}</td>
+                          <td className="p-3 text-center">
+                            <div className="flex items-center justify-center gap-2">
+                              <span className="text-[11px] font-bold text-blue-600 dark:text-blue-400 group-hover:underline flex items-center gap-1">
+                                <span>Ver {item.total} Questões</span>
+                                <ChevronRight className="w-3.5 h-3.5" />
+                              </span>
 
-          {/* Breakdown Table */}
-          <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-gray-50 dark:bg-gray-800/80 text-gray-500 font-bold uppercase tracking-wider">
-                <tr>
-                  <th className="p-3">System / Sistema</th>
-                  <th className="p-3 text-center">Questões</th>
-                  <th className="p-3 text-center">Acertos (%)</th>
-                  <th className="p-3 text-center">Tempo Médio Resolução</th>
-                  <th className="p-3 text-center">Tempo Médio Revisão</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800 font-medium">
-                {systemBreakdown.map((item, idx) => (
-                  <tr key={idx} className="hover:bg-gray-50/60 dark:hover:bg-gray-800/40">
-                    <td className="p-3 font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
-                      <span>🩺</span>
-                      <span>{item.name}</span>
-                    </td>
-                    <td className="p-3 text-center font-semibold">{item.total}</td>
-                    <td className="p-3 text-center font-bold">
-                      <span className={cn(
-                        "px-2.5 py-0.5 rounded-full text-xs font-black",
-                        item.accuracy >= 70 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300" :
-                        item.accuracy >= 50 ? "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300" :
-                        "bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300"
-                      )}>
-                        {item.accuracy}%
-                      </span>
-                    </td>
-                    <td className="p-3 text-center font-mono">{formatSec(item.avgSolveTime)}</td>
-                    <td className="p-3 text-center font-mono">{formatSec(item.avgRevTime)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (confirm(`Zerar estatísticas da matéria "${item.name}"? As ${item.total} questões voltarão ao status inicial não respondidas.`)) {
+                                    resetSubjectStats(item.name);
+                                  }
+                                }}
+                                className="p-1 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors"
+                                title={`Zerar estatísticas da matéria ${item.name}`}
+                              >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            /* Modo 3: Por System */
+            <div className="space-y-6">
+              <div className="h-72 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={systemBreakdown}
+                    margin={{ top: 10, right: 10, left: -20, bottom: 25 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+                    <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-25} textAnchor="end" />
+                    <YAxis tick={{ fontSize: 11 }} domain={selectedMetric === 'accuracy' ? [0, 100] : [0, 'auto']} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#1f2937',
+                        color: '#fff',
+                        borderRadius: '8px',
+                        border: 'none',
+                        fontSize: '12px'
+                      }}
+                      formatter={(val: any) => {
+                        if (selectedMetric === 'accuracy') return [`${val}%`, 'Taxa de Acertos'];
+                        if (selectedMetric === 'solveTime') return [`${formatSec(Number(val))}`, 'Tempo Médio Resolução'];
+                        return [`${val} questões`, 'Total de Questões'];
+                      }}
+                    />
+                    <Bar
+                      dataKey={
+                        selectedMetric === 'accuracy' ? 'accuracy' :
+                        selectedMetric === 'solveTime' ? 'avgSolveTime' : 'total'
+                      }
+                      fill="#10b981"
+                      radius={[6, 6, 0, 0]}
+                      cursor="pointer"
+                      onClick={(entry: any) => {
+                        if (entry && entry.name) {
+                          setStatModal({
+                            isOpen: true,
+                            title: `Questões do Sistema ${entry.name}`,
+                            subtitle: `Questões reais registradas neste sistema`,
+                            filter: { system: entry.name }
+                          });
+                        }
+                      }}
+                    >
+                      {systemBreakdown.map((entry, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={
+                            selectedMetric === 'accuracy'
+                              ? entry.accuracy >= 70 ? '#10b981' : entry.accuracy >= 55 ? '#f59e0b' : '#ef4444'
+                              : '#8b5cf6'
+                          }
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Tabela de Sistemas (Linhas clicáveis para abrir questões) */}
+              <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-gray-50 dark:bg-gray-800/80 text-gray-500 font-bold uppercase tracking-wider">
+                    <tr>
+                      <th className="p-3">System / Sistema Real</th>
+                      <th className="p-3 text-center">Questões</th>
+                      <th className="p-3 text-center">Acertos (%)</th>
+                      <th className="p-3 text-center">Tempo Médio Resolução</th>
+                      <th className="p-3 text-center">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-800 font-medium">
+                    {systemBreakdown.map((item, idx) => (
+                      <tr
+                        key={idx}
+                        onClick={() => {
+                          setStatModal({
+                            isOpen: true,
+                            title: `Questões do Sistema ${item.name}`,
+                            subtitle: `Lista de questões capturadas pertencentes ao sistema ${item.name}`,
+                            filter: { system: item.name }
+                          });
+                        }}
+                        className="hover:bg-blue-50/40 dark:hover:bg-blue-950/20 transition-colors cursor-pointer group"
+                      >
+                        <td className="p-3 font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
+                          <span>🩺</span>
+                          <span>{item.name}</span>
+                        </td>
+                        <td className="p-3 text-center font-semibold">{item.total}</td>
+                        <td className="p-3 text-center font-bold">
+                          <span className={cn(
+                            "px-2.5 py-0.5 rounded-full text-xs font-black",
+                            item.accuracy >= 70 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300" :
+                            item.accuracy >= 50 ? "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300" :
+                            "bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300"
+                          )}>
+                            {item.accuracy}%
+                          </span>
+                        </td>
+                        <td className="p-3 text-center font-mono">{formatSec(item.avgSolveTime)}</td>
+                        <td className="p-3 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <span className="text-[11px] font-bold text-blue-600 dark:text-blue-400 group-hover:underline flex items-center gap-1">
+                              <span>Ver {item.total} Questões</span>
+                              <ChevronRight className="w-3.5 h-3.5" />
+                            </span>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (confirm(`Zerar estatísticas do sistema "${item.name}"? As ${item.total} questões voltarão ao status inicial não respondidas.`)) {
+                                  resetSystemStats(item.name);
+                                }
+                              }}
+                              className="p-1 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors"
+                              title={`Zerar estatísticas do sistema ${item.name}`}
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
       )}
+
+      {/* Modal de Questões Associadas a Qualquer Estatística Clicada */}
+      {statModal && (
+        <StatisticQuestionsModal
+          isOpen={statModal.isOpen}
+          onClose={() => setStatModal(null)}
+          title={statModal.title}
+          subtitle={statModal.subtitle}
+          filter={statModal.filter}
+        />
+      )}
+
+      {/* Modal de Reset Individual de Estatísticas */}
+      <ResetStatsModal
+        isOpen={showResetModal}
+        onClose={() => setShowResetModal(false)}
+      />
     </div>
   );
 }
