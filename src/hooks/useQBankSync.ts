@@ -308,6 +308,7 @@ export function useQBankSync() {
         });
 
         // Sincroniza com os logs do Study Tracker (Heatmap e Gráfico de Desempenho)
+        // Garante que cada questão única (QID) seja contabilizada apenas UMA vez por dia no amount
         try {
           const todayStr = format(new Date(), 'yyyy-MM-dd');
           const savedLogsStr = localStorage.getItem('usmle_study_logs_v4');
@@ -320,12 +321,25 @@ export function useQBankSync() {
           const existingLogIndex = currentLogs.findIndex(l => l.date === todayStr && (l.resourceId === 'qbankly' || l.resourceId === 'uworld' || l.unit === 'questões'));
           
           if (existingLogIndex >= 0) {
-            currentLogs[existingLogIndex].amount = (currentLogs[existingLogIndex].amount || 0) + 1;
-            currentLogs[existingLogIndex].minutesSpent = (currentLogs[existingLogIndex].minutesSpent || 0) + timeMinutes;
-            const prevAmount = currentLogs[existingLogIndex].amount - 1;
-            const prevScore = currentLogs[existingLogIndex].scorePercent || 0;
-            const newScore = Math.round(((prevScore * prevAmount) + (isCorrect ? 100 : 0)) / currentLogs[existingLogIndex].amount);
-            currentLogs[existingLogIndex].scorePercent = newScore;
+            const existingLog = currentLogs[existingLogIndex];
+            const qids: string[] = Array.isArray(existingLog.questionIds) ? existingLog.questionIds : [];
+
+            // Apenas incrementa a contagem de questões (amount) se for uma questão ainda não registrada hoje
+            if (!qids.includes(qid)) {
+              qids.push(qid);
+              existingLog.questionIds = qids;
+              const newAmount = qids.length;
+              const prevAmount = newAmount - 1;
+              const prevScore = Number(existingLog.scorePercent) || 0;
+              const newScore = Math.round(((prevScore * prevAmount) + (isCorrect ? 100 : 0)) / newAmount);
+              
+              existingLog.amount = newAmount;
+              existingLog.scorePercent = newScore;
+              existingLog.minutesSpent = (existingLog.minutesSpent || 0) + timeMinutes;
+            } else {
+              // Questão já registrada hoje: apenas atualiza o tempo se razoável
+              existingLog.minutesSpent = Math.max(existingLog.minutesSpent || 0, timeMinutes);
+            }
           } else {
             currentLogs.unshift({
               id: 'log-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
@@ -334,6 +348,7 @@ export function useQBankSync() {
               resourceName: 'QBank Externo (QBankly / UWorld)',
               resourceType: 'qbank',
               amount: 1,
+              questionIds: [qid],
               unit: 'questões',
               minutesSpent: timeMinutes,
               scorePercent: isCorrect ? 100 : 0,

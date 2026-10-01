@@ -1253,7 +1253,8 @@ function autoImportarQuestaoSeNavegou(force = false) {
     const imgCount = (cardData.questionImages || []).length;
     const sys = (cardData.system || '').replace(/click\s*to\s*show/i, '').trim();
     const sub = (cardData.subject || '').replace(/click\s*to\s*show/i, '').trim();
-    const signature = `qid:${currentQId}|exp:${hasExp ? cardData.explanation.length : 0}|obj:${hasObj ? cardData.educationalObjective.length : 0}|corr:${hasCorrect}|img:${imgCount}|sys:${sys}|sub:${sub}|ans:${cardData.isAnswered}|isCorr:${cardData.isCorrect}|resTime:${cardData.resolutionTimeSeconds}`;
+    // Não inclui resTime por segundo para evitar broadcast contínuo a cada segundo
+    const signature = `qid:${currentQId}|exp:${hasExp ? cardData.explanation.length : 0}|obj:${hasObj ? cardData.educationalObjective.length : 0}|corr:${hasCorrect}|img:${imgCount}|sys:${sys}|sub:${sub}|ans:${cardData.isAnswered}|isCorr:${cardData.isCorrect}`;
 
     const prevSignature = lastImportedQuestionSignatures.get(currentQId);
 

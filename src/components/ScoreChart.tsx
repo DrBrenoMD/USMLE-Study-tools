@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { format, subDays, eachDayOfInterval, startOfDay } from 'date-fns';
 import { StudyLogEntry } from '../types';
 import {
@@ -29,12 +29,14 @@ import {
   CheckCircle2,
   XCircle,
   HelpCircle,
-  Download
+  Download,
+  Wand2
 } from 'lucide-react';
 import { useStore, StudyDeskQuestionRecord, Question } from '../cardblocks/store/useStore';
 import { cn } from '../lib/utils';
 import { QuestionDrillDownModal } from './QuestionDrillDownModal';
 import { GranularResetModal } from './GranularResetModal';
+import { sanitizeStudyData } from '../utils/sanitizeStudyData';
 
 interface ScoreChartProps {
   logs: StudyLogEntry[];
@@ -397,16 +399,14 @@ export function ScoreChart({ logs }: ScoreChartProps) {
     };
   }, [allSubjectsList, extensionData, subjectDaysRange]);
 
-  // 4. Processamento da NOVA SEÇÃO - System vs Subject (Hierarquia detalhada)
+  // 4. Processamento da NOVA SEÇÃO - System vs Subject (Hierarquia detalhada baseada em questões únicas)
   const systemVsSubjectData = useMemo(() => {
-    // Mapa: Subject -> Map<System, { total, correct, solveSum, revSum, questionsList }>
+    // Mapa: Subject -> Map<System, { solveSum, revSum, questionsMap: Map<string, Question> }>
     const map = new Map<
       string,
       Map<
         string,
         {
-          total: number;
-          correct: number;
           solveSum: number;
           revSum: number;
           questionsMap: Map<string, Question>;
@@ -414,9 +414,11 @@ export function ScoreChart({ logs }: ScoreChartProps) {
       >
     >();
 
+    // Agrupa cada questão única pelo seu Subject e System
     extensionData.records.forEach(r => {
-      const subj = r.subject || 'Sem Matéria';
-      const sys = r.system || 'Sistema Geral';
+      const qKey = r.questionObj.id || r.questionObj.qid;
+      const subj = (r.subject || 'Sem Matéria').trim();
+      const sys = (r.system || 'Sistema Geral').trim();
 
       if (!map.has(subj)) {
         map.set(subj, new Map());
@@ -424,8 +426,6 @@ export function ScoreChart({ logs }: ScoreChartProps) {
       const sysMap = map.get(subj)!;
       if (!sysMap.has(sys)) {
         sysMap.set(sys, {
-          total: 0,
-          correct: 0,
           solveSum: 0,
           revSum: 0,
           questionsMap: new Map()
@@ -433,37 +433,42 @@ export function ScoreChart({ logs }: ScoreChartProps) {
       }
 
       const item = sysMap.get(sys)!;
-      item.total += 1;
-      if (r.isCorrect) item.correct += 1;
-      item.solveSum += r.resolutionTimeSeconds;
-      item.revSum += r.reviewTimeSeconds;
-      item.questionsMap.set(r.questionObj.id || r.questionObj.qid, r.questionObj);
+      // Garante que cada questão única seja contabilizada uma única vez por sistema
+      if (!item.questionsMap.has(qKey)) {
+        item.questionsMap.set(qKey, r.questionObj);
+        item.solveSum += (r.resolutionTimeSeconds || 60);
+        item.revSum += (r.reviewTimeSeconds || 90);
+      }
     });
 
-    // Formata em estrutura hierárquica ordenada
+    // Formata em estrutura hierárquica ordenada garantindo consistência com o Drill-down
     const result = Array.from(map.entries()).map(([subjectName, sysMap]) => {
       let subjTotal = 0;
       let subjCorrect = 0;
       const subjQuestionsMap = new Map<string, Question>();
 
       const systems = Array.from(sysMap.entries()).map(([systemName, data]) => {
-        subjTotal += data.total;
-        subjCorrect += data.correct;
-        data.questionsMap.forEach((q, id) => subjQuestionsMap.set(id, q));
+        const sysQuestions = Array.from(data.questionsMap.values());
+        const total = sysQuestions.length;
+        const correct = sysQuestions.filter(q => q.status === 'correct').length;
+        const incorrect = total - correct;
+        const accuracy = total > 0 ? Math.round((correct / total) * 100) : 0;
+        const avgSolve = total > 0 ? Math.round(data.solveSum / total) : 0;
+        const avgRev = total > 0 ? Math.round(data.revSum / total) : 0;
 
-        const accuracy = data.total > 0 ? Math.round((data.correct / data.total) * 100) : 0;
-        const avgSolve = data.total > 0 ? Math.round(data.solveSum / data.total) : 0;
-        const avgRev = data.total > 0 ? Math.round(data.revSum / data.total) : 0;
+        subjTotal += total;
+        subjCorrect += correct;
+        data.questionsMap.forEach((q, id) => subjQuestionsMap.set(id, q));
 
         return {
           systemName,
-          total: data.total,
-          correct: data.correct,
-          incorrect: data.total - data.correct,
+          total,
+          correct,
+          incorrect,
           accuracy,
           avgSolveTime: avgSolve,
           avgRevTime: avgRev,
-          questions: Array.from(data.questionsMap.values())
+          questions: sysQuestions
         };
       }).sort((a, b) => b.total - a.total);
 
@@ -482,6 +487,11 @@ export function ScoreChart({ logs }: ScoreChartProps) {
 
     return result;
   }, [extensionData]);
+
+  // Sanitização automática no mount para corrigir dados inflados antigos
+  useEffect(() => {
+    sanitizeStudyData();
+  }, []);
 
   // Formatação de segundos
   const formatSec = (sec: number) => {
@@ -539,6 +549,16 @@ export function ScoreChart({ logs }: ScoreChartProps) {
     resetSystemStats(systemName);
     setResetToast(`Estatísticas do System "${systemName}" foram resetadas!`);
     setTimeout(() => setResetToast(null), 3500);
+  };
+
+  const handleSanitizeAndRecalculate = () => {
+    const res = sanitizeStudyData();
+    if (res.fixedLogsCount > 0 || res.removedDuplicateAttempts > 0) {
+      setResetToast(`Sincronização concluída! ${res.removedDuplicateAttempts} tentativas duplicadas foram removidas e ${res.fixedLogsCount} registros do Heatmap corrigidos para corresponderem às questões reais.`);
+    } else {
+      setResetToast('Todas as métricas e logs do Heatmap já estão 100% íntegros e sincronizados com as questões reais!');
+    }
+    setTimeout(() => setResetToast(null), 4500);
   };
 
   const handleResetGeneralLogs = () => {
@@ -697,6 +717,17 @@ export function ScoreChart({ logs }: ScoreChartProps) {
               </div>
             )}
 
+            {/* Botão de Sincronizar & Corrigir Métricas */}
+            <button
+              type="button"
+              onClick={handleSanitizeAndRecalculate}
+              className="px-3 py-1.5 rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+              title="Corrigir registros e recalcular métricas para corresponderem exatamente ao número de questões únicas"
+            >
+              <Wand2 className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+              <span>Sincronizar & Corrigir Métricas</span>
+            </button>
+
             {/* Botão de Reset Granular */}
             <button
               type="button"
@@ -718,7 +749,9 @@ export function ScoreChart({ logs }: ScoreChartProps) {
               <span>{activeChartTab === 'general' ? 'Total (Logs Sessão)' : 'Total (Extensão)'}</span>
             </div>
             <div className="text-xl sm:text-2xl font-extrabold text-blue-950 dark:text-blue-100">
-              {activeChartTab === 'general' ? generalSummaryStats.totalQuestions : extensionData.records.length}
+              {activeChartTab === 'general' 
+                ? generalSummaryStats.totalQuestions 
+                : extensionData.extensionQuestions.filter(q => q.status && q.status !== 'unused').length || extensionData.extensionQuestions.length}
             </div>
             <span className="text-[11px] text-gray-500 dark:text-gray-400">
               {activeChartTab === 'general'
@@ -735,9 +768,12 @@ export function ScoreChart({ logs }: ScoreChartProps) {
             <div className="text-xl sm:text-2xl font-extrabold text-emerald-950 dark:text-emerald-100">
               {activeChartTab === 'general'
                 ? (generalSummaryStats.overallAvgScore !== null ? `${generalSummaryStats.overallAvgScore}%` : '—')
-                : (extensionData.records.length > 0
-                    ? `${Math.round((extensionData.records.filter(r => r.isCorrect).length / extensionData.records.length) * 100)}%`
-                    : '—')}
+                : (() => {
+                    const answered = extensionData.extensionQuestions.filter(q => q.status && q.status !== 'unused');
+                    if (answered.length === 0) return '—';
+                    const correct = answered.filter(q => q.status === 'correct').length;
+                    return `${Math.round((correct / answered.length) * 100)}%`;
+                  })()}
             </div>
             <span className="text-[11px] text-gray-500 dark:text-gray-400">
               {activeChartTab === 'general' ? 'Média ponderada geral' : 'Exclusivo da extensão'}

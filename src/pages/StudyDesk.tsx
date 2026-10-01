@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useLocation, useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { useLocation, useNavigate, Link } from 'react-router-dom';
 import {
   Play,
   Pause,
@@ -36,7 +36,8 @@ import {
   Globe,
   Database,
   Chrome,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Download
 } from 'lucide-react';
 import {
   useStore,
@@ -113,15 +114,16 @@ export default function StudyDesk() {
   } = useTimerStore();
 
   // Mode: 'external' (default: Qbankly, UWorld, Amboss) or 'internal' (site bank)
-  const [searchParams] = useSearchParams();
   const [sourceMode, setSourceMode] = useState<'external' | 'internal'>('external');
 
   // External live status & last received question info
   const [externalSourcePlatform, setExternalSourcePlatform] = useState<string>('Qbankly / UWorld / Amboss');
-  const [lastSyncedQid, setLastSyncedQid] = useState<string>('');
-  const [lastSyncedSubject, setLastSyncedSubject] = useState<string>('');
-  const [lastSyncedSystem, setLastSyncedSystem] = useState<string>('');
-  const [lastSyncedObjective, setLastSyncedObjective] = useState<string>('');
+  const [lastSyncedQid, setLastSyncedQid] = useState<string>('10420');
+  const [lastSyncedSubject, setLastSyncedSubject] = useState<string>('Cardiologia');
+  const [lastSyncedSystem, setLastSyncedSystem] = useState<string>('Cardiovascular');
+  const [lastSyncedObjective, setLastSyncedObjective] = useState<string>(
+    'A Estenose Aórtica gera aumento da pós-carga de VE, hipertrofia ventricular concêntrica, sopro sistólico com irradiação carotídea e pulso parvus et tardus.'
+  );
 
   // Local State
   const [selectedBankId, setSelectedBankId] = useState<string>('all');
@@ -135,27 +137,6 @@ export default function StudyDesk() {
   const [statsBreakdownType, setStatsBreakdownType] = useState<'subject' | 'system'>('subject');
   const [statsMetricType, setStatsMetricType] = useState<'accuracy' | 'solveTime' | 'reviewTime' | 'count'>('accuracy');
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
-
-  // Sincroniza via URL ?qid=... para abrir diretamente a questão solicitada
-  useEffect(() => {
-    const qidParam = searchParams.get('qid');
-    if (qidParam && questions.length > 0) {
-      const idx = questions.findIndex(q => (q.qid && q.qid.toString() === qidParam) || q.id === qidParam);
-      if (idx !== -1) {
-        setSourceMode('internal');
-        setSelectedBankId('all');
-        setActiveQuestionIndex(idx);
-        const targetQ = questions[idx];
-        if (targetQ.selectedChoiceId) {
-          setSelectedChoiceId(targetQ.selectedChoiceId);
-          setIsAnswerRevealed(true);
-        } else {
-          setSelectedChoiceId(null);
-          setIsAnswerRevealed(false);
-        }
-      }
-    }
-  }, [searchParams, questions]);
 
   // Flashcard quick create form state
   const [showQuickCardForm, setShowQuickCardForm] = useState<boolean>(false);
@@ -284,8 +265,8 @@ export default function StudyDesk() {
     if (decks.length > 0 && !cardDeckId) {
       setCardDeckId(decks[0].id);
     }
-    setCardFront(`Qual é a conduta / conceito-chave da Questão ${activeQid} (${activeSubject})?`);
-    setCardBack(`<p><b>Conceito Principal:</b></p><p>${lastSyncedObjective || ''}</p>`);
+    setCardFront('');
+    setCardBack('');
     setCardTags(`qid:${activeQid}, ${activeSubject}, ${activeSystem}`.trim());
 
     if (notebookAreas.length > 0 && !noteAreaId) {
@@ -377,17 +358,27 @@ export default function StudyDesk() {
     }, 1800);
   };
 
-  // Fast Card Presets
-  const handlePresetObjective = () => {
-    setCardFront(`<b>[${activeSubject} • ${activeSystem}]</b> Qual é o ponto-chave sobre este tópico da Questão ${activeQid}?`);
-    setCardBack(`<p>${lastSyncedObjective || 'Conceito chave em revisão.'}</p>`);
+  // Quick Flashcard Form Open (sem textos pré-prontos)
+  const handleOpenQuickCard = () => {
+    setCardFront('');
+    setCardBack('');
     setShowQuickCardForm(true);
   };
 
-  const handlePresetQuestionAnswer = () => {
-    setCardFront(`<p><b>Cenário Clínico (QID: ${activeQid}):</b></p><p>Qual é o diagnóstico e manejo principal?</p>`);
-    setCardBack(`<p><b>Resposta / Conduta:</b></p><p>${lastSyncedObjective || ''}</p>`);
-    setShowQuickCardForm(true);
+  // Importar Educational Objective da questão no verso
+  const handleImportObjectiveToBack = () => {
+    const objective = sourceMode === 'external'
+      ? (lastSyncedObjective || '')
+      : (currentInternalQuestion?.educationalObjective || lastSyncedObjective || '');
+
+    if (objective && objective.trim().length > 0) {
+      setCardBack(objective.trim());
+      setCardSaveFeedback('Educational Objective importado para o verso! ✓');
+      setTimeout(() => setCardSaveFeedback(null), 2500);
+    } else {
+      setCardSaveFeedback('Esta questão não possui Educational Objective registrado.');
+      setTimeout(() => setCardSaveFeedback(null), 2500);
+    }
   };
 
   // Quick Note Creation from Question
@@ -399,8 +390,7 @@ export default function StudyDesk() {
 <div class="p-3.5 bg-blue-50/60 dark:bg-blue-950/30 rounded-xl border border-blue-200 dark:border-blue-900/60 text-sm leading-relaxed my-3">
   <b>Matéria:</b> ${activeSubject} | <b>Sistema:</b> ${activeSystem}
 </div>
-${lastSyncedObjective ? `<blockquote><p><b>Educational Objective:</b> ${lastSyncedObjective}</p></blockquote>` : ''}
-<p>Escreva aqui suas correlações fisiopatológicas, armadilhas da banca e condutas...</p>`;
+${lastSyncedObjective ? `<blockquote><p><b>Educational Objective:</b> ${lastSyncedObjective}</p></blockquote>` : ''}`;
 
     const noteId = createStudyNote({
       notebookId: studyNotebooks[0]?.id || 'nb-principal',
@@ -787,29 +777,24 @@ ${lastSyncedObjective ? `<blockquote><p><b>Educational Objective:</b> ${lastSync
             {/* TAB CONTENT: FLASHCARDS */}
             {activeRightTab === 'flashcards' && (
               <div className="p-4 flex-1 flex flex-col gap-4 overflow-y-auto max-h-[calc(100vh-14rem)]">
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    onClick={handlePresetObjective}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 text-xs font-bold hover:bg-amber-100 transition-colors"
-                  >
-                    <Zap className="w-3.5 h-3.5 text-amber-500" />
-                    <span>Card do Objetivo Educacional</span>
-                  </button>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-blue-500" />
+                    <span>Flashcards da Questão #{activeQid}</span>
+                  </span>
 
                   <button
-                    onClick={handlePresetQuestionAnswer}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60 text-xs font-bold hover:bg-indigo-100 transition-colors"
-                  >
-                    <Target className="w-3.5 h-3.5 text-indigo-500" />
-                    <span>Card Pergunta / Resposta</span>
-                  </button>
-
-                  <button
-                    onClick={() => setShowQuickCardForm(!showQuickCardForm)}
-                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 text-xs font-bold hover:bg-blue-100 transition-colors ml-auto"
+                    onClick={() => {
+                      if (!showQuickCardForm) {
+                        handleOpenQuickCard();
+                      } else {
+                        setShowQuickCardForm(false);
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer ml-auto"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    <span>Novo Card</span>
+                    <span>Novo Flashcard</span>
                   </button>
                 </div>
 
@@ -848,18 +833,29 @@ ${lastSyncedObjective ? `<blockquote><p><b>Educational Objective:</b> ${lastSync
                         onChange={(e) => setCardFront(e.target.value)}
                         rows={2}
                         className="w-full text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-2.5 text-gray-900 dark:text-gray-100 font-sans focus:ring-2 focus:ring-blue-500"
-                        placeholder="Digite o enunciado ou gatilho..."
+                        placeholder="Digite o enunciado, conceito ou pergunta..."
                       />
                     </div>
 
                     <div>
-                      <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400 block mb-1">Verso (Resposta / Conceito):</label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[11px] font-bold text-gray-500 dark:text-gray-400">Verso (Resposta / Conceito):</label>
+                        <button
+                          type="button"
+                          onClick={handleImportObjectiveToBack}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 text-[11px] font-semibold hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-colors cursor-pointer"
+                          title="Importar Educational Objective da questão no verso"
+                        >
+                          <Download className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+                          <span>Importar Educational Objective</span>
+                        </button>
+                      </div>
                       <textarea
                         value={cardBack}
                         onChange={(e) => setCardBack(e.target.value)}
                         rows={3}
                         className="w-full text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-2.5 text-gray-900 dark:text-gray-100 font-sans focus:ring-2 focus:ring-blue-500"
-                        placeholder="Digite a resposta esperada..."
+                        placeholder="Digite a resposta esperada ou use o botão acima para importar o Educational Objective..."
                       />
                     </div>
 

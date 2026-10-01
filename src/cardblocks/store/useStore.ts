@@ -2156,20 +2156,45 @@ ${objective ? `<blockquote><p><b>Educational Objective:</b> ${objective}</p></bl
             const updatedQuestions = state.questions.map(q => {
               if (q.id !== questionId && q.qid !== qid) return q;
               const prevAttempts = q.attempts || [];
-              const newAttempt = {
-                timestamp: Date.now(),
-                selectedChoiceId,
-                isCorrect,
-                resolutionTimeSeconds: record.resolutionTimeSeconds,
-                reviewTimeSeconds: record.reviewTimeSeconds,
-              };
+              const lastAttempt = prevAttempts[prevAttempts.length - 1];
+              
+              // Se já existir uma tentativa recente idêntica (dentro de 15 minutos), apenas atualiza os tempos sem duplicar registro
+              const isRecentDuplicate = lastAttempt &&
+                lastAttempt.selectedChoiceId === selectedChoiceId &&
+                lastAttempt.isCorrect === isCorrect &&
+                (Date.now() - (lastAttempt.timestamp || 0)) < 15 * 60 * 1000;
+
+              let updatedAttempts = prevAttempts;
+              if (isRecentDuplicate) {
+                updatedAttempts = [
+                  ...prevAttempts.slice(0, -1),
+                  {
+                    ...lastAttempt,
+                    resolutionTimeSeconds: Math.max(lastAttempt.resolutionTimeSeconds || 0, record.resolutionTimeSeconds),
+                    reviewTimeSeconds: Math.max(lastAttempt.reviewTimeSeconds || 0, record.reviewTimeSeconds),
+                    timestamp: Date.now(),
+                  }
+                ];
+              } else {
+                updatedAttempts = [
+                  ...prevAttempts,
+                  {
+                    timestamp: Date.now(),
+                    selectedChoiceId,
+                    isCorrect,
+                    resolutionTimeSeconds: record.resolutionTimeSeconds,
+                    reviewTimeSeconds: record.reviewTimeSeconds,
+                  }
+                ];
+              }
+
               return {
                 ...q,
                 status: isCorrect ? ('correct' as const) : ('incorrect' as const),
                 selectedChoiceId,
                 resolutionTimeSeconds: record.resolutionTimeSeconds,
                 reviewTimeSeconds: record.reviewTimeSeconds,
-                attempts: [...prevAttempts, newAttempt],
+                attempts: updatedAttempts,
                 lastAnsweredAt: Date.now(),
                 subject: subject || q.subject,
                 system: system || q.system,
