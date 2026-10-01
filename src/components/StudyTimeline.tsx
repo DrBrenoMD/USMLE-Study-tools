@@ -171,7 +171,7 @@ export const StudyTimeline: React.FC<StudyTimelineProps> = ({
         </div>
 
         {/* Linha do Tempo e Barras de Matérias */}
-        <div className="relative bg-gray-50/70 border border-gray-200 dark:border-gray-700 rounded-xl p-3.5 sm:p-4 space-y-3 overflow-hidden">
+        <div className="relative bg-gray-50/70 dark:bg-gray-850/60 border border-gray-200 dark:border-gray-700 rounded-xl p-3.5 sm:p-4 space-y-3 overflow-hidden">
           {/* Faixa da Margem de Segurança / Revisão Final */}
           {plan.bufferDays > 0 && plan.targetFinishDate && plan.examDate && (
             <div

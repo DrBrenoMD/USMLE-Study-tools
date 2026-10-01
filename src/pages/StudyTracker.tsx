@@ -33,6 +33,7 @@ import {
   Upload,
   Flag,
   Flame,
+  Archive,
 } from "lucide-react";
 import { useStudyPlan } from "../hooks/useStudyPlan";
 import { cn } from "../lib/utils";
@@ -416,31 +417,27 @@ export default function StudyTracker({ initialTab }: { initialTab?: 'planner' | 
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Download Backup */}
+            {/* Backup & Restauração Completa */}
             <button
               type="button"
-              onClick={handleExportBackup}
-              className="flex items-center gap-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 hover:text-blue-700 dark:text-blue-300 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-blue-200 hover:bg-blue-50/50 transition-all cursor-pointer shadow-xs"
-              title="Baixar cópia de segurança com materiais e histórico em arquivo JSON"
+              onClick={() => window.dispatchEvent(new CustomEvent('open-full-backup-modal', { detail: { tab: 'backup' } }))}
+              className="flex items-center gap-1.5 text-xs font-semibold text-blue-700 dark:text-blue-300 bg-blue-50/80 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/50 px-3 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800/60 transition-all cursor-pointer shadow-xs"
+              title="Baixar cópia de segurança completa com questões, flashcards, cadernos, cronogramas e mídias (.usmlebak)"
             >
-              <Download className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-              <span>Baixar Backup</span>
+              <Archive className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              <span>Backup Completo</span>
             </button>
 
             {/* Upload Backup */}
-            <label
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent('open-full-backup-modal', { detail: { tab: 'restore' } }))}
               className="flex items-center gap-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 hover:text-blue-700 dark:text-blue-300 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-blue-200 hover:bg-blue-50/50 transition-all cursor-pointer shadow-xs"
-              title="Restaurar backup a partir de um arquivo JSON"
+              title="Restaurar backup completo (.usmlebak ou .zip)"
             >
               <Upload className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-              <span>Importar Backup</span>
-              <input
-                type="file"
-                accept=".json"
-                onChange={handleImportBackup}
-                className="hidden"
-              />
-            </label>
+              <span>Restaurar Backup</span>
+            </button>
 
             {/* Limpar Dados */}
             <button
@@ -566,7 +563,7 @@ export default function StudyTracker({ initialTab }: { initialTab?: 'planner' | 
                         type="date" 
                         value={examDateStr}
                         onChange={(e) => setExamDateStr(e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500 focus:bg-white dark:bg-gray-900 transition-all"
+                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500 focus:bg-white dark:focus:bg-gray-900 transition-all text-gray-900 dark:text-gray-100"
                       />
                     </div>
 
@@ -587,7 +584,7 @@ export default function StudyTracker({ initialTab }: { initialTab?: 'planner' | 
                             value={bufferDays}
                             onChange={(e) => setBufferDays(Math.max(0, parseInt(e.target.value) || 0))}
                             placeholder="14"
-                            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500 focus:bg-white dark:bg-gray-900 transition-all"
+                            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500 focus:bg-white dark:focus:bg-gray-900 transition-all text-gray-900 dark:text-gray-100"
                           />
                           <div className="flex gap-1">
                             {[0, 7, 14, 21].map((preset) => (
@@ -922,14 +919,14 @@ export default function StudyTracker({ initialTab }: { initialTab?: 'planner' | 
                                 value={resource.name}
                                 placeholder="Ex: UWorld Step 1, First Aid, Amboss..."
                                 onChange={(e) => updateResource(resource.id, { name: e.target.value })}
-                                className="w-full px-3 py-1.5 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500 focus:bg-white dark:bg-gray-900"
+                                className="w-full px-3 py-1.5 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500 focus:bg-white dark:focus:bg-gray-900 text-gray-900 dark:text-gray-100"
                               />
                             </div>
                             
                             {resource.allocationMode === 'fixed_time' ? (
                               <>
                                 <div className="sm:col-span-4">
-                                  <label className="block text-[10px] text-purple-700 uppercase font-semibold mb-1 flex items-center gap-1">
+                                  <label className="block text-[10px] text-purple-700 dark:text-purple-300 uppercase font-semibold mb-1 flex items-center gap-1">
                                     <Timer className="w-3 h-3" /> Tempo Reservado Diário
                                   </label>
                                   <div className="flex items-center gap-1">
@@ -938,7 +935,7 @@ export default function StudyTracker({ initialTab }: { initialTab?: 'planner' | 
                                       value={resource.fixedDailyMinutes || ''}
                                       onChange={(e) => updateResource(resource.id, { fixedDailyMinutes: Number(e.target.value) })}
                                       placeholder="60"
-                                      className="w-full px-3 py-1.5 bg-purple-50/40 border border-purple-200 rounded-lg text-sm font-bold text-purple-900 focus:outline-none focus:border-purple-400"
+                                      className="w-full px-3 py-1.5 bg-purple-50/40 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/60 rounded-lg text-sm font-bold text-purple-900 dark:text-purple-200 focus:outline-none focus:border-purple-400"
                                     />
                                     <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">min/dia</span>
                                   </div>
@@ -953,7 +950,7 @@ export default function StudyTracker({ initialTab }: { initialTab?: 'planner' | 
                                     value={resource.completed || ''}
                                     placeholder="0"
                                     onChange={(e) => updateResource(resource.id, { completed: Number(e.target.value) })}
-                                    className="w-full px-3 py-1.5 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500"
+                                    className="w-full px-3 py-1.5 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500 text-gray-900 dark:text-gray-100"
                                   />
                                 </div>
                               </>
@@ -967,7 +964,7 @@ export default function StudyTracker({ initialTab }: { initialTab?: 'planner' | 
                                     type="number" 
                                     value={resource.total || ''}
                                     onChange={(e) => updateResource(resource.id, { total: Number(e.target.value) })}
-                                    className="w-full px-3 py-1.5 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500 focus:bg-white dark:bg-gray-900"
+                                    className="w-full px-3 py-1.5 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500 focus:bg-white dark:focus:bg-gray-900 text-gray-900 dark:text-gray-100"
                                   />
                                 </div>
 
@@ -979,7 +976,7 @@ export default function StudyTracker({ initialTab }: { initialTab?: 'planner' | 
                                     type="number" 
                                     value={resource.completed || ''}
                                     onChange={(e) => updateResource(resource.id, { completed: Number(e.target.value) })}
-                                    className="w-full px-3 py-1.5 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500 focus:bg-white dark:bg-gray-900"
+                                    className="w-full px-3 py-1.5 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500 focus:bg-white dark:focus:bg-gray-900 text-gray-900 dark:text-gray-100"
                                   />
                                 </div>
 
@@ -993,7 +990,7 @@ export default function StudyTracker({ initialTab }: { initialTab?: 'planner' | 
                                         type="number" 
                                         value={resource.targetDailyPace || ''}
                                         onChange={(e) => updateResource(resource.id, { targetDailyPace: Number(e.target.value) })}
-                                        className="w-full px-3 py-1.5 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500"
+                                        className="w-full px-3 py-1.5 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500 text-gray-900 dark:text-gray-100"
                                       />
                                     </div>
                                   ) : (
@@ -1006,7 +1003,7 @@ export default function StudyTracker({ initialTab }: { initialTab?: 'planner' | 
                                         step="0.1"
                                         value={resource.minutesPerItem || ''}
                                         onChange={(e) => updateResource(resource.id, { minutesPerItem: Number(e.target.value) })}
-                                        className="w-full px-3 py-1.5 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500"
+                                        className="w-full px-3 py-1.5 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500 text-gray-900 dark:text-gray-100"
                                       />
                                     </div>
                                   )}
@@ -1032,11 +1029,11 @@ export default function StudyTracker({ initialTab }: { initialTab?: 'planner' | 
 
                           {/* Detalhamento de Cálculo (Visível se houver) */}
                           {calc && calc.calculationBreakdown && calc.calculationBreakdown.length > 0 && (
-                            <details className="mt-3 mb-1 text-[10px] text-indigo-700 bg-indigo-50/70 p-2.5 rounded-lg border border-indigo-100">
-                              <summary className="font-semibold cursor-pointer hover:text-indigo-900 flex items-center gap-1 select-none">
+                            <details className="mt-3 mb-1 text-[10px] text-indigo-700 dark:text-indigo-300 bg-indigo-50/70 dark:bg-indigo-950/40 p-2.5 rounded-lg border border-indigo-100 dark:border-indigo-900/50">
+                              <summary className="font-semibold cursor-pointer hover:text-indigo-900 dark:hover:text-indigo-200 flex items-center gap-1 select-none">
                                 <BarChart3 className="w-4 h-4 text-indigo-500" /> Detalhamento de como o cálculo foi feito
                               </summary>
-                              <ul className="mt-2 pl-5 list-disc space-y-1 text-indigo-600/90 font-medium">
+                              <ul className="mt-2 pl-5 list-disc space-y-1 text-indigo-600/90 dark:text-indigo-300 font-medium">
                                 {calc.calculationBreakdown.map((line, idx) => (
                                   <li key={idx}>{line}</li>
                                 ))}
@@ -1046,7 +1043,7 @@ export default function StudyTracker({ initialTab }: { initialTab?: 'planner' | 
 
                           {/* Gaveta de Opções Avançadas */}
                           {isExpanded && (
-                            <div className="mt-2 pt-3 border-t border-gray-200/80 dark:border-gray-700/80 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-gray-50/80 p-3 rounded-lg">
+                            <div className="mt-2 pt-3 border-t border-gray-200/80 dark:border-gray-700/80 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-gray-50/80 dark:bg-gray-800/40 p-3 rounded-lg">
                               
                               {/* 1. Dependência Sequencial e Data Limite */}
                               <div className="flex flex-col gap-3">

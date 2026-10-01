@@ -16,7 +16,7 @@ import StudyNotebooksHub from "./pages/StudyNotebooksHub";
 import ExtensionDownload from "./pages/ExtensionDownload";
 import StudyDesk from "./pages/StudyDesk";
 import { TopBarTimer } from "./components/TopBarTimer";
-import { ChevronLeft, Palette, Menu } from "lucide-react";
+import { ChevronLeft, Palette, Menu, Archive } from "lucide-react";
 import { Sidebar } from "./components/Sidebar";
 import { ThemeSelector, themes } from "./components/ThemeSelector";
 import { AuthProvider } from "./contexts/AuthContext";
@@ -24,6 +24,7 @@ import { UserAuthWidget } from "./components/UserAuthWidget";
 import { useQBankSync } from "./hooks/useQBankSync";
 import { useGlobalUndoRedo } from "./cardblocks/hooks/useGlobalUndoRedo";
 import { GlobalImageManager } from "./components/GlobalImageManager";
+import { FullBackupRestoreModal } from "./components/FullBackupRestoreModal";
 
 function AppContent() {
   const location = useLocation();
@@ -41,6 +42,22 @@ function AppContent() {
   });
   const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
+  const [backupDefaultTab, setBackupDefaultTab] = useState<'backup' | 'restore'>('backup');
+
+  useEffect(() => {
+    const handleOpenBackup = (e: any) => {
+      if (e.detail?.tab) {
+        setBackupDefaultTab(e.detail.tab);
+      } else {
+        setBackupDefaultTab('backup');
+      }
+      setIsBackupModalOpen(true);
+    };
+
+    window.addEventListener('open-full-backup-modal', handleOpenBackup);
+    return () => window.removeEventListener('open-full-backup-modal', handleOpenBackup);
+  }, []);
 
   useEffect(() => {
     // Reset all theme classes first
@@ -60,12 +77,24 @@ function AppContent() {
   return (
     <div className="min-h-screen bg-brand-bg-light dark:bg-brand-bg-dark flex flex-col font-sans transition-colors duration-200">
       <GlobalImageManager />
-      <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
+      <Sidebar 
+        isOpen={isSidebarOpen} 
+        onClose={() => setIsSidebarOpen(false)} 
+        onOpenBackup={(tab) => {
+          setBackupDefaultTab(tab || 'backup');
+          setIsBackupModalOpen(true);
+        }}
+      />
       <ThemeSelector 
         isOpen={isThemeModalOpen} 
         onClose={() => setIsThemeModalOpen(false)} 
         currentTheme={activeTheme} 
         onSelectTheme={setActiveTheme} 
+      />
+      <FullBackupRestoreModal
+        isOpen={isBackupModalOpen}
+        onClose={() => setIsBackupModalOpen(false)}
+        defaultTab={backupDefaultTab}
       />
       
       {/* Top Bar */}
@@ -73,7 +102,7 @@ function AppContent() {
         <div className="flex items-center gap-2 sm:gap-4">
           <button
             onClick={() => setIsSidebarOpen(true)}
-            className="p-1.5 rounded-md text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors mr-1 sm:mr-0"
+            className="p-1.5 rounded-md text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors mr-1 sm:mr-0 cursor-pointer"
           >
             <Menu className="w-5 h-5" />
           </button>
@@ -91,8 +120,18 @@ function AppContent() {
         <div className="flex items-center gap-2 sm:gap-3">
           <TopBarTimer />
           <button 
+            onClick={() => {
+              setBackupDefaultTab('backup');
+              setIsBackupModalOpen(true);
+            }}
+            className="p-2 rounded-full text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+            title="Backup & Restauração Completa (.usmlebak)"
+          >
+            <Archive className="w-4 h-4" />
+          </button>
+          <button 
             onClick={() => setIsThemeModalOpen(true)}
-            className="p-2 rounded-full text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            className="p-2 rounded-full text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer"
             title="Temas e Aparência"
           >
             <Palette className="w-4 h-4" />

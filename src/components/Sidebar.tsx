@@ -1,14 +1,15 @@
 import React, { useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, BarChart2, Activity, Calculator, LineChart, Layers, X, BookOpen, Chrome, Cloud, RefreshCw, CheckCircle2, FileText, Search, Flame, Compass } from 'lucide-react';
+import { Home, BarChart2, Activity, Calculator, LineChart, Layers, X, BookOpen, Chrome, Cloud, RefreshCw, CheckCircle2, FileText, Search, Flame, Compass, Archive } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
+  onOpenBackup?: (tab?: 'backup' | 'restore') => void;
 }
 
-export function Sidebar({ isOpen, onClose }: SidebarProps) {
+export function Sidebar({ isOpen, onClose, onOpenBackup }: SidebarProps) {
   const location = useLocation();
   const sidebarRef = useRef<HTMLDivElement>(null);
   const { currentUser, syncState, syncNow, signInWithGoogle } = useAuth();
@@ -30,7 +31,6 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     { name: 'Mesa de Estudos', path: '/desk', icon: Compass },
     { name: 'Navegador Geral', path: '/browse', icon: Search },
     { name: 'Heatmap de Estudos', path: '/tracker?tab=heatmap', icon: Flame },
-    { name: 'Gráficos & Acompanhamento', path: '/tracker?tab=analytics', icon: LineChart },
     { name: 'Study Tracker', path: '/tracker', icon: BarChart2 },
     { name: 'Cadernos de Estudo', path: '/notebooks', icon: FileText },
     { name: 'Flashcards', path: '/flashcards', icon: Layers },
@@ -99,6 +99,26 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
               </Link>
             );
           })}
+
+          {/* Botão de Backup & Restauração Completa */}
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              if (onOpenBackup) {
+                onOpenBackup('backup');
+              } else {
+                window.dispatchEvent(new CustomEvent('open-full-backup-modal', { detail: { tab: 'backup' } }));
+              }
+            }}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-blue-600 dark:text-blue-400 bg-blue-50/70 dark:bg-blue-950/30 hover:bg-blue-100 dark:hover:bg-blue-900/40 border border-blue-200/60 dark:border-blue-800/40 transition-colors cursor-pointer mt-3"
+          >
+            <Archive className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            <div className="text-left">
+              <div className="text-xs font-bold leading-tight">Backup & Restauração</div>
+              <div className="text-[10px] opacity-75 font-normal">Baixar ou subir tudo (.usmlebak)</div>
+            </div>
+          </button>
         </nav>
 
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50">

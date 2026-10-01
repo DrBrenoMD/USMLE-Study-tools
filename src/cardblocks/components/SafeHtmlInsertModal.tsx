@@ -480,7 +480,7 @@ export const SafeHtmlInsertModal: React.FC<SafeHtmlInsertModalProps> = ({
                 </span>
                 <span className="text-[10px] text-gray-400">sandbox="allow-scripts"</span>
               </div>
-              <div className="flex-1 min-h-[260px] bg-white">
+              <div className="flex-1 min-h-[260px] bg-white dark:bg-gray-900">
                 <iframe
                   key={previewKey}
                   srcDoc={generatePreviewSrcDoc()}

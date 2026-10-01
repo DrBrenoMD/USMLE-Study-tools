@@ -151,6 +151,68 @@
   --color-primary-hover-val: #ea580c;
 }
 
+.theme-cyberpunk {
+  --color-ui-surface-val: #120415;
+  --color-ui-surface-hover-val: #1c0920;
+  --color-ui-border-val: #2b213a;
+  --color-ui-text-val: #00ff9f;
+  --color-ui-muted-val: #00ebc7;
+  --color-primary-val: #00ff9f;
+  --color-primary-hover-val: #00cc7f;
+}
+
+/* Force dark mode color-scheme and elements */
+.dark,
+:root:where(.dark, .dark *) {
+  color-scheme: dark;
+}
+
+/* Dark mode inputs, textareas, selects */
+.dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="color"]),
+.dark textarea,
+.dark select {
+  background-color: var(--color-ui-surface-val, #111827);
+  color: var(--color-ui-text-val, #f9fafb);
+  border-color: var(--color-ui-border-val, #374151);
+}
+
+.dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="color"]):focus,
+.dark textarea:focus,
+.dark select:focus {
+  background-color: var(--color-ui-surface-val, #111827) !important;
+  color: var(--color-ui-text-val, #ffffff) !important;
+  border-color: var(--color-primary-val, #3b82f6) !important;
+  outline: none;
+}
+
+/* Dark mode selection styling to avoid bright/unreadable white highlights */
+.dark ::selection,
+.dark input::selection,
+.dark textarea::selection,
+.dark [contenteditable="true"]::selection,
+.dark *::selection {
+  background-color: #2563eb !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+/* Autofill fixes in dark mode */
+.dark input:-webkit-autofill,
+.dark input:-webkit-autofill:hover, 
+.dark input:-webkit-autofill:focus, 
+.dark textarea:-webkit-autofill,
+.dark textarea:-webkit-autofill:hover,
+.dark textarea:-webkit-autofill:focus,
+.dark select:-webkit-autofill,
+.dark select:-webkit-autofill:hover,
+.dark select:-webkit-autofill:focus {
+  -webkit-text-fill-color: #f9fafb !important;
+  -webkit-box-shadow: 0 0 0px 1000px #111827 inset !important;
+  box-shadow: 0 0 0px 1000px #111827 inset !important;
+  transition: background-color 5000s ease-in-out 0s;
+  caret-color: #f9fafb !important;
+}
+
 .bg-gradient-fixed {
   position: fixed;
   top: 0;

@@ -158,7 +158,7 @@ export function DailyLogSection({ resources, activeDateStr, onActiveDateChange, 
               type="date"
               value={activeDateStr}
               onChange={(e) => onActiveDateChange(e.target.value)}
-              className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500 focus:bg-white dark:bg-gray-900"
+              className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium text-gray-900 dark:text-gray-100 focus:outline-none focus:border-blue-500 focus:bg-white dark:focus:bg-gray-900"
             />
           </div>
 
@@ -170,7 +170,7 @@ export function DailyLogSection({ resources, activeDateStr, onActiveDateChange, 
             <select
               value={selectedResourceId}
               onChange={(e) => setSelectedResourceId(e.target.value)}
-              className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500 focus:bg-white dark:bg-gray-900 cursor-pointer"
+              className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium text-gray-900 dark:text-gray-100 focus:outline-none focus:border-blue-500 focus:bg-white dark:focus:bg-gray-900 cursor-pointer"
             >
               {resources.map((res) => (
                 <option key={res.id} value={res.id}>
@@ -199,7 +199,7 @@ export function DailyLogSection({ resources, activeDateStr, onActiveDateChange, 
                 value={amount}
                 onChange={(e) => handleAmountChange(e.target.value ? Number(e.target.value) : '')}
                 placeholder="40"
-                className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-bold text-gray-900 dark:text-gray-100 focus:outline-none focus:border-blue-500 focus:bg-white dark:bg-gray-900"
+                className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-bold text-gray-900 dark:text-gray-100 focus:outline-none focus:border-blue-500 focus:bg-white dark:focus:bg-gray-900"
                 required
               />
               <span className="absolute right-3 top-2.5 text-xs text-gray-400 dark:text-gray-500 font-medium pointer-events-none">
@@ -221,7 +221,7 @@ export function DailyLogSection({ resources, activeDateStr, onActiveDateChange, 
                 value={minutesSpent}
                 onChange={(e) => setMinutesSpent(e.target.value ? Number(e.target.value) : '')}
                 placeholder="60"
-                className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-bold text-gray-900 dark:text-gray-100 focus:outline-none focus:border-blue-500 focus:bg-white dark:bg-gray-900"
+                className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-bold text-gray-900 dark:text-gray-100 focus:outline-none focus:border-blue-500 focus:bg-white dark:focus:bg-gray-900"
                 required
               />
               <span className="absolute right-3 top-2.5 text-xs text-gray-400 dark:text-gray-500 font-medium pointer-events-none">
@@ -245,7 +245,7 @@ export function DailyLogSection({ resources, activeDateStr, onActiveDateChange, 
                 value={scorePercent}
                 onChange={(e) => setScorePercent(e.target.value !== '' ? Number(e.target.value) : '')}
                 placeholder="Ex: 72.5"
-                className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium text-gray-900 dark:text-gray-100 focus:outline-none focus:border-blue-500 focus:bg-white dark:bg-gray-900"
+                className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium text-gray-900 dark:text-gray-100 focus:outline-none focus:border-blue-500 focus:bg-white dark:focus:bg-gray-900"
               />
               <span className="absolute right-3 top-2.5 text-xs text-gray-400 dark:text-gray-500 font-medium pointer-events-none">
                 %
@@ -266,7 +266,7 @@ export function DailyLogSection({ resources, activeDateStr, onActiveDateChange, 
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             placeholder="Ex: Farmacologia Cardíaca, Erros no NBME 26, Foco em Imunologia..."
-            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium focus:outline-none focus:border-blue-500 focus:bg-white dark:bg-gray-900"
+            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium text-gray-900 dark:text-gray-100 focus:outline-none focus:border-blue-500 focus:bg-white dark:focus:bg-gray-900"
           />
         </div>
 
