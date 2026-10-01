@@ -158,9 +158,13 @@ export function RichEditor({ value, onChange, placeholder, className, minHeight,
   const insertCloze = () => {
     const sel = window.getSelection();
     let text = '';
+    const content = editorRef.current?.innerHTML || '';
+    const matches = Array.from(content.matchAll(/{{c(\d+)::/g));
+    const nextNum = matches.length === 0 ? 1 : Math.max(...matches.map(m => parseInt(m[1], 10) || 1)) + 1;
+
     if (sel && sel.toString().trim()) {
       text = sel.toString().trim();
-      exec('insertHTML', `{{c1::${text}}}`);
+      exec('insertHTML', `{{c${nextNum}::${text}}}`);
     } else {
       setShowClozePrompt(true);
     }
@@ -280,6 +284,10 @@ export function RichEditor({ value, onChange, placeholder, className, minHeight,
           if (e.key === 'Tab') {
             e.preventDefault();
             exec('insertHTML', '&nbsp;&nbsp;&nbsp;&nbsp;');
+          }
+          if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'C' || e.key === 'c')) {
+            e.preventDefault();
+            insertCloze();
           }
           onKeyDown?.(e);
         }}
@@ -437,21 +445,65 @@ function ClozeModal({ onClose, onInsert }: { onClose: () => void, onInsert: (t: 
 
 function HTMLModal({ initialHtml, onClose, onSave }: { initialHtml: string, onClose: () => void, onSave: (html: string) => void }) {
   const [val, setVal] = useState(initialHtml);
+  const [tab, setTab] = useState<'code' | 'preview'>('code');
+
+  const handleApply = () => {
+    const clean = sanitizeHtml(val);
+    onSave(clean);
+  };
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-ui-surface border border-ui-border rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col">
         <div className="flex items-center justify-between p-4 border-b border-ui-border">
-          <h2 className="text-lg font-bold text-ui-text">Editar Código HTML</h2>
+          <div>
+            <h2 className="text-base font-bold text-ui-text">Editar Código HTML Seguro</h2>
+            <p className="text-xs text-ui-muted">Sanitizado via DOMPurify conforme regras de segurança</p>
+          </div>
           <button onClick={onClose} className="p-1 text-ui-muted hover:text-ui-text rounded bg-ui-surface hover:bg-ui-surface-hover"><XCircle className="w-5 h-5"/></button>
         </div>
-        <textarea
-          value={val}
-          onChange={(e) => setVal(e.target.value)}
-          className="w-full h-80 p-4 bg-ui-background text-ui-text font-mono text-sm resize-none focus:outline-none"
-        />
-        <div className="p-4 border-t border-ui-border flex justify-end gap-3">
-          <button onClick={onClose} className="px-4 py-2 font-medium text-ui-text hover:bg-ui-surface-hover border border-ui-border rounded-lg">Cancelar</button>
-          <button onClick={() => onSave(val)} className="px-4 py-2 font-medium bg-primary text-primary-foreground rounded-lg">Aplicar HTML</button>
+
+        <div className="flex border-b border-ui-border bg-ui-background px-4 text-xs font-bold">
+          <button
+            type="button"
+            onClick={() => setTab('code')}
+            className={`py-2 px-3 border-b-2 transition-colors ${tab === 'code' ? 'border-primary text-primary' : 'border-transparent text-ui-muted'}`}
+          >
+            Código HTML
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab('preview')}
+            className={`py-2 px-3 border-b-2 transition-colors ${tab === 'preview' ? 'border-primary text-primary' : 'border-transparent text-ui-muted'}`}
+          >
+            Pré-visualização Segura
+          </button>
+        </div>
+
+        <div className="p-4 flex-1">
+          {tab === 'code' ? (
+            <textarea
+              value={val}
+              onChange={(e) => setVal(e.target.value)}
+              className="w-full h-72 p-3 bg-gray-900 text-emerald-400 font-mono text-xs rounded-lg resize-none focus:outline-none border border-gray-700"
+              placeholder="Cole seu código HTML aqui..."
+            />
+          ) : (
+            <div className="h-72 p-4 border border-ui-border rounded-lg overflow-y-auto bg-ui-background">
+              <div
+                className="prose dark:prose-invert max-w-none text-sm"
+                dangerouslySetInnerHTML={{ __html: sanitizeHtml(val) }}
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="p-3 border-t border-ui-border bg-ui-surface flex items-center justify-between">
+          <span className="text-[11px] text-ui-muted">Scripts e tags de risco serão sanitizados</span>
+          <div className="flex justify-end gap-2">
+            <button onClick={onClose} className="px-3 py-1.5 text-xs font-medium text-ui-text hover:bg-ui-surface-hover border border-ui-border rounded-lg">Cancelar</button>
+            <button onClick={handleApply} className="px-4 py-1.5 text-xs font-bold bg-primary text-primary-foreground rounded-lg">Aplicar HTML Seguro</button>
+          </div>
         </div>
       </motion.div>
     </div>

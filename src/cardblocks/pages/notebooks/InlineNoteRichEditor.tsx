@@ -25,7 +25,12 @@ import {
   Volume2,
   CheckCircle2,
   RefreshCw,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Brackets,
+  ShieldCheck,
+  Eye,
+  Check,
+  HelpCircle
 } from 'lucide-react';
 import { cn, sanitizeHtml } from '../../lib/utils';
 
@@ -71,9 +76,17 @@ export const InlineNoteRichEditor: React.FC<InlineNoteRichEditorProps> = ({
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showHighlightPicker, setShowHighlightPicker] = useState(false);
   const [showHeadings, setShowHeadings] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+
+  // Cloze & HTML modal states
+  const [showClozeModal, setShowClozeModal] = useState(false);
+  const [clozeModalText, setClozeModalText] = useState('');
+  const [clozeModalHint, setClozeModalHint] = useState('');
+  const [clozeModalNum, setClozeModalNum] = useState<number>(1);
+
   const [showHtmlModal, setShowHtmlModal] = useState(false);
   const [rawHtmlInput, setRawHtmlInput] = useState('');
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [htmlPreviewTab, setHtmlPreviewTab] = useState<'code' | 'preview'>('code');
 
   // Debounced auto-save timer ref
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -229,133 +242,56 @@ export const InlineNoteRichEditor: React.FC<InlineNoteRichEditorProps> = ({
     }
   };
 
-  const HTML_TEMPLATES = [
-    {
-      name: '📊 Tabela Comparativa',
-      description: 'Ideal para comparar patologias, fármacos ou critérios',
-      html: `<div class="overflow-x-auto my-3 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xs">
-  <table class="w-full border-collapse text-xs text-left">
-    <thead>
-      <tr class="bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100">
-        <th class="p-2.5 font-bold border-b border-gray-200 dark:border-gray-700">Critério / Doença</th>
-        <th class="p-2.5 font-bold border-b border-gray-200 dark:border-gray-700">Apresentação</th>
-        <th class="p-2.5 font-bold border-b border-gray-200 dark:border-gray-700">Diagnóstico / Conduta</th>
-      </tr>
-    </thead>
-    <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
-      <tr>
-        <td class="p-2.5 font-bold text-blue-600">Condição A</td>
-        <td class="p-2.5">Sintomas agudos, febre alta, dor localizada</td>
-        <td class="p-2.5">Exame de imagem + Antibioticoterapia precoce</td>
-      </tr>
-      <tr>
-        <td class="p-2.5 font-bold text-indigo-600">Condição B</td>
-        <td class="p-2.5">Evolução insidiosa, afebril, sintomas difusos</td>
-        <td class="p-2.5">Biópsia / Tratamento conservador</td>
-      </tr>
-    </tbody>
-  </table>
-</div>`
-    },
-    {
-      name: '💡 Ponto-Chave High-Yield',
-      description: 'Card destacado para lembretes essenciais da banca',
-      html: `<div class="my-3 p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border-l-4 border-amber-500 text-gray-800 dark:text-gray-200 shadow-xs">
-  <div class="flex items-center gap-2 font-bold text-amber-800 dark:text-amber-300 text-xs mb-1">
-    <span>💡</span>
-    <span>HIGH-YIELD PEARL / PEGADINHA DE BANCA:</span>
-  </div>
-  <p class="text-xs leading-relaxed">
-    Lembre-se sempre de associar o achado X com a condição Y. Se houver hematúria microscópica isolada em paciente > 35 anos, a primeira conduta é cistoscopia + imagem do trato superior.
-  </p>
-</div>`
-    },
-    {
-      name: '🔬 Fluxo Fisiopatológico',
-      description: 'Passo a passo fisiopatológico ordenado',
-      html: `<div class="my-3 p-3.5 rounded-2xl bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/60 text-xs space-y-2">
-  <span class="font-extrabold text-blue-700 dark:text-blue-300 uppercase tracking-wider text-[11px] block">🔬 Cascata Fisiopatológica:</span>
-  <ol class="list-decimal list-inside space-y-1 text-gray-800 dark:text-gray-200 font-medium">
-    <li><b>Estímulo Inicial:</b> Lesão endotelial ou sobrecarga hemodinâmica.</li>
-    <li><b>Mecanismo Celular:</b> Ativação do eixo RAA e liberação de citocinas.</li>
-    <li><b>Manifestação Clínica:</b> Retenção hidrossalina e remodelamento tecidual.</li>
-    <li><b>Alvo Farmacológico:</b> Bloqueio com IECA / BRA diminui a progressão.</li>
-  </ol>
-</div>`
-    },
-    {
-      name: '⚖️ Diagnóstico Diferencial',
-      description: 'Grade de 2 colunas para diagnósticos diferenciais',
-      html: `<div class="grid grid-cols-2 gap-2.5 my-3 text-xs">
-  <div class="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200">
-    <span class="font-bold block mb-1">✅ Mais Provável:</span>
-    <p>Quadro compatível com apresentação clássica e epidemiologia favorável.</p>
-  </div>
-  <div class="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 text-rose-900 dark:text-rose-200">
-    <span class="font-bold block mb-1">❌ Diagnóstico de Exclusão:</span>
-    <p>Descartado por ausência de elevação enzimática ou marcadores negativos.</p>
-  </div>
-</div>`
-    }
-  ];
+  const getNextClozeNumber = () => {
+    if (!editorRef.current) return 1;
+    const text = editorRef.current.innerHTML;
+    const matches = Array.from(text.matchAll(/{{c(\d+)::/g));
+    if (matches.length === 0) return 1;
+    const maxNum = Math.max(...matches.map(m => parseInt(m[1], 10) || 1));
+    return maxNum + 1;
+  };
 
-  const [showClozeModal, setShowClozeModal] = useState(false);
-  const [clozeAnswerInput, setClozeAnswerInput] = useState('');
-  const [clozeHintInput, setClozeHintInput] = useState('');
-
-  const handleCreateCloze = () => {
+  const handleInsertCloze = () => {
     const sel = window.getSelection();
-    let selectedText = '';
-    if (sel && sel.rangeCount > 0) {
-      selectedText = sel.toString().trim();
-    }
-
+    const selectedText = sel?.toString().trim();
     if (selectedText) {
-      setClozeAnswerInput(selectedText);
-      setClozeHintInput('');
-      setShowClozeModal(true);
+      const nextNum = getNextClozeNumber();
+      exec('insertHTML', `{{c${nextNum}::${selectedText}}}`);
     } else {
-      setClozeAnswerInput('');
-      setClozeHintInput('');
+      setClozeModalNum(getNextClozeNumber());
+      setClozeModalText('');
+      setClozeModalHint('');
       setShowClozeModal(true);
     }
   };
 
-  const handleConfirmCloze = () => {
-    if (!clozeAnswerInput.trim()) return;
-    const ans = clozeAnswerInput.trim();
-    const hint = clozeHintInput.trim();
-    const displayHint = hint ? `[${hint}]` : '[...]';
-
-    const clozeHtml = `<span class="cloze-hole" data-answer="${ans.replace(/"/g, '&quot;')}" ${hint ? `data-hint="${hint.replace(/"/g, '&quot;')}"` : ''} title="Clique para revelar / ocultar">${displayHint}</span>&nbsp;`;
-    exec('insertHTML', clozeHtml);
+  const handleConfirmClozeModal = () => {
+    if (!clozeModalText.trim()) return;
+    const hintPart = clozeModalHint.trim() ? `::${clozeModalHint.trim()}` : '';
+    const clozeCode = `{{c${clozeModalNum || 1}::${clozeModalText.trim()}${hintPart}}}`;
+    exec('insertHTML', clozeCode);
     setShowClozeModal(false);
-    setClozeAnswerInput('');
-    setClozeHintInput('');
   };
 
-  const handleInsertHtml = () => {
-    if (!rawHtmlInput.trim()) return;
-    const safeHtml = sanitizeHtml(rawHtmlInput);
-    if (safeHtml) {
-      exec('insertHTML', `<div class="embedded-custom-html my-2">${safeHtml}</div><br/>`);
-      setRawHtmlInput('');
-      setShowHtmlModal(false);
-    }
+  const handleInsertSafeHtml = (rawHtml: string) => {
+    if (!rawHtml.trim()) return;
+    const cleanHtml = sanitizeHtml(rawHtml);
+    exec('insertHTML', cleanHtml);
+    setShowHtmlModal(false);
+    setRawHtmlInput('');
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    // Alt + C or Ctrl + Shift + C for quick Cloze creation
-    if ((e.altKey && (e.key === 'c' || e.key === 'C')) || ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'c' || e.key === 'C'))) {
-      e.preventDefault();
-      handleCreateCloze();
-      return;
-    }
     // Ctrl + S / Cmd + S for explicit instant save
     if ((e.ctrlKey || e.metaKey) && e.key === 's') {
       e.preventDefault();
       onSave(content);
       setSaveStatus('saved');
+    }
+    // Ctrl + Shift + C / Cmd + Shift + C for instant Cloze insertion
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'C' || e.key === 'c')) {
+      e.preventDefault();
+      handleInsertCloze();
     }
     // Escape to finish editing
     if (e.key === 'Escape') {
@@ -574,26 +510,25 @@ export const InlineNoteRichEditor: React.FC<InlineNoteRichEditorProps> = ({
 
         <div className="h-4 w-px bg-gray-300 dark:bg-gray-700 mx-0.5" />
 
-        {/* Cloze (Oclusão) Tool */}
+        {/* Cloze & Safe HTML Insertion Buttons */}
         <button
           type="button"
-          onClick={handleCreateCloze}
-          className="px-2 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 text-blue-700 dark:text-blue-300 font-bold flex items-center gap-1 border border-blue-200 dark:border-blue-800 text-[11px] cursor-pointer"
-          title="Criar Cloze / Oclusão (Alt+C) - Oculte texto selecionado"
+          onClick={handleInsertCloze}
+          className="p-1.5 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-950/60 text-purple-600 dark:text-purple-400 font-bold flex items-center gap-1 transition-colors"
+          title="Inserir Ocultação / Cloze (Ctrl+Shift+C)"
         >
-          <Sparkles className="w-3.5 h-3.5 text-blue-500" />
-          <span>[c] Cloze</span>
+          <Brackets className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline font-mono text-[11px]">Cloze</span>
         </button>
 
-        {/* Safe HTML Insertion Tool */}
         <button
           type="button"
           onClick={() => setShowHtmlModal(true)}
-          className="px-2 py-1 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 font-mono font-bold flex items-center gap-1 border border-gray-200 dark:border-gray-700 text-[11px] cursor-pointer"
-          title="Inserir Código HTML Seguro (tabelas, cards, embeds)"
+          className="p-1.5 rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1 transition-colors"
+          title="Inserir Código HTML Seguro (Sanitizado com DOMPurify)"
         >
-          <Code className="w-3.5 h-3.5 text-indigo-500" />
-          <span>&lt;/&gt; HTML</span>
+          <Code className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline font-mono text-[11px]">HTML</span>
         </button>
 
         {/* Right save / auto-save status & close action */}
@@ -642,193 +577,265 @@ export const InlineNoteRichEditor: React.FC<InlineNoteRichEditorProps> = ({
       />
       
       <div className="px-4 py-1.5 bg-gray-50/70 dark:bg-gray-850/70 border-t border-gray-100 dark:border-gray-800 text-[11px] text-gray-400 flex items-center justify-between">
-        <span>💡 Salvamento automático contínuo ativado • <b>Ctrl+Z</b> desfaz • <b>Alt+C</b> faz Cloze</span>
+        <span>💡 Salvamento automático contínuo ativado • <b>Ctrl+Shift+C</b> cria cloze • <b>Ctrl+Z</b> desfaz</span>
         <span>Modo Edição Ágil</span>
       </div>
 
-      {/* Safe HTML Insertion Modal */}
-      {showHtmlModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in text-gray-900 dark:text-gray-100">
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-3xl w-full max-w-2xl p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
+      {/* Modal Inserir Ocultação / Cloze */}
+      {showClozeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-gray-900 border border-purple-200 dark:border-purple-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-800 bg-purple-50/50 dark:bg-purple-950/20">
               <div className="flex items-center gap-2">
-                <Code className="w-5 h-5 text-indigo-500" />
-                <h4 className="font-extrabold text-base text-gray-900 dark:text-white">Inserir Código HTML Seguro</h4>
+                <div className="p-1.5 rounded-lg bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400">
+                  <Brackets className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-gray-900 dark:text-white">Inserir Ocultação (Cloze)</h3>
+                  <p className="text-[11px] text-gray-500">Oculte palavras-chave para estudo ativo na nota</p>
+                </div>
               </div>
               <button
                 type="button"
-                onClick={() => setShowHtmlModal(false)}
-                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer p-1 rounded-lg"
+                onClick={() => setShowClozeModal(false)}
+                className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
-            
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              Insira ou personalize templates HTML estilizados (tabelas, cartões, fluxogramas). O código é processado com <b>DOMPurify</b> para garantir conformidade e segurança total.
-            </p>
 
-            {/* Quick Templates Selector */}
-            <div className="space-y-1.5">
-              <span className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider block">
-                Modelos Rápidos Pré-configurados:
-              </span>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {HTML_TEMPLATES.map(tpl => (
-                  <button
-                    key={tpl.name}
-                    type="button"
-                    onClick={() => setRawHtmlInput(tpl.html)}
-                    className="p-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/80 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:border-indigo-300 dark:hover:border-indigo-700 text-left transition-all group cursor-pointer"
-                  >
-                    <span className="font-bold text-xs text-gray-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 block truncate">
-                      {tpl.name}
-                    </span>
-                    <span className="text-[10px] text-gray-500 dark:text-gray-400 line-clamp-1">
-                      {tpl.description}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-[11px] font-bold text-gray-600 dark:text-gray-300 uppercase">
-                  Código HTML:
+            <div className="p-4 space-y-3.5">
+              <div>
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                  Texto ou Termo Oculto <span className="text-rose-500">*</span>
                 </label>
-                {rawHtmlInput && (
-                  <button
-                    type="button"
-                    onClick={() => setRawHtmlInput('')}
-                    className="text-[10px] font-semibold text-rose-500 hover:underline cursor-pointer"
-                  >
-                    Limpar
-                  </button>
-                )}
-              </div>
-              <textarea
-                value={rawHtmlInput}
-                onChange={(e) => setRawHtmlInput(e.target.value)}
-                placeholder="Exemplo: <table class='w-full'><tr><td>Item</td></tr></table>"
-                rows={5}
-                className="w-full font-mono text-xs p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-
-            {rawHtmlInput.trim() && (
-              <div className="space-y-1">
-                <span className="text-[10px] font-bold text-gray-400 uppercase">Pré-visualização Segura:</span>
-                <div
-                  className="p-3.5 max-h-40 overflow-y-auto rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-850/50 text-xs"
-                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(rawHtmlInput) }}
+                <input
+                  type="text"
+                  autoFocus
+                  placeholder="ex: Insuficiência Cardíaca, Aspirina..."
+                  value={clozeModalText}
+                  onChange={(e) => setClozeModalText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleConfirmClozeModal();
+                    }
+                  }}
+                  className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
               </div>
-            )}
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                    Número do Cloze
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={20}
+                    value={clozeModalNum}
+                    onChange={(e) => setClozeModalNum(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                    Dica Opcional
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="ex: fármaco, diagnóstico..."
+                    value={clozeModalHint}
+                    onChange={(e) => setClozeModalHint(e.target.value)}
+                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-purple-50/70 dark:bg-purple-950/30 border border-purple-100 dark:border-purple-900/40 text-[11px] text-purple-900 dark:text-purple-300 flex items-center gap-2">
+                <HelpCircle className="w-4 h-4 shrink-0 text-purple-600" />
+                <span>
+                  Sintaxe gerada: <code className="font-mono font-bold">{`{{c${clozeModalNum}::${clozeModalText || '...'}${clozeModalHint ? `::${clozeModalHint}` : ''}}}`}</code>
+                </span>
+              </div>
+            </div>
+
+            <div className="p-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-850 flex items-center justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setShowHtmlModal(false)}
-                className="px-4 py-2 text-xs text-gray-500 hover:text-gray-700 font-semibold cursor-pointer"
+                onClick={() => setShowClozeModal(false)}
+                className="px-3 py-1.5 rounded-xl text-xs font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
               >
                 Cancelar
               </button>
               <button
                 type="button"
-                onClick={handleInsertHtml}
-                disabled={!rawHtmlInput.trim()}
-                className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs shadow-xs transition-colors cursor-pointer"
+                disabled={!clozeModalText.trim()}
+                onClick={handleConfirmClozeModal}
+                className="px-4 py-1.5 rounded-xl text-xs font-bold bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
               >
-                Inserir na Nota
+                <Check className="w-3.5 h-3.5" />
+                <span>Inserir Cloze</span>
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Interactive Cloze / Oclusão Modal */}
-      {showClozeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in text-gray-900 dark:text-gray-100">
-          <div className="bg-white dark:bg-gray-900 border border-blue-200 dark:border-blue-900/60 rounded-3xl w-full max-w-md p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
+      {/* Modal Inserir HTML Seguro */}
+      {showHtmlModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-gray-900 border border-emerald-200 dark:border-emerald-800 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-800 bg-emerald-50/50 dark:bg-emerald-950/20">
               <div className="flex items-center gap-2">
-                <div className="p-2 rounded-xl bg-blue-100 dark:bg-blue-950/60 text-blue-600">
-                  <Sparkles className="w-5 h-5" />
+                <div className="p-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400">
+                  <ShieldCheck className="w-4 h-4" />
                 </div>
                 <div>
-                  <h4 className="font-extrabold text-base text-gray-900 dark:text-white">Criar Cloze / Oclusão</h4>
-                  <p className="text-[11px] text-gray-500">Oculte termos na nota para treino ativo</p>
+                  <h3 className="text-sm font-bold text-gray-900 dark:text-white">Inserir Código HTML Seguro</h3>
+                  <p className="text-[11px] text-gray-500">Sanitização automática via DOMPurify conforme regras de segurança</p>
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => setShowClozeModal(false)}
-                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer p-1 rounded-lg"
+                onClick={() => setShowHtmlModal(false)}
+                className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">
-                  Texto Oculto (Resposta do Cloze) *
-                </label>
-                <input
-                  type="text"
-                  autoFocus
-                  value={clozeAnswerInput}
-                  onChange={(e) => setClozeAnswerInput(e.target.value)}
-                  placeholder="Ex: Vasculite de Churg-Strauss"
-                  className="w-full text-xs p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">
-                  Dica Visual (Opcional)
-                </label>
-                <input
-                  type="text"
-                  value={clozeHintInput}
-                  onChange={(e) => setClozeHintInput(e.target.value)}
-                  placeholder="Ex: epônimo, fármaco de 1ª linha..."
-                  className="w-full text-xs p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <p className="text-[10px] text-gray-400 mt-1">
-                  Se preenchida, o cloze exibirá <span className="font-mono text-blue-600 dark:text-blue-400">[{clozeHintInput || 'dica'}]</span> em vez de <span className="font-mono text-blue-600 dark:text-blue-400">[...]</span>.
-                </p>
-              </div>
-            </div>
-
-            <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 text-xs">
-              <span className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Exemplo de visualização:</span>
-              <p className="text-gray-800 dark:text-gray-200">
-                O paciente apresenta quadro de{' '}
-                <span className="cloze-hole" title="Clique para revelar">
-                  {clozeHintInput ? `[${clozeHintInput}]` : '[...]'}
-                </span>
-                .
-              </p>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+            {/* Presets Rápidos */}
+            <div className="px-4 py-2.5 bg-gray-50/80 dark:bg-gray-850 border-b border-gray-200 dark:border-gray-800 flex items-center gap-2 overflow-x-auto text-[11px]">
+              <span className="font-bold text-gray-500 shrink-0">Modelos prontos:</span>
               <button
                 type="button"
-                onClick={() => setShowClozeModal(false)}
-                className="px-4 py-2 text-xs text-gray-500 hover:text-gray-700 font-semibold cursor-pointer"
+                onClick={() => setRawHtmlInput(`<table style="width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 13px;">
+  <thead>
+    <tr style="background: #eff6ff; border-bottom: 2px solid #93c5fd;">
+      <th style="padding: 8px; text-align: left; color: #1e40af;">Condição Clínica</th>
+      <th style="padding: 8px; text-align: left; color: #1e40af;">Fisiopatologia</th>
+      <th style="padding: 8px; text-align: left; color: #1e40af;">Tratamento 1ª Linha</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom: 1px solid #e5e7eb;">
+      <td style="padding: 8px; font-weight: bold;">Estenose Aórtica</td>
+      <td style="padding: 8px;">Calcificação progressiva valvar</td>
+      <td style="padding: 8px;">Troca valvar (TAVI / Cirúrgica)</td>
+    </tr>
+    <tr>
+      <td style="padding: 8px; font-weight: bold;">Insuficiência Aórtica</td>
+      <td style="padding: 8px;">Dilatação da raiz aórtica / endocardite</td>
+      <td style="padding: 8px;">Vasodilatadores / Correção cirúrgica</td>
+    </tr>
+  </tbody>
+</table>`)}
+                className="px-2.5 py-1 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-gray-700 dark:text-gray-300 font-medium shrink-0"
               >
-                Cancelar
+                📊 Tabela Comparativa
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setRawHtmlInput(`<div style="background: #f0fdf4; border-left: 4px solid #22c55e; padding: 12px; border-radius: 8px; margin: 8px 0; color: #14532d;">
+  <b style="color: #15803d; font-size: 14px;">✅ Pérola USMLE (High-Yield):</b>
+  <p style="margin: 4px 0 0 0; font-size: 13px;">A tríade clássica de dor torácica, síncope e dispneia aos esforços indica estenose aórtica grave descompensada.</p>
+</div>`)}
+                className="px-2.5 py-1 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-gray-700 dark:text-gray-300 font-medium shrink-0"
+              >
+                💡 Card High-Yield
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setRawHtmlInput(`<div style="background: #fff1f2; border: 1px solid #fecdd3; padding: 10px 14px; border-radius: 10px; margin: 8px 0; color: #9f1239; font-size: 13px;">
+  <b>⚠️ Pegadinha Frequente:</b> Não administrar betabloqueadores em pacientes com feocromocitoma antes de bloqueio alfa-adrenérgico completo!
+</div>`)}
+                className="px-2.5 py-1 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-gray-700 dark:text-gray-300 font-medium shrink-0"
+              >
+                ⚠️ Alerta / Pegadinha
+              </button>
+            </div>
+
+            {/* Abas Código vs Preview */}
+            <div className="flex border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 px-4 text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setHtmlPreviewTab('code')}
+                className={cn(
+                  "py-2 px-3 border-b-2 transition-colors",
+                  htmlPreviewTab === 'code' ? "border-emerald-600 text-emerald-600 dark:text-emerald-400" : "border-transparent text-gray-500 hover:text-gray-800"
+                )}
+              >
+                Código HTML
               </button>
               <button
                 type="button"
-                onClick={handleConfirmCloze}
-                disabled={!clozeAnswerInput.trim()}
-                className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold text-xs shadow-xs transition-colors cursor-pointer"
+                onClick={() => setHtmlPreviewTab('preview')}
+                className={cn(
+                  "py-2 px-3 border-b-2 transition-colors flex items-center gap-1.5",
+                  htmlPreviewTab === 'preview' ? "border-emerald-600 text-emerald-600 dark:text-emerald-400" : "border-transparent text-gray-500 hover:text-gray-800"
+                )}
               >
-                Inserir Cloze
+                <Eye className="w-3.5 h-3.5" />
+                <span>Pré-visualização Segura</span>
               </button>
+            </div>
+
+            <div className="p-4 flex-1 overflow-y-auto min-h-[220px]">
+              {htmlPreviewTab === 'code' ? (
+                <div className="space-y-2">
+                  <textarea
+                    rows={8}
+                    value={rawHtmlInput}
+                    onChange={(e) => setRawHtmlInput(e.target.value)}
+                    placeholder="Cole ou digite seu código HTML aqui (ex: tabelas, caixas estilizadas, listas, etc.)..."
+                    className="w-full p-3 font-mono text-xs bg-gray-900 text-emerald-400 rounded-xl border border-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-y"
+                    autoFocus
+                  />
+                  <div className="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span>Scripts, iframes não autorizados e atributos perigosos (como onerror) serão sanitizados com segurança.</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 min-h-[180px]">
+                  {rawHtmlInput.trim() ? (
+                    <div
+                      className="prose dark:prose-invert max-w-none text-sm"
+                      dangerouslySetInnerHTML={{ __html: sanitizeHtml(rawHtmlInput) }}
+                    />
+                  ) : (
+                    <p className="text-xs text-gray-400 italic text-center py-8">Nenhum código HTML informado ainda.</p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="p-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-850 flex items-center justify-between">
+              <span className="text-[11px] text-gray-500 font-medium">
+                Regras de integridade ativas
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowHtmlModal(false)}
+                  className="px-3 py-1.5 rounded-xl text-xs font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={!rawHtmlInput.trim()}
+                  onClick={() => handleInsertSafeHtml(rawHtmlInput)}
+                  className="px-4 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Inserir na Nota</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useStore, StudyNote, NotebookArea, NotebookSystem, NotebookSubject, NotebookTopic } from '../../store/useStore';
 import { Page } from '../../App';
 import {
@@ -46,7 +46,7 @@ import {
   CornerDownRight,
   FolderTree
 } from 'lucide-react';
-import { sanitizeHtml, cn } from '../../lib/utils';
+import { sanitizeHtml, renderNoteContentWithClozes, cn } from '../../lib/utils';
 import { format } from 'date-fns';
 import { PdfExportModal } from '../../components/PdfExportModal';
 import { NoteAssociationsPreviewModal } from '../../components/NoteAssociationsPreviewModal';
@@ -157,6 +157,33 @@ export const StudyNotebooksView: React.FC<StudyNotebooksViewProps> = ({
   // Fast inline title editing
   const [editingTitleNoteId, setEditingTitleNoteId] = useState<string | null>(null);
   const [inlineTitleValue, setInlineTitleValue] = useState('');
+
+  // Per-note Clozes Reveal state for active recall in notes
+  const [revealedClozeNotes, setRevealedClozeNotes] = useState<Record<string, boolean>>({});
+
+  const handleNoteContentClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    const clozeSpan = target.closest('[data-note-cloze="true"]') as HTMLElement | null;
+    if (clozeSpan) {
+      e.stopPropagation();
+      const isRevealed = clozeSpan.getAttribute('data-revealed') === 'true';
+      const answer = clozeSpan.getAttribute('data-answer') || '';
+      const hint = clozeSpan.getAttribute('data-hint') || '';
+      if (isRevealed) {
+        clozeSpan.setAttribute('data-revealed', 'false');
+        clozeSpan.classList.remove('cloze-revealed', 'text-emerald-700', 'bg-emerald-100', 'dark:bg-emerald-950/60', 'dark:text-emerald-300', 'border-emerald-300', 'dark:border-emerald-800');
+        clozeSpan.classList.add('text-blue-700', 'bg-blue-100', 'dark:bg-blue-950/60', 'dark:text-blue-300', 'border-blue-300', 'dark:border-blue-800');
+        clozeSpan.innerHTML = hint ? `[${hint}]` : '[...]';
+        clozeSpan.title = 'Clique para revelar a resposta';
+      } else {
+        clozeSpan.setAttribute('data-revealed', 'true');
+        clozeSpan.classList.remove('text-blue-700', 'bg-blue-100', 'dark:bg-blue-950/60', 'dark:text-blue-300', 'border-blue-300', 'dark:border-blue-800');
+        clozeSpan.classList.add('cloze-revealed', 'text-emerald-700', 'bg-emerald-100', 'dark:bg-emerald-950/60', 'dark:text-emerald-300', 'border-emerald-300', 'dark:border-emerald-800');
+        clozeSpan.innerHTML = answer;
+        clozeSpan.title = 'Clique para ocultar';
+      }
+    }
+  };
 
   // Drag and Drop Reordering States
   const [draggedNoteId, setDraggedNoteId] = useState<string | null>(null);
@@ -296,68 +323,6 @@ export const StudyNotebooksView: React.FC<StudyNotebooksViewProps> = ({
       if (!matchTitle && !matchContent && !matchTags) return false;
     }
     return true;
-  };
-
-  // Helper para recuperar todas as questões e flashcards associados à nota (diretos + via tags e banco)
-  const getNoteAssociations = useCallback((note: StudyNote) => {
-    const qIds = new Set<string>(note.associatedQuestionIds || []);
-    const cIds = new Set<string>(note.associatedCardIds || []);
-
-    // Flashcards embutidos
-    (note.embeddedFlashcardIds || []).forEach(id => cIds.add(id));
-
-    // Tags que referenciam QID (ex: "qid:1234")
-    (note.tags || []).forEach(t => {
-      if (t.toLowerCase().startsWith('qid:')) {
-        const q = t.split(':')[1]?.trim();
-        if (q) qIds.add(q);
-      }
-    });
-
-    // Flashcards que apontam para as questões desta nota
-    cards.forEach(c => {
-      if (c.sourceQuestionId && qIds.has(c.sourceQuestionId)) {
-        cIds.add(c.id);
-      }
-      if (c.associatedQuestionIds?.some(qid => qIds.has(qid))) {
-        cIds.add(c.id);
-      }
-    });
-
-    return {
-      questionIds: Array.from(qIds),
-      cardIds: Array.from(cIds)
-    };
-  }, [cards]);
-
-  // Helper para processar clozes Anki e HTML seguro nas notas
-  const prepareNoteHtml = useCallback((rawHtml?: string) => {
-    if (!rawHtml) return '';
-    const withClozes = rawHtml.replace(/\{\{c(\d+)::([^}:]+)(?:::([^}]+))?\}\}/gi, (match, cNum, answer, hint) => {
-      const hintText = hint ? `[${hint}]` : '[...]';
-      const safeAns = answer.replace(/"/g, '&quot;');
-      const safeHint = (hint || '').replace(/"/g, '&quot;');
-      return `<span class="cloze-hole" data-answer="${safeAns}" data-hint="${safeHint}" data-cloze-index="${cNum}" title="Clique para revelar / ocultar">${hintText}</span>`;
-    });
-    return sanitizeHtml(withClozes);
-  }, []);
-
-  // Interatividade de cliques nos clozes dentro das notas
-  const handleNoteContentClick = (e: React.MouseEvent<HTMLDivElement>, noteId: string) => {
-    const target = e.target as HTMLElement;
-    const cloze = target.closest('.cloze-hole, .cloze-item') as HTMLElement;
-    if (cloze) {
-      e.stopPropagation();
-      e.preventDefault();
-      const isRevealed = cloze.classList.toggle('cloze-revealed');
-      const answer = cloze.getAttribute('data-answer') || '';
-      const hint = cloze.getAttribute('data-hint') || '';
-      if (isRevealed) {
-        cloze.textContent = answer;
-      } else {
-        cloze.textContent = hint ? `[${hint}]` : '[...]';
-      }
-    }
   };
 
   const handleCreateArea = (e: React.FormEvent) => {
@@ -1303,51 +1268,26 @@ export const StudyNotebooksView: React.FC<StudyNotebooksViewProps> = ({
                                         <FolderTree className="w-3.5 h-3.5" />
                                       </button>
 
-                                      {/* Associated Questions & Cards Quick Badges in Header */}
-                                      {(() => {
-                                        const assoc = getNoteAssociations(note);
-                                        return (
-                                          <div className="flex items-center gap-1">
-                                            {assoc.questionIds.length > 0 && (
-                                              <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  setAssociationsModal({
-                                                    title: `Questões da Nota: ${note.title}`,
-                                                    questionIds: assoc.questionIds,
-                                                    cardIds: []
-                                                  });
-                                                }}
-                                                className="px-2 py-0.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 font-bold text-[11px] flex items-center gap-1 border border-emerald-200 dark:border-emerald-800 transition-colors cursor-pointer shadow-2xs"
-                                                title={`${assoc.questionIds.length} questões Q-Bank vinculadas. Clique para abrir.`}
-                                              >
-                                                <BookOpen className="w-3 h-3" />
-                                                <span>{assoc.questionIds.length} Qs</span>
-                                              </button>
-                                            )}
-
-                                            {assoc.cardIds.length > 0 && (
-                                              <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  setAssociationsModal({
-                                                    title: `Flashcards da Nota: ${note.title}`,
-                                                    questionIds: [],
-                                                    cardIds: assoc.cardIds
-                                                  });
-                                                }}
-                                                className="px-2 py-0.5 rounded-lg bg-purple-50 dark:bg-purple-950/60 hover:bg-purple-100 text-purple-700 dark:text-purple-300 font-bold text-[11px] flex items-center gap-1 border border-purple-200 dark:border-purple-800 transition-colors cursor-pointer shadow-2xs"
-                                                title={`${assoc.cardIds.length} flashcards vinculados. Clique para abrir.`}
-                                              >
-                                                <Layers className="w-3 h-3" />
-                                                <span>{assoc.cardIds.length} Cards</span>
-                                              </button>
-                                            )}
-                                          </div>
-                                        );
-                                      })()}
+                                      {/* Toggle Clozes na Nota para Estudo Ativo */}
+                                      {note.content && /{{c\d*::/.test(note.content) && (
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setRevealedClozeNotes(prev => ({ ...prev, [note.id]: !prev[note.id] }));
+                                          }}
+                                          className={cn(
+                                            "px-2.5 py-1 rounded-xl text-xs font-bold flex items-center gap-1 transition-all cursor-pointer",
+                                            revealedClozeNotes[note.id]
+                                              ? "bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-800 shadow-xs"
+                                              : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-purple-50 hover:text-purple-600"
+                                          )}
+                                          title={revealedClozeNotes[note.id] ? "Ocultar Clozes na nota (Modo Teste)" : "Revelar todos os Clozes na nota"}
+                                        >
+                                          {revealedClozeNotes[note.id] ? <EyeOff className="w-3.5 h-3.5 text-purple-600" /> : <Eye className="w-3.5 h-3.5 text-purple-600" />}
+                                          <span className="hidden sm:inline">{revealedClozeNotes[note.id] ? 'Ocultar Clozes' : 'Ver Clozes'}</span>
+                                        </button>
+                                      )}
 
                                       {/* Edit Button */}
                                       <button
@@ -1390,11 +1330,11 @@ export const StudyNotebooksView: React.FC<StudyNotebooksViewProps> = ({
                                         />
                                       ) : (
                                         <div
-                                          onClick={(e) => handleNoteContentClick(e, note.id)}
                                           onDoubleClick={() => setEditingNoteId(note.id)}
+                                          onClick={handleNoteContentClick}
                                           className="prose dark:prose-invert max-w-none text-sm text-gray-900 dark:text-gray-100 leading-relaxed cursor-text min-h-[32px]"
-                                          dangerouslySetInnerHTML={{ __html: prepareNoteHtml(note.content) || '<p class="text-gray-400 italic">Nota vazia. Clique duas vezes para escrever...</p>' }}
-                                          title="Dê duplo clique para editar • Clique em [...] para revelar Clozes"
+                                          dangerouslySetInnerHTML={{ __html: renderNoteContentWithClozes(note.content, Boolean(revealedClozeNotes[note.id])) || '<p class="text-gray-400 italic">Nota vazia. Clique duas vezes para escrever...</p>' }}
+                                          title="Dê duplo clique para editar ou clique nas palavras ocultas para revelar"
                                         />
                                       )}
 
@@ -1422,44 +1362,37 @@ export const StudyNotebooksView: React.FC<StudyNotebooksViewProps> = ({
                                       )}
 
                                       {/* Associated Questions and Cards Footer Badges */}
-                                      {(() => {
-                                        const assoc = getNoteAssociations(note);
-                                        if (assoc.questionIds.length === 0 && assoc.cardIds.length === 0) return null;
+                                      {((note.associatedQuestionIds && note.associatedQuestionIds.length > 0) || (note.associatedCardIds && note.associatedCardIds.length > 0)) && (
+                                        <div className="mt-4 pt-3 border-t border-black/5 dark:border-white/5 flex items-center gap-2 flex-wrap text-xs">
+                                          {note.associatedQuestionIds && note.associatedQuestionIds.length > 0 && (
+                                            <button
+                                              onClick={() => setAssociationsModal({
+                                                title: `Questões de ${note.title}`,
+                                                questionIds: note.associatedQuestionIds || [],
+                                                cardIds: []
+                                              })}
+                                              className="px-2.5 py-1 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-200 dark:border-emerald-800/60 flex items-center gap-1 hover:bg-emerald-100 transition-colors cursor-pointer"
+                                            >
+                                              <BookOpen className="w-3.5 h-3.5" />
+                                              <span>{note.associatedQuestionIds.length} Questões Q-Bank</span>
+                                            </button>
+                                          )}
 
-                                        return (
-                                          <div className="mt-4 pt-3 border-t border-black/5 dark:border-white/5 flex items-center gap-2 flex-wrap text-xs">
-                                            {assoc.questionIds.length > 0 && (
-                                              <button
-                                                type="button"
-                                                onClick={() => setAssociationsModal({
-                                                  title: `Questões da Nota: ${note.title}`,
-                                                  questionIds: assoc.questionIds,
-                                                  cardIds: []
-                                                })}
-                                                className="px-2.5 py-1 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-200 dark:border-emerald-800/60 flex items-center gap-1.5 hover:bg-emerald-100 transition-colors cursor-pointer"
-                                              >
-                                                <BookOpen className="w-3.5 h-3.5" />
-                                                <span>{assoc.questionIds.length} Questões Q-Bank</span>
-                                              </button>
-                                            )}
-
-                                            {assoc.cardIds.length > 0 && (
-                                              <button
-                                                type="button"
-                                                onClick={() => setAssociationsModal({
-                                                  title: `Flashcards da Nota: ${note.title}`,
-                                                  questionIds: [],
-                                                  cardIds: assoc.cardIds
-                                                })}
-                                                className="px-2.5 py-1 rounded-xl bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 font-bold border border-purple-200 dark:border-purple-800/60 flex items-center gap-1.5 hover:bg-purple-100 transition-colors cursor-pointer"
-                                              >
-                                                <Layers className="w-3.5 h-3.5" />
-                                                <span>{assoc.cardIds.length} Flashcards</span>
-                                              </button>
-                                            )}
-                                          </div>
-                                        );
-                                      })()}
+                                          {note.associatedCardIds && note.associatedCardIds.length > 0 && (
+                                            <button
+                                              onClick={() => setAssociationsModal({
+                                                title: `Flashcards de ${note.title}`,
+                                                questionIds: [],
+                                                cardIds: note.associatedCardIds || []
+                                              })}
+                                              className="px-2.5 py-1 rounded-xl bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 font-bold border border-purple-200 dark:border-purple-800/60 flex items-center gap-1 hover:bg-purple-100 transition-colors cursor-pointer"
+                                            >
+                                              <Layers className="w-3.5 h-3.5" />
+                                              <span>{note.associatedCardIds.length} Flashcards</span>
+                                            </button>
+                                          )}
+                                        </div>
+                                      )}
                                     </div>
                                   )}
                                 </article>
@@ -1523,52 +1456,8 @@ export const StudyNotebooksView: React.FC<StudyNotebooksViewProps> = ({
 
                     <div
                       className="text-xs text-gray-600 dark:text-gray-400 line-clamp-4 leading-relaxed"
-                      dangerouslySetInnerHTML={{ __html: prepareNoteHtml(note.content) || '<span class="text-gray-400 italic">Sem conteúdo ainda.</span>' }}
+                      dangerouslySetInnerHTML={{ __html: sanitizeHtml(note.content) || '<span class="text-gray-400 italic">Sem conteúdo ainda.</span>' }}
                     />
-
-                    {/* Associations in Grid Card */}
-                    {(() => {
-                      const assoc = getNoteAssociations(note);
-                      if (assoc.questionIds.length === 0 && assoc.cardIds.length === 0) return null;
-                      return (
-                        <div className="flex items-center gap-1.5 mt-2.5 pt-2 border-t border-black/5 dark:border-white/5 flex-wrap">
-                          {assoc.questionIds.length > 0 && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setAssociationsModal({
-                                  title: `Questões da Nota: ${note.title}`,
-                                  questionIds: assoc.questionIds,
-                                  cardIds: []
-                                });
-                              }}
-                              className="px-2 py-0.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 font-bold text-[10px] flex items-center gap-1 border border-emerald-200 dark:border-emerald-800 transition-colors cursor-pointer"
-                            >
-                              <BookOpen className="w-3 h-3" />
-                              <span>{assoc.questionIds.length} Qs</span>
-                            </button>
-                          )}
-                          {assoc.cardIds.length > 0 && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setAssociationsModal({
-                                  title: `Flashcards da Nota: ${note.title}`,
-                                  questionIds: [],
-                                  cardIds: assoc.cardIds
-                                });
-                              }}
-                              className="px-2 py-0.5 rounded-lg bg-purple-50 dark:bg-purple-950/60 hover:bg-purple-100 text-purple-700 dark:text-purple-300 font-bold text-[10px] flex items-center gap-1 border border-purple-200 dark:border-purple-800 transition-colors cursor-pointer"
-                            >
-                              <Layers className="w-3 h-3" />
-                              <span>{assoc.cardIds.length} Cards</span>
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })()}
                   </div>
 
                   <div className="pt-4 mt-4 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between text-xs text-gray-500">
@@ -1643,50 +1532,6 @@ export const StudyNotebooksView: React.FC<StudyNotebooksViewProps> = ({
               <div className="px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-gray-400 border-b border-gray-100 dark:border-gray-700/60 pb-1 mb-1 truncate">
                 Nota: {contextMenu.note.title}
               </div>
-
-              {/* Associated Questions & Cards Context Actions */}
-              {(() => {
-                const assoc = getNoteAssociations(contextMenu.note);
-                return (
-                  <>
-                    {assoc.questionIds.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAssociationsModal({
-                            title: `Questões da Nota: ${contextMenu.note!.title}`,
-                            questionIds: assoc.questionIds,
-                            cardIds: []
-                          });
-                          setContextMenu(prev => ({ ...prev, visible: false }));
-                        }}
-                        className="w-full px-2.5 py-1.5 text-left rounded-xl bg-emerald-50/60 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 flex items-center gap-2 transition-colors cursor-pointer font-bold mb-1"
-                      >
-                        <BookOpen className="w-3.5 h-3.5" />
-                        <span>Ver {assoc.questionIds.length} Questões Associadas</span>
-                      </button>
-                    )}
-
-                    {assoc.cardIds.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAssociationsModal({
-                            title: `Flashcards da Nota: ${contextMenu.note!.title}`,
-                            questionIds: [],
-                            cardIds: assoc.cardIds
-                          });
-                          setContextMenu(prev => ({ ...prev, visible: false }));
-                        }}
-                        className="w-full px-2.5 py-1.5 text-left rounded-xl bg-purple-50/60 dark:bg-purple-950/30 hover:bg-purple-100 dark:hover:bg-purple-900/40 text-purple-700 dark:text-purple-300 flex items-center gap-2 transition-colors cursor-pointer font-bold mb-1"
-                      >
-                        <Layers className="w-3.5 h-3.5" />
-                        <span>Ver {assoc.cardIds.length} Flashcards Associados</span>
-                      </button>
-                    )}
-                  </>
-                );
-              })()}
 
               <button
                 type="button"
