@@ -87,8 +87,8 @@ export const QuestionDrillDownModal: React.FC<QuestionDrillDownModalProps> = ({
   };
 
   const handleCreateNoteFromQuestion = (q: Question) => {
-    const targetArea = notebookAreas[0]?.id || 'area-clinica';
-    const noteId = createNoteFromQuestion(q, targetArea);
+    // Utiliza o Subject extraído da questão para encontrar ou criar a área correspondente
+    const noteId = createNoteFromQuestion(q);
     onClose();
     navigate(`/notebooks?noteId=${noteId}`);
   };

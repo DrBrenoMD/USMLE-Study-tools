@@ -2139,8 +2139,23 @@ ${card.details ? `<p><i>Detalhes adicionais:</i> ${card.details}</p>` : ''}`;
 
         createNoteFromQuestion: (questionData, areaId, customTitle) => {
           const state = get();
-          const targetArea = areaId || state.notebookAreas[0]?.id || 'area-clinica';
           const defaultNbId = state.studyNotebooks[0]?.id || 'nb-principal';
+          
+          // Se não foi fornecida uma área específica, utiliza o Subject da questão como área
+          let targetArea = areaId;
+          if (!targetArea) {
+            const rawSubj = (questionData.subject || '').trim();
+            if (rawSubj) {
+              const found = state.notebookAreas.find(a => a.name.trim().toLowerCase() === rawSubj.toLowerCase());
+              if (found) {
+                targetArea = found.id;
+              } else {
+                targetArea = get().createNotebookArea(rawSubj, '#3b82f6', defaultNbId);
+              }
+            } else {
+              targetArea = state.notebookAreas[0]?.id || 'area-clinica';
+            }
+          }
 
           const qid = questionData.qid || questionData.questionId || questionData.id || '';
           const stem = questionData.stem || questionData.text || questionData.questionStem || '';

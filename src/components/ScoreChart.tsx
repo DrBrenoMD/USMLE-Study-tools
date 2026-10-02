@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import { format, subDays, eachDayOfInterval, startOfDay } from 'date-fns';
 import { StudyLogEntry } from '../types';
 import {
@@ -14,7 +14,6 @@ import {
   Legend
 } from 'recharts';
 import {
-  BarChart3,
   CheckSquare,
   Award,
   Clock,
@@ -22,21 +21,15 @@ import {
   RotateCcw,
   Sparkles,
   ChevronDown,
-  ChevronUp,
-  SlidersHorizontal,
   FolderTree,
   Filter,
-  CheckCircle2,
-  XCircle,
-  HelpCircle,
-  Download,
   Wand2,
   Calendar,
-  CalendarDays,
   Layers,
-  Building2
+  Building2,
+  HelpCircle
 } from 'lucide-react';
-import { useStore, StudyDeskQuestionRecord, Question } from '../cardblocks/store/useStore';
+import { useStore, Question } from '../cardblocks/store/useStore';
 import { cn } from '../lib/utils';
 import { QuestionDrillDownModal } from './QuestionDrillDownModal';
 import { GranularResetModal } from './GranularResetModal';
@@ -50,7 +43,6 @@ interface ScoreChartProps {
 const PALETTE = [
   '#3b82f6', // blue
   '#10b981', // emerald
-  '#f59e0b', // amber
   '#8b5cf6', // purple
   '#ec4899', // pink
   '#06b6d4', // cyan
@@ -58,6 +50,8 @@ const PALETTE = [
   '#ef4444', // red
   '#14b8a6', // teal
   '#6366f1', // indigo
+  '#84cc16', // lime
+  '#a855f7', // violet
 ];
 
 export function ScoreChart({ logs }: ScoreChartProps) {
@@ -67,8 +61,11 @@ export function ScoreChart({ logs }: ScoreChartProps) {
   // Seletor de Banco de Questões: 'all' (Todos os Bancos / Unificado) | bankId
   const [selectedBankId, setSelectedBankId] = useState<string>('all');
 
-  // Modo de tratamento de revisões: 'original_date' (Preserva data de resolução original) | 'all_attempts' (Contabiliza na data feita)
-  const [reviewHandlingMode, setReviewHandlingMode] = useState<'original_date' | 'all_attempts'>('original_date');
+  // Modo de tratamento de revisões:
+  // 'original_date': 1 registro por questão na data original em que foi feita
+  // 'latest_date': 1 registro por questão na data mais recente de resolução
+  // 'all_attempts': volume total de todas as tentativas/revisões feitas
+  const [reviewHandlingMode, setReviewHandlingMode] = useState<'original_date' | 'latest_date' | 'all_attempts'>('original_date');
 
   // Seletor de Modo na Seção de Gráficos: 'general' (Geral de Sessões) | 'subject' (Gráfico por Subject da Extensão)
   const [activeChartTab, setActiveChartTab] = useState<'general' | 'subject'>('general');
@@ -78,12 +75,14 @@ export function ScoreChart({ logs }: ScoreChartProps) {
 
   // Legendas interativas do gráfico por Subject: Set de subjects desativados/ocultos
   const [hiddenSubjects, setHiddenSubjects] = useState<Set<string>>(new Set());
+  const [showDailyAverageLine, setShowDailyAverageLine] = useState<boolean>(true);
 
   // Estado para Drill-down Modal
   const [drillDownData, setDrillDownData] = useState<{
     isOpen: boolean;
     title: string;
     subtitle?: string;
+    dateStr?: string;
     questions: Question[];
   }>({
     isOpen: false,
@@ -150,127 +149,199 @@ export function ScoreChart({ logs }: ScoreChartProps) {
     );
   };
 
-  // Helper para testar se uma questão pertence ao banco selecionado
+  // Helper universal para testar se uma questão pertence ao banco selecionado
   const matchesBank = (q: Question): boolean => {
     if (selectedBankId === 'all') return true;
-    if (q.bankId === selectedBankId) return true;
-    const bankObj = questionBanks.find(b => b.id === selectedBankId);
-    if (bankObj && q.tags?.some(t => t.toLowerCase().includes(bankObj.name.toLowerCase()))) return true;
+    const target = selectedBankId.trim().toLowerCase();
+    const qb = (q.bankId || '').trim().toLowerCase();
+    if (qb && (qb === target || qb.includes(target) || target.includes(qb))) return true;
+
+    const bankObj = questionBanks.find(b => b.id.toLowerCase() === target || b.name.toLowerCase() === target);
+    if (bankObj) {
+      if (qb === bankObj.id.toLowerCase() || qb === bankObj.name.toLowerCase()) return true;
+      if (q.tags?.some(t => t.toLowerCase().includes(bankObj.name.toLowerCase()) || t.toLowerCase().includes(bankObj.id.toLowerCase()))) return true;
+    }
+    if (q.tags?.some(t => t.toLowerCase() === target || t.toLowerCase().includes(target))) return true;
+    if (q.source && q.source.toLowerCase().includes(target)) return true;
+    return false;
+  };
+
+  // Helper universal para testar se um StudyLogEntry pertence ao banco selecionado
+  const matchesBankLog = (log: StudyLogEntry): boolean => {
+    if (selectedBankId === 'all') return true;
+    const target = selectedBankId.trim().toLowerCase();
+    const rId = (log.resourceId || '').trim().toLowerCase();
+    const rName = (log.resourceName || '').trim().toLowerCase();
+
+    if (rId === target || rName === target || rName.includes(target) || target.includes(rName)) return true;
+    const bankObj = questionBanks.find(b => b.id.toLowerCase() === target || b.name.toLowerCase() === target);
+    if (bankObj) {
+      const bId = bankObj.id.toLowerCase();
+      const bName = bankObj.name.toLowerCase();
+      if (rId === bId || rName.includes(bName) || bName.includes(rName)) return true;
+    }
+    return false;
+  };
+
+  // Helper universal de determinação de acerto da questão
+  const isQuestionCorrect = (q: Question, att?: any): boolean => {
+    if (att && typeof att.isCorrect === 'boolean') return att.isCorrect;
+    if (typeof q.status === 'string') {
+      const s = q.status.toLowerCase();
+      if (s === 'correct') return true;
+      if (s === 'incorrect') return false;
+    }
+    if ((q as any).isCorrect === true) return true;
+    if (q.attempts && q.attempts.length > 0) {
+      if (att) {
+        return Boolean(att.isCorrect);
+      }
+      const last = q.attempts[q.attempts.length - 1];
+      if (typeof last?.isCorrect === 'boolean') return last.isCorrect;
+      return q.attempts.some(a => a.isCorrect === true);
+    }
     return false;
   };
 
   // 1. Processa dados do GRÁFICO GERAL (Com separação por banco ou unificado + Barras: % Acertos, Linha: Volume)
-  const { generalChartData, generalSummaryStats } = useMemo(() => {
-    // Filtra logs de sessão que correspondam a qbank e ao banco selecionado (se filtrado)
-    const qbankLogs = logs.filter((l) => {
-      const isQBank = l.resourceType === 'qbank' || l.unit === 'questões' || l.unit === 'questoes';
-      if (!isQBank) return false;
-      if (selectedBankId === 'all') return true;
-      const bankObj = questionBanks.find(b => b.id === selectedBankId);
-      const bankName = bankObj ? bankObj.name.toLowerCase() : '';
-      return (
-        l.resourceId === selectedBankId ||
-        l.resourceName.toLowerCase().includes(selectedBankId.toLowerCase()) ||
-        (bankName && l.resourceName.toLowerCase().includes(bankName))
-      );
-    });
-
+  const { generalChartData, generalSummaryStats, questionsByDateMap } = useMemo(() => {
     const byDate = new Map<
       string,
       {
         totalAmount: number;
+        correctCount: number;
         scoredAmount: number;
-        weightedScoreSum: number;
-        questionIds: Set<string>;
+        questionsList: Question[];
       }
     >();
 
-    // Se temos logs manuais/sincronizados correspondentes
-    qbankLogs.forEach((log) => {
-      if (!log.date) return;
-      const existing = byDate.get(log.date) || {
-        totalAmount: 0,
-        scoredAmount: 0,
-        weightedScoreSum: 0,
-        questionIds: new Set(),
-      };
-
-      const amt = Number(log.amount) || 0;
-      existing.totalAmount += amt;
-
-      if (log.scorePercent !== undefined && log.scorePercent !== null) {
-        const score = Number(log.scorePercent);
-        existing.scoredAmount += amt;
-        existing.weightedScoreSum += score * amt;
+    const getOrInitDate = (dStr: string) => {
+      let existing = byDate.get(dStr);
+      if (!existing) {
+        existing = {
+          totalAmount: 0,
+          correctCount: 0,
+          scoredAmount: 0,
+          questionsList: []
+        };
+        byDate.set(dStr, existing);
       }
+      return existing;
+    };
 
-      byDate.set(log.date, existing);
-    });
+    // Coleta questões relevantes de acordo com o banco selecionado
+    const relevantQuestions = questions.filter(matchesBank);
 
-    // Se um banco específico foi selecionado e não tem logs dedicados na tabela geral,
-    // calcula os pontos diários diretamente das questões do banco
-    if (selectedBankId !== 'all' && qbankLogs.length === 0) {
-      const bankQuestions = questions.filter(matchesBank);
+    if (relevantQuestions.length > 0) {
+      relevantQuestions.forEach((q) => {
+        // Ignora questões sem nenhuma resolução registrada
+        const hasAttempts = Array.isArray(q.attempts) && q.attempts.length > 0;
+        const isAnswered = hasAttempts || (q.status && q.status !== 'unused') || Boolean(q.lastAnsweredAt) || (q as any).isCorrect !== undefined;
 
-      bankQuestions.forEach(q => {
-        if (!q.attempts || q.attempts.length === 0) {
-          if (q.lastAnsweredAt && q.status && q.status !== 'unused') {
-            const dStr = format(new Date(q.lastAnsweredAt), 'yyyy-MM-dd');
-            const existing = byDate.get(dStr) || {
-              totalAmount: 0,
-              scoredAmount: 0,
-              weightedScoreSum: 0,
-              questionIds: new Set(),
-            };
-            if (!existing.questionIds.has(q.id)) {
-              existing.questionIds.add(q.id);
-              existing.totalAmount += 1;
-              existing.scoredAmount += 1;
-              existing.weightedScoreSum += q.status === 'correct' ? 100 : 0;
-              byDate.set(dStr, existing);
-            }
-          }
-          return;
-        }
+        if (!isAnswered) return;
 
-        // Tratamento de Revisões:
-        // 'original_date': atribui à primeira tentativa (data de resolução original) para não distorcer hoje
-        // 'all_attempts': contabiliza cada tentativa na data em que foi realizada
+        // Limpa tentativas duplicadas com timestamps idênticos ou com menos de 3s de diferença
+        const cleanedAttempts = hasAttempts
+          ? q.attempts!.filter((att, idx, arr) => {
+              if (idx === 0) return true;
+              return Math.abs((att.timestamp || 0) - (arr[idx - 1].timestamp || 0)) > 3000;
+            })
+          : [];
+
         if (reviewHandlingMode === 'original_date') {
-          const firstAtt = q.attempts[0];
-          const t = firstAtt?.timestamp || q.lastAnsweredAt || q.createdAt || Date.now();
+          // Data Original: atribui à 1ª resolução
+          const firstAtt = cleanedAttempts.length > 0 ? cleanedAttempts[0] : null;
+          const t = firstAtt?.timestamp || q.createdAt || q.lastAnsweredAt || Date.now();
           const dStr = format(new Date(t), 'yyyy-MM-dd');
-          const existing = byDate.get(dStr) || {
-            totalAmount: 0,
-            scoredAmount: 0,
-            weightedScoreSum: 0,
-            questionIds: new Set(),
-          };
-          if (!existing.questionIds.has(q.id)) {
-            existing.questionIds.add(q.id);
-            existing.totalAmount += 1;
-            existing.scoredAmount += 1;
-            existing.weightedScoreSum += (firstAtt ? firstAtt.isCorrect : q.status === 'correct') ? 100 : 0;
-            byDate.set(dStr, existing);
+          const entry = getOrInitDate(dStr);
+
+          // Evita duplicar a mesma questão no mesmo dia
+          if (!entry.questionsList.some(item => item.id === q.id || (item.qid && item.qid === q.qid))) {
+            const isCorr = isQuestionCorrect(q, firstAtt);
+            entry.totalAmount += 1;
+            entry.scoredAmount += 1;
+            entry.correctCount += isCorr ? 1 : 0;
+            entry.questionsList.push(q);
+          }
+        } else if (reviewHandlingMode === 'latest_date') {
+          // Data Mais Recente: atribui à última resolução
+          const lastAtt = cleanedAttempts.length > 0 ? cleanedAttempts[cleanedAttempts.length - 1] : null;
+          const t = lastAtt?.timestamp || q.lastAnsweredAt || q.updatedAt || q.createdAt || Date.now();
+          const dStr = format(new Date(t), 'yyyy-MM-dd');
+          const entry = getOrInitDate(dStr);
+
+          if (!entry.questionsList.some(item => item.id === q.id || (item.qid && item.qid === q.qid))) {
+            const isCorr = isQuestionCorrect(q, lastAtt);
+            entry.totalAmount += 1;
+            entry.scoredAmount += 1;
+            entry.correctCount += isCorr ? 1 : 0;
+            entry.questionsList.push(q);
           }
         } else {
-          q.attempts.forEach(att => {
-            const t = att.timestamp || q.lastAnsweredAt || Date.now();
+          // Todas as Tentativas: contabiliza cada resolução única no dia em que ocorreu
+          if (cleanedAttempts.length > 0) {
+            // Se houver múltiplas tentativas no mesmo dia, agrupa para não duplicar de forma irreal
+            const dayAttMap = new Map<string, typeof cleanedAttempts[0]>();
+            cleanedAttempts.forEach(att => {
+              const t = att.timestamp || q.lastAnsweredAt || Date.now();
+              const dStr = format(new Date(t), 'yyyy-MM-dd');
+              dayAttMap.set(dStr, att);
+            });
+
+            dayAttMap.forEach((att, dStr) => {
+              const entry = getOrInitDate(dStr);
+              const isCorr = Boolean(att.isCorrect);
+
+              entry.totalAmount += 1;
+              entry.scoredAmount += 1;
+              entry.correctCount += isCorr ? 1 : 0;
+              if (!entry.questionsList.some(item => item.id === q.id || (item.qid && item.qid === q.qid))) {
+                entry.questionsList.push(q);
+              }
+            });
+          } else {
+            const t = q.lastAnsweredAt || q.createdAt || Date.now();
             const dStr = format(new Date(t), 'yyyy-MM-dd');
-            const existing = byDate.get(dStr) || {
-              totalAmount: 0,
-              scoredAmount: 0,
-              weightedScoreSum: 0,
-              questionIds: new Set(),
-            };
-            existing.totalAmount += 1;
-            existing.scoredAmount += 1;
-            existing.weightedScoreSum += att.isCorrect ? 100 : 0;
-            byDate.set(dStr, existing);
-          });
+            const entry = getOrInitDate(dStr);
+            const isCorr = isQuestionCorrect(q);
+
+            entry.totalAmount += 1;
+            entry.scoredAmount += 1;
+            entry.correctCount += isCorr ? 1 : 0;
+            if (!entry.questionsList.some(item => item.id === q.id || (item.qid && item.qid === q.qid))) {
+              entry.questionsList.push(q);
+            }
+          }
         }
       });
     }
+
+    // Processa logs manuais/sincronizados correspondentes ao banco selecionado
+    logs.forEach((log) => {
+      if (!log.date) return;
+      const isQBank = log.resourceType === 'qbank' || log.unit === 'questões' || log.unit === 'questoes';
+      if (!isQBank) return;
+      if (!matchesBankLog(log)) return;
+
+      const entry = getOrInitDate(log.date);
+      const amt = Number(log.amount) || 0;
+      if (amt <= 0) return;
+
+      // Se a data não possui questões diretas da base, usa os números do log
+      if (entry.totalAmount === 0) {
+        entry.totalAmount = amt;
+        if (log.scorePercent !== undefined && log.scorePercent !== null) {
+          const pct = Number(log.scorePercent) || 0;
+          entry.scoredAmount = amt;
+          entry.correctCount = Math.round((pct / 100) * amt);
+        }
+      } else if (entry.scoredAmount === 0 && log.scorePercent !== undefined && log.scorePercent !== null) {
+        // Se já existiam questões mas sem informação de acerto/erro registrada, usa o percentual do log
+        const pct = Number(log.scorePercent) || 0;
+        entry.scoredAmount = entry.totalAmount;
+        entry.correctCount = Math.round((pct / 100) * entry.totalAmount);
+      }
+    });
 
     const today = startOfDay(new Date());
     const startDate = subDays(today, Math.max(1, daysToShow - 1));
@@ -278,7 +349,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
 
     let cumulativeTotalQuestions = 0;
     let cumulativeScoredQuestions = 0;
-    let cumulativeWeightedScore = 0;
+    let cumulativeCorrectCount = 0;
     let activeDaysCount = 0;
 
     const rawDailyData = allDaysInInterval.map((dayDate) => {
@@ -291,7 +362,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
 
       let avgScore: number | null = null;
       if (stats && stats.scoredAmount > 0) {
-        avgScore = Math.round(stats.weightedScoreSum / stats.scoredAmount);
+        avgScore = Math.round((stats.correctCount / stats.scoredAmount) * 100);
       }
 
       if (hasQuestions) {
@@ -299,7 +370,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
         cumulativeTotalQuestions += questionsCount;
         if (stats && stats.scoredAmount > 0) {
           cumulativeScoredQuestions += stats.scoredAmount;
-          cumulativeWeightedScore += stats.weightedScoreSum;
+          cumulativeCorrectCount += stats.correctCount;
         }
       }
 
@@ -341,7 +412,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
 
     const overallAvgScore =
       cumulativeScoredQuestions > 0
-        ? Math.round(cumulativeWeightedScore / cumulativeScoredQuestions)
+        ? Math.round((cumulativeCorrectCount / cumulativeScoredQuestions) * 100)
         : null;
 
     const avgQuestionsPerActiveDay =
@@ -358,13 +429,14 @@ export function ScoreChart({ logs }: ScoreChartProps) {
     return {
       generalChartData: finalData,
       generalSummaryStats: summary,
+      questionsByDateMap: byDate
     };
   }, [logs, questions, questionBanks, daysToShow, selectedBankId, reviewHandlingMode]);
 
   // 2. FONTE DE DADOS DA EXTENSÃO & BANCOS: Registros filtrados por banco e tratamento de revisões
   const extensionData = useMemo(() => {
-    // Filtra questões puramente da extensão ou do banco selecionado
-    const extQuestions = questions.filter(q => isExtensionQuestion(q) && matchesBank(q));
+    // Filtra questões do banco selecionado
+    const extQuestions = questions.filter(q => matchesBank(q));
 
     // Mapeamento de registros de resolução das questões
     const records: Array<{
@@ -380,23 +452,45 @@ export function ScoreChart({ logs }: ScoreChartProps) {
       dateStr: string;
     }> = [];
 
-    // Prioriza tentativas reais registradas na questão
     extQuestions.forEach(q => {
       const subj = (q.subject || 'Geral').trim();
       const sys = (q.system || 'Sistema Geral').trim();
+      const hasAttempts = Array.isArray(q.attempts) && q.attempts.length > 0;
+      const cleanedAttempts = hasAttempts
+        ? q.attempts!.filter((att, idx, arr) => {
+            if (idx === 0) return true;
+            return Math.abs((att.timestamp || 0) - (arr[idx - 1].timestamp || 0)) > 3000;
+          })
+        : [];
 
-      if (q.attempts && q.attempts.length > 0) {
+      if (cleanedAttempts.length > 0) {
         if (reviewHandlingMode === 'original_date') {
-          // Utiliza a 1ª tentativa ou consolida na data de resolução original
-          const firstAtt = q.attempts[0];
-          const lastAtt = q.attempts[q.attempts.length - 1];
-          const tDate = firstAtt?.timestamp ? new Date(firstAtt.timestamp) : new Date(q.lastAnsweredAt || Date.now());
-          
+          const firstAtt = cleanedAttempts[0];
+          const tDate = firstAtt?.timestamp ? new Date(firstAtt.timestamp) : new Date(q.createdAt || q.lastAnsweredAt || Date.now());
+          const isCorr = isQuestionCorrect(q, firstAtt);
+
           records.push({
             qid: q.qid || q.id,
             questionId: q.id,
             questionObj: q,
-            isCorrect: lastAtt ? lastAtt.isCorrect : (firstAtt?.isCorrect ?? (q.status === 'correct')),
+            isCorrect: isCorr,
+            subject: subj,
+            system: sys,
+            resolutionTimeSeconds: firstAtt?.resolutionTimeSeconds || q.resolutionTimeSeconds || 60,
+            reviewTimeSeconds: firstAtt?.reviewTimeSeconds || q.reviewTimeSeconds || 100,
+            answeredAt: tDate.getTime(),
+            dateStr: format(tDate, 'yyyy-MM-dd')
+          });
+        } else if (reviewHandlingMode === 'latest_date') {
+          const lastAtt = cleanedAttempts[cleanedAttempts.length - 1];
+          const tDate = lastAtt?.timestamp ? new Date(lastAtt.timestamp) : new Date(q.lastAnsweredAt || q.updatedAt || Date.now());
+          const isCorr = isQuestionCorrect(q, lastAtt);
+
+          records.push({
+            qid: q.qid || q.id,
+            questionId: q.id,
+            questionObj: q,
+            isCorrect: isCorr,
             subject: subj,
             system: sys,
             resolutionTimeSeconds: lastAtt?.resolutionTimeSeconds || q.resolutionTimeSeconds || 60,
@@ -405,29 +499,37 @@ export function ScoreChart({ logs }: ScoreChartProps) {
             dateStr: format(tDate, 'yyyy-MM-dd')
           });
         } else {
-          q.attempts.forEach(att => {
-            const tDate = att.timestamp ? new Date(att.timestamp) : new Date(q.lastAnsweredAt || Date.now());
+          // Agrupa por dia para não inflacionar tentativas redundantes
+          const dayAttMap = new Map<string, typeof cleanedAttempts[0]>();
+          cleanedAttempts.forEach(att => {
+            const t = att.timestamp || q.lastAnsweredAt || Date.now();
+            const dStr = format(new Date(t), 'yyyy-MM-dd');
+            dayAttMap.set(dStr, att);
+          });
+
+          dayAttMap.forEach((att, dStr) => {
+            const tDate = att.timestamp ? new Date(att.timestamp) : new Date(dStr);
             records.push({
               qid: q.qid || q.id,
               questionId: q.id,
               questionObj: q,
-              isCorrect: att.isCorrect,
+              isCorrect: Boolean(att.isCorrect),
               subject: subj,
               system: sys,
               resolutionTimeSeconds: att.resolutionTimeSeconds || q.resolutionTimeSeconds || 60,
               reviewTimeSeconds: att.reviewTimeSeconds || q.reviewTimeSeconds || 100,
               answeredAt: tDate.getTime(),
-              dateStr: format(tDate, 'yyyy-MM-dd')
+              dateStr: dStr
             });
           });
         }
       } else if (q.status && q.status !== 'unused') {
-        const tDate = q.lastAnsweredAt ? new Date(q.lastAnsweredAt) : new Date(q.updatedAt || Date.now());
+        const tDate = q.lastAnsweredAt ? new Date(q.lastAnsweredAt) : new Date(q.updatedAt || q.createdAt || Date.now());
         records.push({
           qid: q.qid || q.id,
           questionId: q.id,
           questionObj: q,
-          isCorrect: q.status === 'correct',
+          isCorrect: isQuestionCorrect(q),
           subject: subj,
           system: sys,
           resolutionTimeSeconds: q.resolutionTimeSeconds || 60,
@@ -438,39 +540,13 @@ export function ScoreChart({ logs }: ScoreChartProps) {
       }
     });
 
-    // Se nenhuma questão da extensão estiver salva ainda, busca se há sessões de desk
-    if (records.length === 0) {
-      (studyDeskSessions || []).forEach(s => {
-        (s.questionRecords || []).forEach(r => {
-          if (r.isFromExtension) {
-            const matchedQ = questions.find(q => q.qid === r.qid || q.id === r.questionId);
-            if (matchedQ && matchesBank(matchedQ)) {
-              const tDate = new Date(r.answeredAt || s.startedAt);
-              records.push({
-                qid: r.qid,
-                questionId: r.questionId,
-                questionObj: matchedQ,
-                isCorrect: r.isCorrect,
-                subject: (r.subject || matchedQ.subject || 'Geral').trim(),
-                system: (r.system || matchedQ.system || 'Sistema Geral').trim(),
-                resolutionTimeSeconds: r.resolutionTimeSeconds,
-                reviewTimeSeconds: r.reviewTimeSeconds,
-                answeredAt: tDate.getTime(),
-                dateStr: format(tDate, 'yyyy-MM-dd')
-              });
-            }
-          }
-        });
-      });
-    }
-
     return {
       extensionQuestions: extQuestions,
       records
     };
-  }, [questions, studyDeskSessions, selectedBankId, reviewHandlingMode]);
+  }, [questions, selectedBankId, reviewHandlingMode]);
 
-  // Lista única de Subjects e Systems capturados da extensão
+  // Lista única de Subjects e Systems capturados
   const { allSubjectsList, allSystemsList } = useMemo(() => {
     const subjSet = new Set<string>();
     const sysSet = new Set<string>();
@@ -491,7 +567,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
     };
   }, [extensionData]);
 
-  // 3. Processamento do GRÁFICO - Desempenho por Subject pelo Tempo
+  // 3. Processamento do GRÁFICO - Desempenho por Subject pelo Tempo + LINHA DE MÉDIA PONDERADA DO DIA
   const { subjectTimeSeriesData, subjectColorsMap } = useMemo(() => {
     const today = startOfDay(new Date());
     const startDate = subDays(today, Math.max(1, subjectDaysRange - 1));
@@ -528,6 +604,9 @@ export function ScoreChart({ logs }: ScoreChartProps) {
         dateFormatted,
       };
 
+      let dayTotalQuestionsAcrossSubjects = 0;
+      let dayTotalCorrectAcrossSubjects = 0;
+
       allSubjectsList.forEach(subj => {
         if (dayMap && dayMap.has(subj)) {
           const stats = dayMap.get(subj)!;
@@ -535,10 +614,22 @@ export function ScoreChart({ logs }: ScoreChartProps) {
           entry[subj] = accuracy;
           entry[`${subj}_total`] = stats.total;
           entry[`${subj}_correct`] = stats.correct;
+
+          dayTotalQuestionsAcrossSubjects += stats.total;
+          dayTotalCorrectAcrossSubjects += stats.correct;
         } else {
           entry[subj] = null;
         }
       });
+
+      // Média Ponderada Diária considerando o volume específico de cada subject naquele dia
+      const dailyWeightedAverage = dayTotalQuestionsAcrossSubjects > 0
+        ? Math.round((dayTotalCorrectAcrossSubjects / dayTotalQuestionsAcrossSubjects) * 100)
+        : null;
+
+      entry['__daily_avg__'] = dailyWeightedAverage;
+      entry['__daily_total__'] = dayTotalQuestionsAcrossSubjects;
+      entry['__daily_correct__'] = dayTotalCorrectAcrossSubjects;
 
       return entry;
     });
@@ -549,9 +640,8 @@ export function ScoreChart({ logs }: ScoreChartProps) {
     };
   }, [allSubjectsList, extensionData, subjectDaysRange]);
 
-  // 4. Processamento da SEÇÃO - System vs Subject (Hierarquia detalhada baseada em questões únicas)
+  // 4. Processamento da SEÇÃO - System vs Subject
   const systemVsSubjectData = useMemo(() => {
-    // Mapa: Subject -> Map<System, { solveSum, revSum, questionsMap: Map<string, Question> }>
     const map = new Map<
       string,
       Map<
@@ -564,7 +654,6 @@ export function ScoreChart({ logs }: ScoreChartProps) {
       >
     >();
 
-    // Agrupa cada questão única pelo seu Subject e System
     extensionData.records.forEach(r => {
       const qKey = r.questionObj.id || r.questionObj.qid;
       const subj = (r.subject || 'Sem Matéria').trim();
@@ -589,7 +678,6 @@ export function ScoreChart({ logs }: ScoreChartProps) {
       item.questionsMap.set(qKey, r.questionObj);
     });
 
-    // Converte em array estruturado e calcula médias precisas
     const subjectsArray = Array.from(map.entries()).map(([subjName, sysMap]) => {
       let subjTotalQuestions = 0;
       let subjCorrectCount = 0;
@@ -600,7 +688,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
       const systemsArray = Array.from(sysMap.entries()).map(([sysName, data]) => {
         const uniqueQuestions = Array.from(data.questionsMap.values());
         const total = uniqueQuestions.length;
-        const correct = uniqueQuestions.filter(q => q.status === 'correct').length;
+        const correct = uniqueQuestions.filter(q => isQuestionCorrect(q)).length;
         const incorrect = total - correct;
         const accuracy = total > 0 ? Math.round((correct / total) * 100) : 0;
         const avgSolve = total > 0 ? Math.round(data.solveSum / total) : 60;
@@ -648,145 +736,198 @@ export function ScoreChart({ logs }: ScoreChartProps) {
     return subjectsArray;
   }, [extensionData]);
 
-  // Formatação de segundos
-  const formatSec = (seconds: number): string => {
-    const s = Math.max(0, Math.round(seconds));
+  // Handler para clique em qualquer ponto, barra ou linha do gráfico
+  const handleChartPointClick = (dateStr: string, dateFormatted?: string, specificSubject?: string) => {
+    if (!dateStr) return;
+
+    // Busca questões da data a partir do mapa ou filtra as questões
+    const dateEntry = questionsByDateMap.get(dateStr);
+    let matchedQuestions: Question[] = [];
+
+    if (dateEntry && dateEntry.questionsList && dateEntry.questionsList.length > 0) {
+      matchedQuestions = [...dateEntry.questionsList];
+    } else {
+      matchedQuestions = questions.filter(q => {
+        if (!matchesBank(q)) return false;
+        const hasAtt = q.attempts?.some(a => {
+          const aDate = format(new Date(a.timestamp), 'yyyy-MM-dd');
+          return aDate === dateStr;
+        });
+        const qDate = q.lastAnsweredAt ? format(new Date(q.lastAnsweredAt), 'yyyy-MM-dd') : null;
+        return hasAtt || qDate === dateStr;
+      });
+    }
+
+    if (specificSubject) {
+      matchedQuestions = matchedQuestions.filter(q => (q.subject || 'Geral').trim().toLowerCase() === specificSubject.trim().toLowerCase());
+    }
+
+    const displayDate = dateFormatted || dateStr;
+    const bankName = selectedBankId === 'all' ? 'Todos os Bancos' : (availableBanksList.find(b => b.id === selectedBankId)?.name || selectedBankId);
+
+    if (matchedQuestions.length > 0) {
+      setDrillDownData({
+        isOpen: true,
+        title: `Questões de ${displayDate}`,
+        subtitle: `${matchedQuestions.length} questões registradas • Banco: ${bankName}${specificSubject ? ` • Matéria: ${specificSubject}` : ''}`,
+        dateStr,
+        questions: matchedQuestions
+      });
+    } else {
+      setDateForManager(dateStr);
+      setIsDateManagerOpen(true);
+    }
+  };
+
+  const handleResetSubject = (subject: string) => {
+    resetSubjectStats(subject);
+    setResetToast(`Estatísticas da matéria "${subject}" foram resetadas.`);
+    setTimeout(() => setResetToast(null), 3000);
+  };
+
+  const handleResetSystem = (system: string) => {
+    resetSystemStats(system);
+    setResetToast(`Estatísticas do sistema "${system}" foram resetadas.`);
+    setTimeout(() => setResetToast(null), 3000);
+  };
+
+  const handleResetBank = (bankId: string) => {
+    resetBankStats(bankId);
+    setResetToast(`Estatísticas do banco foram resetadas com sucesso.`);
+    setTimeout(() => setResetToast(null), 3000);
+  };
+
+  const handleResetExtensionData = () => {
+    resetExtensionStats();
+    setResetToast(`Dados da extensão foram resetados com sucesso.`);
+    setTimeout(() => setResetToast(null), 3000);
+  };
+
+  const handleResetGeneralLogs = () => {
+    try {
+      localStorage.removeItem('usmle_study_logs_v4');
+      window.dispatchEvent(new Event('usmle_logs_updated'));
+      setResetToast(`Logs de estudo foram resetados.`);
+      setTimeout(() => setResetToast(null), 3000);
+    } catch (e) {}
+  };
+
+  const handleSanitizeAndRecalculate = () => {
+    const res = sanitizeStudyData();
+    if (res.fixedQuestionsCount > 0 || res.fixedLogsCount > 0 || res.removedDuplicateAttempts > 0) {
+      setResetToast(`✓ Sincronização concluída: ${res.fixedQuestionsCount} questões calibradas, ${res.removedDuplicateAttempts} duplicatas removidas e ${res.fixedLogsCount} logs sincronizados!`);
+    } else {
+      setResetToast(`✓ Todas as métricas e registros já estão 100% calibrados e consistentes.`);
+    }
+    setTimeout(() => setResetToast(null), 3500);
+  };
+
+  const handleSeedSampleExtensionData = () => {
+    const sampleSubjects = ['Cardiologia', 'Pneumologia', 'Infectologia', 'Farmacologia', 'Gastroenterologia'];
+    const sampleSystems = ['Cardiovascular', 'Respiratório', 'Imunológico', 'Autônomo', 'Digestório'];
+    const now = Date.now();
+
+    for (let i = 1; i <= 15; i++) {
+      const isCorr = Math.random() > 0.35;
+      const sub = sampleSubjects[i % sampleSubjects.length];
+      const sys = sampleSystems[i % sampleSystems.length];
+      const qid = `DEMO-EXT-${1000 + i}`;
+      const dayOffset = (i % 7);
+      const fakeAnsweredAt = now - (dayOffset * 86400000);
+
+      upsertQuestionFromQBank({
+        id: `q-demo-${i}`,
+        qid,
+        bankId: selectedBankId === 'all' ? 'uworld' : selectedBankId,
+        text: `Questão demonstrativa ${qid}: Paciente com queixas clínicas em ${sub}...`,
+        stem: `Paciente do sexo masculino, 45 anos, apresenta quadro compatível com afecção do sistema ${sys}...`,
+        subject: sub,
+        system: sys,
+        status: isCorr ? 'correct' : 'incorrect',
+        isFromExtension: true,
+        source: 'extension',
+        resolutionTimeSeconds: Math.floor(45 + Math.random() * 40),
+        reviewTimeSeconds: Math.floor(60 + Math.random() * 60),
+        lastAnsweredAt: fakeAnsweredAt,
+        alternatives: [
+          { id: 'alt-a', letter: 'A', text: 'Opção A (Diagnóstico diferencial)', isCorrect: isCorr },
+          { id: 'alt-b', letter: 'B', text: 'Opção B (Conduta terapêutica)', isCorrect: !isCorr },
+          { id: 'alt-c', letter: 'C', text: 'Opção C (Fisiopatologia)', isCorrect: false },
+          { id: 'alt-d', letter: 'D', text: 'Opção D (Exame complementar)', isCorrect: false }
+        ],
+        attempts: [
+          {
+            timestamp: fakeAnsweredAt,
+            isCorrect: isCorr,
+            resolutionTimeSeconds: 55,
+            reviewTimeSeconds: 70,
+            selectedChoiceId: isCorr ? 'alt-a' : 'alt-b'
+          }
+        ]
+      });
+
+      recordDeskQuestionAnswer({
+        qid,
+        questionId: `q-demo-${i}`,
+        isCorrect: isCorr,
+        resolutionTimeSeconds: 55,
+        reviewTimeSeconds: 70,
+        subject: sub,
+        system: sys,
+      });
+    }
+
+    setResetToast('✓ Amostra de questões da extensão injetada com sucesso!');
+    setTimeout(() => setResetToast(null), 3000);
+  };
+
+  const formatSec = (sec: number) => {
+    if (!sec || isNaN(sec)) return '0s';
+    const s = Math.round(sec);
     const m = Math.floor(s / 60);
     const rem = s % 60;
     if (m === 0) return `${rem}s`;
     return `${m}m ${rem}s`;
   };
 
-  // Handlers para ações e reset
-  const handleResetExtensionData = () => {
-    resetExtensionStats();
-    setResetToast('Todas as estatísticas de questões da extensão foram resetadas!');
-    setTimeout(() => setResetToast(null), 3500);
-  };
-
-  const handleResetSubject = (subjectName: string) => {
-    resetSubjectStats(subjectName);
-    setResetToast(`Estatísticas da matéria "${subjectName}" foram resetadas!`);
-    setTimeout(() => setResetToast(null), 3500);
-  };
-
-  const handleResetSystem = (systemName: string) => {
-    resetSystemStats(systemName);
-    setResetToast(`Estatísticas do System "${systemName}" foram resetadas!`);
-    setTimeout(() => setResetToast(null), 3500);
-  };
-
-  const handleResetBank = (bankId: string) => {
-    resetBankStats(bankId);
-    const bankName = availableBanksList.find(b => b.id === bankId)?.name || bankId;
-    setResetToast(`Estatísticas do Banco "${bankName}" foram resetadas!`);
-    setTimeout(() => setResetToast(null), 3500);
-  };
-
-  const handleSanitizeAndRecalculate = () => {
-    const res = sanitizeStudyData();
-    if (res.fixedLogsCount > 0 || res.removedDuplicateAttempts > 0) {
-      setResetToast(`Sincronização concluída! ${res.removedDuplicateAttempts} tentativas duplicadas foram removidas e ${res.fixedLogsCount} registros do Heatmap corrigidos para corresponderem às questões reais.`);
-    } else {
-      setResetToast('Todas as métricas e logs do Heatmap já estão 100% íntegros e sincronizados com as questões reais!');
-    }
-    setTimeout(() => setResetToast(null), 4500);
-  };
-
-  const handleResetGeneralLogs = () => {
-    localStorage.removeItem('usmle_study_logs_v4');
-    window.location.reload();
-  };
-
-  // Gerador de questões de amostra da extensão para testes/revisão imediata
-  const handleSeedSampleExtensionData = () => {
-    const samples = [
-      { qid: 'EXT-101', subject: 'Cardiologia', system: 'Sistema Cardiovascular', text: 'Homem de 62 anos apresenta dor torácica retroesternal opressiva e elevação do segmento ST em DII, DIII e aVF.', isCorrect: true, solve: 58, rev: 110 },
-      { qid: 'EXT-102', subject: 'Cardiologia', system: 'Sistema Cardiovascular', text: 'Mulher de 45 anos com sopro holossistólico em foco mitral irradiando para axila esquerda.', isCorrect: true, solve: 64, rev: 120 },
-      { qid: 'EXT-103', subject: 'Cardiologia', system: 'Farmacologia Cardiovascular', text: 'Mecanismo de ação dos inibidores da ECA e efeito sobre a bradicinina e tosse seca.', isCorrect: false, solve: 72, rev: 140 },
-      { qid: 'EXT-104', subject: 'Cardiologia', system: 'Farmacologia Cardiovascular', text: 'Uso de betabloqueadores em insuficiência cardíaca crônica com fração de ejeção reduzida.', isCorrect: true, solve: 52, rev: 90 },
-      { qid: 'EXT-105', subject: 'Pneumologia', system: 'Sistema Respiratório', text: 'Paciente de 58 anos tabagista de longa data com dispneia progressiva e relação VEF1/CVF < 0.70.', isCorrect: true, solve: 65, rev: 115 },
-      { qid: 'EXT-106', subject: 'Pneumologia', system: 'Sistema Respiratório', text: 'Quadro de pneumonia adquirida na comunidade com consolidação lobar direita por Streptococcus pneumoniae.', isCorrect: true, solve: 48, rev: 85 },
-      { qid: 'EXT-107', subject: 'Pneumologia', system: 'Distúrbios Ventilatórios', text: 'Gasometria arterial revelando hipoxemia refratária com gradiente alvéolo-arterial aumentado no shunt intrapulmonar.', isCorrect: false, solve: 82, rev: 160 },
-      { qid: 'EXT-108', subject: 'Gastroenterologia', system: 'Sistema Hepático & Biliar', text: 'Homem de 50 anos etilista crônico com ascite, circulação colateral e varizes esofágicas.', isCorrect: true, solve: 60, rev: 105 },
-      { qid: 'EXT-109', subject: 'Gastroenterologia', system: 'Sistema Hepático & Biliar', text: 'Mecanismo fisiopatológico da encefalopatia hepática e manejo inicial com lactulose.', isCorrect: false, solve: 68, rev: 130 },
-      { qid: 'EXT-110', subject: 'Gastroenterologia', system: 'Trato Gastrointestinal', text: 'Mulher jovem com diarreia crônica, dor abdominal e lesões ulceradas segmentares na ileocolonoscopia.', isCorrect: true, solve: 70, rev: 125 },
-      { qid: 'EXT-111', subject: 'Infectologia', system: 'Imunológico & Infecto', text: 'Conduta frente a paciente com febre, rigidez de nuca e líquor túrbido com predomínio de polimorfonucleares.', isCorrect: true, solve: 55, rev: 95 },
-      { qid: 'EXT-112', subject: 'Infectologia', system: 'Imunológico & Infecto', text: 'Tratamento empírico inicial de endocardite infecciosa em valva nativa aguda.', isCorrect: false, solve: 75, rev: 145 },
-    ];
-
-    samples.forEach(s => {
-      const qId = upsertQuestionFromQBank({
-        qid: s.qid,
-        bankId: selectedBankId === 'all' ? 'uworld' : selectedBankId,
-        stem: s.text,
-        text: s.text,
-        subject: s.subject,
-        system: s.system,
-        isFromExtension: true,
-        source: 'extension',
-        tags: [`qid:${s.qid}`, 'origem:extensao', 'extension', s.subject.toLowerCase()],
-        alternatives: [
-          { id: 'alt-a', letter: 'A', text: 'Opção correta diagnosticada', isCorrect: true },
-          { id: 'alt-b', letter: 'B', text: 'Opção incorreta alternativa', isCorrect: false }
-        ]
-      });
-
-      recordDeskQuestionAnswer({
-        qid: s.qid,
-        questionId: qId,
-        selectedChoiceId: s.isCorrect ? 'alt-a' : 'alt-b',
-        correctChoiceId: 'alt-a',
-        isCorrect: s.isCorrect,
-        resolutionTimeSeconds: s.solve,
-        reviewTimeSeconds: s.rev,
-        subject: s.subject,
-        system: s.system
-      });
-    });
-
-    setResetToast('Amostra de 12 questões capturadas pela extensão foi injetada com sucesso para testes!');
-    setTimeout(() => setResetToast(null), 4000);
-  };
-
   const selectedBankName = selectedBankId === 'all'
     ? 'Todos os Bancos (Unificado)'
-    : (availableBanksList.find(b => b.id === selectedBankId)?.name || 'Banco Selecionado');
+    : (availableBanksList.find(b => b.id === selectedBankId)?.name || selectedBankId);
 
   return (
-    <div className="space-y-8 mt-6">
-      {/* Toast Feedback */}
+    <div className="space-y-6">
+      {/* Toast Notification */}
       {resetToast && (
-        <div className="p-3.5 bg-emerald-50 dark:bg-emerald-950/70 border border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs font-bold rounded-2xl flex items-center justify-between shadow-lg animate-in fade-in">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-            <span>{resetToast}</span>
-          </div>
-          <button onClick={() => setResetToast(null)} className="text-emerald-600 font-extrabold text-xs">✕</button>
+        <div className="fixed bottom-6 right-6 z-50 bg-gray-900 text-white dark:bg-white dark:text-gray-900 px-4 py-3 rounded-2xl shadow-xl border border-gray-700 dark:border-gray-200 text-xs font-bold flex items-center gap-2 animate-slide-up">
+          <Sparkles className="w-4 h-4 text-emerald-400 dark:text-emerald-600" />
+          <span>{resetToast}</span>
         </div>
       )}
 
       {/* ========================================================================= */}
-      {/* BLOCO SUPERIOR: SEÇÃO DE GRÁFICOS (GERAL vs NOVO GRÁFICO POR SUBJECT) */}
+      {/* PAINEL PRINCIPAL: GRÁFICOS & PERFORMANCE */}
       {/* ========================================================================= */}
       <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-200 dark:border-gray-800 p-5 sm:p-6 shadow-xs flex flex-col gap-6">
-        {/* Top Header com Seletor de Gráfico e Botões de Controle */}
+        
+        {/* Header do Card com Seletor de Modo e Filtros Rápidos */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-gray-100 dark:border-gray-800">
           <div>
             <div className="flex items-center gap-2">
-              <BarChart3 className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-              <h2 className="text-base font-extrabold text-gray-900 dark:text-white tracking-tight">
+              <span className="p-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 font-bold text-xs">
+                Performance
+              </span>
+              <h3 className="text-base sm:text-lg font-extrabold text-gray-900 dark:text-white tracking-tight">
                 Painel de Desempenho & Métricas
-              </h2>
+              </h3>
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              Filtre por banco de questões ou veja dados unificados, com separação de acertos e volume.
+              Filtre por banco de questões ou veja dados unificados, com taxa real de acertos, volume e média diária ponderada.
             </p>
           </div>
 
+          {/* Abas Superiores do Gráfico */}
           <div className="flex flex-wrap items-center gap-2">
-            {/* Seletor de Modo: Gráfico Geral vs Novo Gráfico por Subject */}
-            <div className="flex items-center bg-gray-100 dark:bg-gray-800 p-1 rounded-2xl border border-gray-200 dark:border-gray-700">
+            <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-2xl">
               <button
                 type="button"
                 onClick={() => setActiveChartTab('general')}
@@ -929,10 +1070,11 @@ export function ScoreChart({ logs }: ScoreChartProps) {
                 value={reviewHandlingMode}
                 onChange={(e) => setReviewHandlingMode(e.target.value as any)}
                 className="bg-transparent text-[11px] font-bold text-blue-600 dark:text-blue-400 focus:outline-none cursor-pointer"
-                title="Define como questões resolvidas em datas anteriores são contabilizadas quando revisadas"
+                title="Define como questões resolvidas em datas anteriores são contabilizadas"
               >
-                <option value="original_date">Data Original (Sem poluir data atual)</option>
-                <option value="all_attempts">Contabilizar todas as tentativas hoje</option>
+                <option value="original_date">Data Original (Questões Únicas)</option>
+                <option value="latest_date">Data Mais Recente (Questões Únicas)</option>
+                <option value="all_attempts">Todas as Tentativas & Revisões</option>
               </select>
             </div>
 
@@ -944,7 +1086,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
                 setIsDateManagerOpen(true);
               }}
               className="px-3 py-1.5 bg-white hover:bg-gray-100 dark:bg-gray-700 dark:hover:bg-gray-600 border border-gray-200 dark:border-gray-600 text-gray-800 dark:text-gray-200 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
-              title="Abrir gerenciador para excluir ou transferir questões registradas na data errada"
+              title="Abrir gerenciador para inspecionar, excluir ou transferir questões por data"
             >
               <Calendar className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
               <span>Gerenciar / Excluir por Data</span>
@@ -962,7 +1104,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
             <div className="text-xl sm:text-2xl font-extrabold text-blue-950 dark:text-blue-100">
               {activeChartTab === 'general' 
                 ? generalSummaryStats.totalQuestions 
-                : extensionData.extensionQuestions.filter(q => q.status && q.status !== 'unused').length || extensionData.extensionQuestions.length}
+                : extensionData.records.length}
             </div>
             <span className="text-[11px] text-gray-500 dark:text-gray-400">
               {activeChartTab === 'general'
@@ -984,7 +1126,9 @@ export function ScoreChart({ logs }: ScoreChartProps) {
                     : '—')}
             </div>
             <span className="text-[11px] text-gray-500 dark:text-gray-400">
-              {activeChartTab === 'general' ? 'Média ponderada do período' : `${extensionData.records.filter(r => r.isCorrect).length} acertos registrados`}
+              {activeChartTab === 'general' 
+                ? 'Média ponderada do período' 
+                : `${extensionData.records.filter(r => r.isCorrect).length} acertos registrados`}
             </span>
           </div>
 
@@ -1027,7 +1171,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-gray-700 dark:text-gray-300">Banco: {selectedBankName}</span>
                 <span>•</span>
-                <span>Clique em uma data para inspecionar, corrigir ou excluir lançamentos</span>
+                <span className="text-blue-600 dark:text-blue-400 font-medium">👉 Clique em qualquer barra ou ponto para abrir e gerenciar as questões daquele dia</span>
               </div>
               <div className="flex items-center gap-3 font-semibold">
                 <span className="text-emerald-600 dark:text-emerald-400">📊 Barras: Taxa de Acertos (%)</span>
@@ -1035,7 +1179,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
               </div>
             </div>
 
-            <div className="h-72 w-full">
+            <div className="h-76 w-full cursor-pointer">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart
                   data={generalChartData}
@@ -1043,23 +1187,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
                   onClick={(e: any) => {
                     if (e && e.activePayload && e.activePayload[0]) {
                       const d = e.activePayload[0].payload;
-                      const dayQuestions = questions.filter(q => {
-                        if (!q.lastAnsweredAt) return false;
-                        const qDate = format(new Date(q.lastAnsweredAt), 'yyyy-MM-dd');
-                        return qDate === d.dateStr && matchesBank(q);
-                      });
-
-                      if (dayQuestions.length > 0) {
-                        setDrillDownData({
-                          isOpen: true,
-                          title: `Questões de ${d.dateFormatted}`,
-                          subtitle: `Data: ${d.dateStr} • Banco: ${selectedBankName}`,
-                          questions: dayQuestions
-                        });
-                      } else {
-                        setDateForManager(d.dateStr);
-                        setIsDateManagerOpen(true);
-                      }
+                      handleChartPointClick(d.dateStr, d.dateFormatted);
                     }
                   }}
                 >
@@ -1111,6 +1239,10 @@ export function ScoreChart({ logs }: ScoreChartProps) {
                     fill="#10b981"
                     opacity={0.85}
                     radius={[4, 4, 0, 0]}
+                    onClick={(data: any) => {
+                      if (data && data.dateStr) handleChartPointClick(data.dateStr, data.dateFormatted);
+                    }}
+                    className="cursor-pointer hover:opacity-100 transition-opacity"
                   />
 
                   {/* LINHA: Volume de Questões */}
@@ -1121,8 +1253,11 @@ export function ScoreChart({ logs }: ScoreChartProps) {
                     name="Volume de Questões"
                     stroke="#3b82f6"
                     strokeWidth={3}
-                    dot={{ r: 4, fill: '#3b82f6' }}
-                    activeDot={{ r: 6 }}
+                    onClick={(data: any) => {
+                      if (data && data.dateStr) handleChartPointClick(data.dateStr, data.dateFormatted);
+                    }}
+                    dot={{ r: 4, fill: '#3b82f6', cursor: 'pointer' }}
+                    activeDot={{ r: 7, cursor: 'pointer' }}
                   />
 
                   {/* LINHA: Tendência (Média Móvel) */}
@@ -1144,20 +1279,20 @@ export function ScoreChart({ logs }: ScoreChartProps) {
         )}
 
         {/* ========================================================================= */}
-        {/* 2. RENDERIZAÇÃO DO MODO 2: NOVO GRÁFICO - DESEMPENHO POR SUBJECT PELO TEMPO */}
+        {/* 2. RENDERIZAÇÃO DO MODO 2: DESEMPENHO POR SUBJECT + MÉDIA PONDERADA DIÁRIA */}
         {/* ========================================================================= */}
         {activeChartTab === 'subject' && (
           <div className="space-y-4">
             {/* Aviso de Fonte e Filtros */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-blue-50/70 dark:bg-blue-950/40 rounded-2xl border border-blue-200 dark:border-blue-900/60 text-xs">
               <div className="flex items-center gap-2">
-                <span className="text-base">🔒</span>
+                <span className="text-base">📊</span>
                 <div>
                   <span className="font-bold text-blue-950 dark:text-blue-200">
-                    Fonte de Dados:
+                    Desempenho por Matéria (Subject) & Média Geral Diária:
                   </span>
                   <span className="text-blue-800 dark:text-blue-300 ml-1">
-                    Questões do banco {selectedBankName} com taxa de acertos por matéria.
+                    Cada linha reflete a % de acerto da matéria. A linha dourada tracejada exibe a média ponderada diária geral de todos os subjects.
                   </span>
                 </div>
               </div>
@@ -1183,7 +1318,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
                   Nenhuma questão registrada para o banco selecionado
                 </h4>
                 <p className="text-xs text-gray-500 dark:text-gray-400 max-w-md mx-auto">
-                  Resolva questões usando a extensão do navegador ou clique no botão acima para injetar dados de teste.
+                  Resolva questões usando a extensão do navegador ou clique no botão acima para carregar uma amostra de teste.
                 </p>
               </div>
             ) : (
@@ -1191,8 +1326,24 @@ export function ScoreChart({ logs }: ScoreChartProps) {
                 {/* Legendas Interativas de Subjects (Clique para ativar/ocultar) */}
                 <div className="flex flex-wrap items-center gap-2 pt-1 pb-2">
                   <span className="text-xs font-bold text-gray-500 dark:text-gray-400 flex items-center gap-1">
-                    <Filter className="w-3 h-3" /> Matérias:
+                    <Filter className="w-3 h-3" /> Filtros:
                   </span>
+
+                  {/* Toggle da Linha de Média Ponderada Diária */}
+                  <button
+                    type="button"
+                    onClick={() => setShowDailyAverageLine(!showDailyAverageLine)}
+                    className={cn(
+                      "px-2.5 py-1 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs",
+                      !showDailyAverageLine
+                        ? "bg-gray-100 dark:bg-gray-800 text-gray-400 border-gray-200 dark:border-gray-700 opacity-60 line-through"
+                        : "bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 border-amber-300 dark:border-amber-700"
+                    )}
+                  >
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 ring-2 ring-amber-300" />
+                    <span>⭐ Média Ponderada Diária</span>
+                  </button>
+
                   {allSubjectsList.map(subj => {
                     const isHidden = hiddenSubjects.has(subj);
                     const color = subjectColorsMap[subj] || '#3b82f6';
@@ -1224,11 +1375,19 @@ export function ScoreChart({ logs }: ScoreChartProps) {
                 </div>
 
                 {/* Container do Gráfico Multi-Linhas por Subject */}
-                <div className="h-80 w-full">
+                <div className="h-80 w-full cursor-pointer">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart
                       data={subjectTimeSeriesData}
                       margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                      onClick={(e: any) => {
+                        if (e && e.activePayload && e.activePayload[0]) {
+                          const d = e.activePayload[0].payload;
+                          const rawKey = e.activePayload[0].dataKey;
+                          const clickedSubject = (rawKey && rawKey !== '__daily_avg__') ? String(rawKey) : undefined;
+                          handleChartPointClick(d.dateStr, d.dateFormatted, clickedSubject);
+                        }
+                      }}
                     >
                       <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
                       <XAxis dataKey="dateFormatted" tick={{ fontSize: 11 }} />
@@ -1245,13 +1404,38 @@ export function ScoreChart({ logs }: ScoreChartProps) {
                           border: 'none',
                           fontSize: '12px',
                         }}
-                        formatter={(value: any, name: string) => {
+                        formatter={(value: any, name: string, item: any) => {
+                          if (name === '⭐ Média Ponderada Diária (Geral)') {
+                            if (value === null) return ['Sem resoluções neste dia', name];
+                            const total = item.payload?.__daily_total__ || 0;
+                            const correct = item.payload?.__daily_correct__ || 0;
+                            return [`${value}% (${correct}/${total} acertos totais no dia)`, name];
+                          }
                           if (value === null) return ['Sem questões', name];
-                          return [`${value}% de acerto`, name];
+                          const total = item.payload?.[`${name}_total`];
+                          const correct = item.payload?.[`${name}_correct`];
+                          const detail = total ? ` (${correct}/${total} questões)` : '';
+                          return [`${value}% de acerto${detail}`, name];
                         }}
                       />
                       <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
 
+                      {/* LINHA DE MÉDIA PONDERADA DIÁRIA GERAL */}
+                      {showDailyAverageLine && (
+                        <Line
+                          type="monotone"
+                          dataKey="__daily_avg__"
+                          name="⭐ Média Ponderada Diária (Geral)"
+                          stroke="#f59e0b"
+                          strokeWidth={3.5}
+                          strokeDasharray="6 3"
+                          dot={{ r: 4, fill: '#f59e0b', strokeWidth: 2, stroke: '#ffffff', cursor: 'pointer' }}
+                          activeDot={{ r: 7, cursor: 'pointer' }}
+                          connectNulls={true}
+                        />
+                      )}
+
+                      {/* Linhas de cada Subject */}
                       {allSubjectsList.map(subj => {
                         if (hiddenSubjects.has(subj)) return null;
                         return (
@@ -1261,9 +1445,9 @@ export function ScoreChart({ logs }: ScoreChartProps) {
                             dataKey={subj}
                             name={subj}
                             stroke={subjectColorsMap[subj] || '#3b82f6'}
-                            strokeWidth={2.5}
-                            dot={{ r: 3 }}
-                            activeDot={{ r: 6 }}
+                            strokeWidth={2.2}
+                            dot={{ r: 3.5, cursor: 'pointer' }}
+                            activeDot={{ r: 6, cursor: 'pointer' }}
                             connectNulls={true}
                           />
                         );
@@ -1290,7 +1474,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
               </h3>
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              Filtro ativo: <strong>{selectedBankName}</strong> • Clique em qualquer linha para abrir o Drill-down de auditoria cirúrgica.
+              Filtro ativo: <strong>{selectedBankName}</strong> • Clique em qualquer linha para abrir o Drill-down de visualização e gerenciamento.
             </p>
           </div>
 
@@ -1421,6 +1605,7 @@ export function ScoreChart({ logs }: ScoreChartProps) {
         onClose={() => setDrillDownData(prev => ({ ...prev, isOpen: false }))}
         title={drillDownData.title}
         subtitle={drillDownData.subtitle}
+        dateStr={drillDownData.dateStr}
         questions={drillDownData.questions}
       />
 

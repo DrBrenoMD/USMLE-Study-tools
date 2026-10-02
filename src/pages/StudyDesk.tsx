@@ -89,6 +89,7 @@ export default function StudyDesk() {
     setActiveDeskSessionId,
     createCard,
     createStudyNote,
+    createNotebookArea,
     updateStudyNote,
     toggleQuestionFlag,
     upsertQuestionFromQBank
@@ -383,7 +384,19 @@ export default function StudyDesk() {
 
   // Quick Note Creation from Question
   const handleCreateNoteFromActive = () => {
-    const areaId = noteAreaId || notebookAreas[0]?.id || 'area-clinica';
+    // Utiliza o Subject extraído da questão como a área; se não existir uma com esse nome, cria uma
+    const rawSubj = (activeSubject || 'Geral').trim();
+    let areaId = noteAreaId;
+    if (!areaId) {
+      const foundArea = notebookAreas.find(a => a.name.trim().toLowerCase() === rawSubj.toLowerCase());
+      if (foundArea) {
+        areaId = foundArea.id;
+      } else {
+        const defaultNbId = studyNotebooks[0]?.id || 'nb-principal';
+        areaId = createNotebookArea(rawSubj, '#3b82f6', defaultNbId);
+      }
+    }
+
     const title = noteTitle.trim() || `Questão ${activeQid} - ${activeSubject}`;
 
     const content = `<h3>Anotações da Questão (QID: ${activeQid}):</h3>
@@ -957,6 +970,7 @@ ${lastSyncedObjective ? `<blockquote><p><b>Educational Objective:</b> ${lastSync
                           onChange={(e) => setNoteAreaId(e.target.value)}
                           className="w-full text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-2 font-medium"
                         >
+                          <option value="">Automático: {activeSubject || 'Geral'} (Cria área com nome do Subject)</option>
                           {notebookAreas.map(a => (
                             <option key={a.id} value={a.id}>{a.name}</option>
                           ))}
