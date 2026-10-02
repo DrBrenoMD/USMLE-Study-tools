@@ -172,7 +172,8 @@ export default function StudyDesk() {
           }
           if (payload.subject) setLastSyncedSubject(payload.subject);
           if (payload.system) setLastSyncedSystem(payload.system);
-          if (payload.educationalObjective) setLastSyncedObjective(payload.educationalObjective);
+          const obj = payload.educationalObjective || payload.bottomLine || payload.objective;
+          if (obj) setLastSyncedObjective(obj);
         }
       };
     } catch (e) {}
@@ -188,7 +189,8 @@ export default function StudyDesk() {
         }
         if (payload.subject) setLastSyncedSubject(payload.subject);
         if (payload.system) setLastSyncedSystem(payload.system);
-        if (payload.educationalObjective) setLastSyncedObjective(payload.educationalObjective);
+        const obj = payload.educationalObjective || payload.bottomLine || payload.objective;
+        if (obj) setLastSyncedObjective(obj);
       }
     };
     window.addEventListener('message', handleWindowMsg);
@@ -371,18 +373,26 @@ export default function StudyDesk() {
     setShowQuickCardForm(true);
   };
 
-  // Importar Educational Objective da questão no verso
+  // Importar Educational Objective / Bottom Line da questão no verso
   const handleImportObjectiveToBack = () => {
-    const objective = sourceMode === 'external'
-      ? (lastSyncedObjective || '')
+    let objective = sourceMode === 'external'
+      ? (lastSyncedObjective || matchingQuestionObj?.educationalObjective || '')
       : (currentInternalQuestion?.educationalObjective || lastSyncedObjective || '');
+
+    if (!objective && (matchingQuestionObj?.explanation || currentInternalQuestion?.explanation)) {
+      const exp = matchingQuestionObj?.explanation || currentInternalQuestion?.explanation || '';
+      const match = exp.match(/(?:Bottom\s*[-_]?\s*line|Educational\s*Objective|Key\s*Points?|Take\s*[-_]?\s*home):\s*([\s\S]+?)(?=(?:Subject|System|Q\s*ID|Choice\s+[A-H]:|$))/i);
+      if (match && match[1]) {
+        objective = match[1].replace(/<[^>]+>/g, '').trim();
+      }
+    }
 
     if (objective && objective.trim().length > 0) {
       setCardBack(objective.trim());
-      setCardSaveFeedback('Educational Objective importado para o verso! ✓');
+      setCardSaveFeedback('Educational Objective / Bottom Line importado para o verso! ✓');
       setTimeout(() => setCardSaveFeedback(null), 2500);
     } else {
-      setCardSaveFeedback('Esta questão não possui Educational Objective registrado.');
+      setCardSaveFeedback('Esta questão não possui Educational Objective ou Bottom Line registrado.');
       setTimeout(() => setCardSaveFeedback(null), 2500);
     }
   };
@@ -409,11 +419,19 @@ export default function StudyDesk() {
 
     const title = noteTitle.trim() || `Questão ${activeQid} - ${rawSubj}`;
 
+    let objectiveText = lastSyncedObjective || currentQ?.educationalObjective || '';
+    if (!objectiveText && currentQ?.explanation) {
+      const match = currentQ.explanation.match(/(?:Bottom\s*[-_]?\s*line|Educational\s*Objective|Key\s*Points?|Take\s*[-_]?\s*home):\s*([\s\S]+?)(?=(?:Subject|System|Q\s*ID|Choice\s+[A-H]:|$))/i);
+      if (match && match[1]) {
+        objectiveText = match[1].replace(/<[^>]+>/g, '').trim();
+      }
+    }
+
     const content = `<h3>Anotações da Questão (QID: ${activeQid}):</h3>
 <div class="p-3.5 bg-blue-50/60 dark:bg-blue-950/30 rounded-xl border border-blue-200 dark:border-blue-900/60 text-sm leading-relaxed my-3">
   <b>Matéria:</b> ${rawSubj} | <b>Sistema:</b> ${rawSys}
 </div>
-${lastSyncedObjective ? `<blockquote><p><b>Educational Objective:</b> ${lastSyncedObjective}</p></blockquote>` : ''}`;
+${objectiveText ? `<blockquote><p><b>Educational Objective / Bottom Line:</b> ${objectiveText}</p></blockquote>` : ''}`;
 
     const noteId = createStudyNote({
       notebookId: studyNotebooks[0]?.id || 'nb-principal',
@@ -867,10 +885,10 @@ ${lastSyncedObjective ? `<blockquote><p><b>Educational Objective:</b> ${lastSync
                           type="button"
                           onClick={handleImportObjectiveToBack}
                           className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 text-[11px] font-semibold hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-colors cursor-pointer"
-                          title="Importar Educational Objective da questão no verso"
+                          title="Importar Educational Objective ou Bottom Line da questão no verso"
                         >
                           <Download className="w-3 h-3 text-blue-600 dark:text-blue-400" />
-                          <span>Importar Educational Objective</span>
+                          <span>Importar Objective / Bottom Line</span>
                         </button>
                       </div>
                       <textarea

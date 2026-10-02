@@ -224,7 +224,13 @@ export function useQBankSync() {
       const explanation = payload.explanation || '';
       alternatives = deduceCorrectChoice(alternatives, explanation);
 
-      const educationalObjective = payload.educationalObjective || '';
+      let educationalObjective = (payload.educationalObjective || payload.bottomLine || payload.objective || payload.keyPoint || '').trim();
+      if (!educationalObjective && explanation) {
+        const match = explanation.match(/(?:Bottom\s*[-_]?\s*line|Educational\s*Objective|Key\s*Points?|Take\s*[-_]?\s*home):\s*([\s\S]+?)(?=(?:Subject|System|Q\s*ID|Choice\s+[A-H]:|$))/i);
+        if (match && match[1]) {
+          educationalObjective = match[1].replace(/<[^>]+>/g, '').trim();
+        }
+      }
       const subject = payload.subject || payload.subjective || '';
       const system = payload.system || '';
       const images = payload.images || payload.questionImages || [];

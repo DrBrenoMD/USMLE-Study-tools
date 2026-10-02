@@ -735,7 +735,7 @@ export function StudySession({ deckId, cardIds, onNavigate }: StudySessionProps)
                                     )}
                                     {card.educationalObjective && (
                                       <div className="p-2.5 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/50 rounded-lg">
-                                        <span className="font-bold text-blue-700 dark:text-blue-300">Educational Objective:</span>
+                                        <span className="font-bold text-blue-700 dark:text-blue-300">Educational Objective / Bottom Line:</span>
                                         <p className="mt-0.5 text-blue-900 dark:text-blue-100 font-medium">{card.educationalObjective}</p>
                                       </div>
                                     )}

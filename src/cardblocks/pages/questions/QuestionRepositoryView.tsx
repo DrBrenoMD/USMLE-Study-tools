@@ -339,13 +339,23 @@ export const QuestionRepositoryView: React.FC<QuestionRepositoryViewProps> = ({
                       </div>
                     )}
 
-                    {/* Educational Objective */}
-                    {q.educationalObjective && (
-                      <div className="p-2.5 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 text-blue-900 dark:text-blue-100">
-                        <div className="font-bold mb-1">Educational Objective:</div>
-                        <RichContentRenderer content={q.educationalObjective} />
-                      </div>
-                    )}
+                    {/* Educational Objective / Bottom Line */}
+                    {(() => {
+                      let objText = q.educationalObjective || '';
+                      if (!objText && q.explanation) {
+                        const match = q.explanation.match(/(?:Bottom\s*[-_]?\s*line|Educational\s*Objective|Key\s*Points?|Take\s*[-_]?\s*home):\s*([\s\S]+?)(?=(?:Subject|System|Q\s*ID|Choice\s+[A-H]:|$))/i);
+                        if (match && match[1]) {
+                          objText = match[1].replace(/<[^>]+>/g, '').trim();
+                        }
+                      }
+
+                      return objText ? (
+                        <div className="p-2.5 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 text-blue-900 dark:text-blue-100">
+                          <div className="font-bold mb-1">Educational Objective / Bottom Line:</div>
+                          <RichContentRenderer content={objText} />
+                        </div>
+                      ) : null;
+                    })()}
 
                     {/* Explicação */}
                     {q.explanation && (

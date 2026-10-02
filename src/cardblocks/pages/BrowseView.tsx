@@ -2174,12 +2174,22 @@ export const BrowseView: React.FC<BrowseViewProps> = ({
                   {/* Explanation & Objective */}
                   {(activeQuestion.explanation || activeQuestion.educationalObjective) && (
                     <div className="p-4 bg-blue-50/50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50 rounded-2xl space-y-2">
-                      {activeQuestion.educationalObjective && (
-                        <div>
-                          <span className="font-bold text-blue-700 dark:text-blue-300 block mb-1">🎯 Objetivo Educacional:</span>
-                          <p className="text-gray-800 dark:text-gray-200 leading-relaxed">{activeQuestion.educationalObjective}</p>
-                        </div>
-                      )}
+                      {(() => {
+                        let objText = activeQuestion.educationalObjective || '';
+                        if (!objText && activeQuestion.explanation) {
+                          const match = activeQuestion.explanation.match(/(?:Bottom\s*[-_]?\s*line|Educational\s*Objective|Key\s*Points?|Take\s*[-_]?\s*home):\s*([\s\S]+?)(?=(?:Subject|System|Q\s*ID|Choice\s+[A-H]:|$))/i);
+                          if (match && match[1]) {
+                            objText = match[1].replace(/<[^>]+>/g, '').trim();
+                          }
+                        }
+
+                        return objText ? (
+                          <div>
+                            <span className="font-bold text-blue-700 dark:text-blue-300 block mb-1">🎯 Objetivo Educacional / Bottom Line:</span>
+                            <p className="text-gray-800 dark:text-gray-200 leading-relaxed">{objText}</p>
+                          </div>
+                        ) : null;
+                      })()}
                       {activeQuestion.explanation && (
                         <div className="pt-2 border-t border-blue-100 dark:border-blue-900/40">
                           <span className="font-bold text-blue-700 dark:text-blue-300 block mb-1">📖 Explicação:</span>

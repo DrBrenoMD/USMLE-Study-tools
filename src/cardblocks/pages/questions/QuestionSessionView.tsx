@@ -624,18 +624,28 @@ export const QuestionSessionView: React.FC<QuestionSessionViewProps> = ({
         ) : (
           /* Explicação & Educational Objective (Modo Tutored) */
           <div className="space-y-5 pt-6 border-t border-gray-200 dark:border-gray-800 animate-fade-in">
-            {/* Educational Objective em destaque */}
-            {currentQ.educationalObjective && (
-              <div className="p-4 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/40 dark:to-indigo-950/40 border border-blue-200 dark:border-blue-900/60 space-y-1.5">
-                <div className="flex items-center gap-2 text-xs font-bold text-blue-700 dark:text-blue-300 uppercase tracking-wider">
-                  <Sparkles className="w-4 h-4 text-blue-600" />
-                  <span>Educational Objective</span>
+            {/* Educational Objective / Bottom Line em destaque */}
+            {(() => {
+              let objText = currentQ.educationalObjective || '';
+              if (!objText && currentQ.explanation) {
+                const match = currentQ.explanation.match(/(?:Bottom\s*[-_]?\s*line|Educational\s*Objective|Key\s*Points?|Take\s*[-_]?\s*home):\s*([\s\S]+?)(?=(?:Subject|System|Q\s*ID|Choice\s+[A-H]:|$))/i);
+                if (match && match[1]) {
+                  objText = match[1].replace(/<[^>]+>/g, '').trim();
+                }
+              }
+
+              return objText ? (
+                <div className="p-4 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/40 dark:to-indigo-950/40 border border-blue-200 dark:border-blue-900/60 space-y-1.5">
+                  <div className="flex items-center gap-2 text-xs font-bold text-blue-700 dark:text-blue-300 uppercase tracking-wider">
+                    <Sparkles className="w-4 h-4 text-blue-600" />
+                    <span>Educational Objective / Bottom Line</span>
+                  </div>
+                  <div className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-gray-100 leading-relaxed">
+                    <RichContentRenderer content={applyHighlightsToContent(objText)} />
+                  </div>
                 </div>
-                <div className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-gray-100 leading-relaxed">
-                  <RichContentRenderer content={applyHighlightsToContent(currentQ.educationalObjective)} />
-                </div>
-              </div>
-            )}
+              ) : null;
+            })()}
 
             {/* Explicação Detalhada com Tabelas e Imagens */}
             {currentQ.explanation && (

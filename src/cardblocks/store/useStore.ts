@@ -1337,7 +1337,17 @@ export const useStore = create<StoreState>()(
               // Atualiza conteúdo enriquecido apenas se fornecido
               alternatives: qData.alternatives && qData.alternatives.length > 0 ? qData.alternatives : current.alternatives,
               explanation: qData.explanation || current.explanation,
-              educationalObjective: qData.educationalObjective || current.educationalObjective,
+              educationalObjective: (() => {
+                let obj = (qData.educationalObjective || (qData as any).bottomLine || (qData as any).objective || current.educationalObjective || '').trim();
+                if (!obj && (qData.explanation || current.explanation)) {
+                  const exp = qData.explanation || current.explanation || '';
+                  const match = exp.match(/(?:Bottom\s*[-_]?\s*line|Educational\s*Objective|Key\s*Points?|Take\s*[-_]?\s*home):\s*([\s\S]+?)(?=(?:Subject|System|Q\s*ID|Choice\s+[A-H]:|$))/i);
+                  if (match && match[1]) {
+                    obj = match[1].replace(/<[^>]+>/g, '').trim();
+                  }
+                }
+                return obj;
+              })(),
               subject: qData.subject || current.subject,
               system: qData.system || current.system,
               images: qData.images && qData.images.length > 0 ? qData.images : current.images,
@@ -1353,6 +1363,14 @@ export const useStore = create<StoreState>()(
             set({ questions: newQuestions, questionBanks: [...state.questionBanks] });
             return current.id;
           } else {
+            let resolvedNewObj = (qData.educationalObjective || (qData as any).bottomLine || (qData as any).objective || '').trim();
+            if (!resolvedNewObj && qData.explanation) {
+              const match = qData.explanation.match(/(?:Bottom\s*[-_]?\s*line|Educational\s*Objective|Key\s*Points?|Take\s*[-_]?\s*home):\s*([\s\S]+?)(?=(?:Subject|System|Q\s*ID|Choice\s+[A-H]:|$))/i);
+              if (match && match[1]) {
+                resolvedNewObj = match[1].replace(/<[^>]+>/g, '').trim();
+              }
+            }
+
             const newId = 'q-' + Math.random().toString(36).substring(2, 9);
             const newQ: Question = {
               id: newId,
@@ -1362,7 +1380,7 @@ export const useStore = create<StoreState>()(
               stem: stemText,
               alternatives: qData.alternatives || [],
               explanation: qData.explanation || '',
-              educationalObjective: qData.educationalObjective || '',
+              educationalObjective: resolvedNewObj,
               subject: qData.subject || '',
               system: qData.system || '',
               images: qData.images || [],
@@ -2376,7 +2394,14 @@ ${card.details ? `<p><i>Detalhes adicionais:</i> ${card.details}</p>` : ''}`;
 
           const stem = questionData.stem || questionData.text || questionData.questionStem || existingQ?.text || existingQ?.stem || '';
           const explanation = questionData.explanation || existingQ?.explanation || '';
-          const objective = questionData.educationalObjective || (existingQ as any)?.educationalObjective || '';
+
+          let objective = (questionData.educationalObjective || questionData.bottomLine || questionData.objective || (existingQ as any)?.educationalObjective || (existingQ as any)?.bottomLine || '').trim();
+          if (!objective && explanation) {
+            const match = explanation.match(/(?:Bottom\s*[-_]?\s*line|Educational\s*Objective|Key\s*Points?|Take\s*[-_]?\s*home):\s*([\s\S]+?)(?=(?:Subject|System|Q\s*ID|Choice\s+[A-H]:|$))/i);
+            if (match && match[1]) {
+              objective = match[1].replace(/<[^>]+>/g, '').trim();
+            }
+          }
           const title = customTitle || (stem ? stem.replace(/<[^>]+>/g, '').trim().substring(0, 85) + '...' : `Nota sobre Questão ${qid || 'Q-Bank'}`);
 
           let choicesHtml = '';
@@ -2399,7 +2424,7 @@ ${card.details ? `<p><i>Detalhes adicionais:</i> ${card.details}</p>` : ''}`;
 ${rawSubj || rawSys ? `<div class="p-3 bg-blue-50/60 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-900/60 text-xs text-blue-900 dark:text-blue-200 font-semibold my-2"><b>Matéria:</b> ${rawSubj || 'Geral'} • <b>Sistema:</b> ${rawSys || 'Geral'}</div>` : ''}
 ${choicesHtml}
 ${explanation ? `<h4>Explicação Comentada:</h4><div class="p-4 bg-blue-50/70 dark:bg-blue-950/30 rounded-xl border border-blue-200 dark:border-blue-900/60 text-sm leading-relaxed my-3">${explanation}</div>` : ''}
-${objective ? `<blockquote><p><b>Educational Objective:</b> ${objective}</p></blockquote>` : ''}`;
+${objective ? `<blockquote><p><b>Educational Objective / Bottom Line:</b> ${objective}</p></blockquote>` : ''}`;
 
           const noteId = get().createStudyNote({
             notebookId: defaultNbId,

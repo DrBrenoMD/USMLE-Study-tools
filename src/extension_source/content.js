@@ -686,7 +686,7 @@ function validarDadosCompletosQuestao(cardData) {
     if (!status.stem) pendencias.push('Enunciado não identificado');
     if (!status.choices) pendencias.push('Alternativas não identificadas');
     if (!status.explanation) pendencias.push('Explicação oculta (responda a questão para liberar)');
-    if (!status.objective) pendencias.push('Educational Objective oculto');
+    if (!status.objective) pendencias.push('Educational Objective / Bottom Line oculto');
 
     return {
         completo: Boolean(status.qid && status.stem && status.choices),
@@ -1401,7 +1401,7 @@ function criarFlashcardUI() {
                     <div style="background: #0f172a; padding: 6px 8px; border-radius: 6px; border: 1px solid #1e293b; color: #e2e8f0;">✓ Alternativas</div>
                     <div style="background: #0f172a; padding: 6px 8px; border-radius: 6px; border: 1px solid #1e293b; color: #e2e8f0;">✓ Explicação</div>
                     <div style="background: #0f172a; padding: 6px 8px; border-radius: 6px; border: 1px solid #1e293b; color: #e2e8f0;">✓ Subject & System</div>
-                    <div style="background: #0f172a; padding: 6px 8px; border-radius: 6px; border: 1px solid #1e293b; color: #e2e8f0;">✓ Educational Objective</div>
+                    <div style="background: #0f172a; padding: 6px 8px; border-radius: 6px; border: 1px solid #1e293b; color: #e2e8f0;">✓ Objective / Bottom Line</div>
                     <div style="grid-column: span 2; background: #0f172a; padding: 6px 8px; border-radius: 6px; border: 1px solid #1e293b; color: #e2e8f0;">✓ Imagens e Links de Imagens</div>
                 </div>
             </div>
@@ -2889,19 +2889,19 @@ function extrairAlternativasParaFila() {
     return [{ text: "Options not found.", node: null }];
 }
 
-// Localiza estritamente o cabeçalho do Educational Objective
+// Localiza estritamente o cabeçalho do Educational Objective ou Bottom Line
 function encontrarCabecalhoObjetivo() {
     const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6, strong, b, [class*="header"]'));
     const directHeading = headings.find(h => {
         const txt = (h.textContent || '').trim();
-        return /(?:Educational\s*objective|Key\s*point|Take-home)/i.test(txt) && txt.length < 80;
+        return /(?:Educational\s*objective|Bottom\s*[-_]?\s*line|Key\s*points?|Take\s*[-_]?\s*home(?:\s*message)?|High\s*[-_]?\s*yield|Objetivo\s*educacional|Ponto\s*[-_]?\s*chave)/i.test(txt) && txt.length < 80;
     });
     if (directHeading) return directHeading;
 
     const all = Array.from(document.querySelectorAll('*'));
     return all.find(el => {
         const txt = (el.textContent || '').trim();
-        return /(?:Educational\s*objective|Key\s*point|Take-home)/i.test(txt) && txt.length < 60 && el.children.length <= 2;
+        return /(?:Educational\s*objective|Bottom\s*[-_]?\s*line|Key\s*points?|Take\s*[-_]?\s*home(?:\s*message)?|High\s*[-_]?\s*yield|Objetivo\s*educacional|Ponto\s*[-_]?\s*chave)/i.test(txt) && txt.length < 60 && el.children.length <= 2;
     }) || null;
 }
 
@@ -2919,7 +2919,7 @@ function obterContainerExplicacao() {
         if (section) return section;
     }
 
-    // 3. Fallback antes do Educational objective
+    // 3. Fallback antes do Educational objective / Bottom line
     const objHeader = encontrarCabecalhoObjetivo();
     if (objHeader && objHeader.parentElement) {
         return objHeader.parentElement.closest('div.mt-8, div[class*="pt-5"], main, article, section') || objHeader.parentElement;
@@ -2943,7 +2943,7 @@ function extrairExplicacaoParaFila() {
         // Se o elemento está dentro de uma tabela já processada
         if (el.closest('table') && el.tagName !== 'TABLE') continue;
 
-        // Se o elemento é/está após o Educational Objective
+        // Se o elemento é/está após o Educational Objective ou Bottom Line
         if (objHeader) {
             if (objHeader === el || objHeader.contains(el)) break;
             if (objHeader.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) break;
@@ -2979,7 +2979,7 @@ function extrairExplicacaoParaFila() {
 
         // Se for parágrafo ou bloco de texto
         const rawText = (el.innerText || '').trim();
-        if (rawText.length > 3 && !/(?:Clear highlights|Mark Question|Educational\s*Objective)/i.test(rawText)) {
+        if (rawText.length > 3 && !/(?:Clear highlights|Mark Question|Educational\s*Objective|Bottom\s*[-_]?\s*line|Key\s*point)/i.test(rawText)) {
             // Evita adicionar nó filho se o pai já foi adicionado
             const isChildOfProcessed = Array.from(processedNodes).some(p => p.contains(el));
             if (!isChildOfProcessed) {
@@ -3009,20 +3009,55 @@ function extrairObjetivoParaFila() {
     if (!objHeader) return [{ text: "Educational objective not found.", node: null }];
 
     const itens = [];
-    let next = objHeader.nextElementSibling;
-    while (next) {
-        if (next.querySelector('[class*="border-y"]') || /(?:Subject|System|Q\s*ID)\s*:/i.test(next.innerText || '')) {
-            break;
+    let accumulatedDirectText = '';
+
+    // 1. Percorre todos os nós irmãos seguintes (incluindo TEXT_NODE e ELEMENT_NODE)
+    let nextNode = objHeader.nextSibling;
+    while (nextNode) {
+        if (nextNode.nodeType === Node.ELEMENT_NODE) {
+            const el = nextNode;
+            // Se atingiu o rodapé de metadados (Subject, System, Q ID, border-y) ou outro cabeçalho principal
+            if (el.closest('[class*="border-y"]') || /(?:Subject|System|Q\s*ID)\s*:/i.test(el.innerText || '') || /^(?:H1|H2|H3|H4|H5|H6)$/i.test(el.tagName)) {
+                break;
+            }
+            const hasImg = el.tagName === 'IMG' || Boolean(el.querySelector('img'));
+            const txt = (el.innerText || el.textContent || '').trim();
+            if (txt.length > 3 || hasImg) {
+                const formatted = limparEFormatarConteudoHtml(el);
+                itens.push({ text: formatted || txt, node: el });
+            }
+        } else if (nextNode.nodeType === Node.TEXT_NODE) {
+            const txt = (nextNode.textContent || '').trim();
+            if (txt.length > 0) {
+                accumulatedDirectText += (accumulatedDirectText ? ' ' : '') + txt;
+            }
         }
-        const hasImg = next.tagName === 'IMG' || Boolean(next.querySelector('img'));
-        const txt = (next.innerText || '').trim();
-        if (txt.length > 3 || hasImg) {
-            const formatted = limparEFormatarConteudoHtml(next);
-            itens.push({ text: formatted || txt, node: next });
-        }
-        next = next.nextElementSibling;
+        nextNode = nextNode.nextSibling;
     }
 
+    if (accumulatedDirectText && accumulatedDirectText.length > 3) {
+        itens.unshift({ text: accumulatedDirectText, node: objHeader.parentElement });
+    }
+
+    // 2. Se ainda não encontrou itens pelos nós irmãos diretos, vasculha o pai ou contêiner seguinte
+    if (itens.length === 0 && objHeader.parentElement) {
+        const parentText = (objHeader.parentElement.textContent || '').trim();
+        const headerText = (objHeader.textContent || '').trim();
+        const headerIdx = parentText.indexOf(headerText);
+        if (headerIdx !== -1) {
+            let afterHeaderText = parentText.substring(headerIdx + headerText.length).trim();
+            // Remove rodapés de metadados se vazados no mesmo texto
+            const metaIdx = afterHeaderText.search(/(?:Subject|System|Q\s*ID)\s*:/i);
+            if (metaIdx !== -1) {
+                afterHeaderText = afterHeaderText.substring(0, metaIdx).trim();
+            }
+            if (afterHeaderText.length > 5) {
+                itens.push({ text: afterHeaderText, node: objHeader.parentElement });
+            }
+        }
+    }
+
+    // 3. Fallback adicional se estiver em container de parágrafos
     if (itens.length === 0) {
         const expContainer = obterContainerExplicacao();
         const allP = Array.from(expContainer.querySelectorAll('p, figure, div:has(> img)'));
