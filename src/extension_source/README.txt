@@ -1,19 +1,15 @@
 ===========================================================
-ASSISTENTE Q-BANK & PACER - VERSÃO 1.9
+ASSISTENTE Q-BANK & PACER - VERSÃO 2.8
 ===========================================================
 
-Novidades da Versão 1.9:
-- ⚡ Correção Cirúrgica na Extração de Explicação vs Educational Objective:
-  - O cabeçalho 'Educational objective' agora é detectado de forma estrita em elementos dedicados (h1..h6), eliminando a captura indevida de divs contêineres pai.
-  - A Explicação inteira agora vai exclusivamente para o campo 'Explicação', sem misturar com o Educational Objective.
-  - O Educational Objective vai exclusivamente para o campo 'Educational Objective'.
-- ⚡ Extração Perfeita de Subject, System e Q ID:
-  - Mapeamento direto da tabela/linhas de metadados do QBankly/UWorld (ex: Subject: Medicine | System: Biostatistics & Epidemiology | Q ID: 4262).
-  - Geração automática de tags únicas sem duplicidades (ex: 'qid:4262', 'subject:medicine', 'system:biostatistics-epidemiology', 'qbank-sync').
-- ⚡ Pré-visualização em Tempo Real no Drawer:
-  - O painel vertical da margem direita agora mostra em tempo real os valores detectados de Subject, System e Q ID antes mesmo de você clicar em gerar o card.
-- ⚡ Captura Abrangente de Imagens Clínicas:
-  - Identifica e copia imagens e thumbnails médicas em alta resolução do QBankly e UWorld (incluindo imagens clicáveis com zoom).
+Novidades da Versão 2.8:
+- ⚡ Suporte Completo ao Modelo "Bottom Line" (Objetivo Educacional):
+  - Questões com a seção "Bottom Line" ou "The Bottom Line" são tratadas com a mesma fidelidade e estrutura do "Educational Objective".
+  - Leitura por voz, geração de flashcards, sincronização automática de questões e criação de notas de estudo no caderno agora suportam nativamente Bottom Line.
+- ⚡ Detecção Universal de QIDs (1 a 8 dígitos):
+  - Correção na regra de reconhecimento de páginas do QBank: questões com QIDs de 3 dígitos (ex: 752, 617, 703, 701) ou de 1 a 8 dígitos agora mantêm a barra flutuante e o drawer visíveis com 100% de estabilidade.
+  - Indexação instantânea e busca de flashcards compatíveis com QIDs de qualquer quantidade de dígitos.
+- ⚡ Extração Perfeita de Subject, System, Enunciado e Explicações.
 
 COMO ATUALIZAR UMA EXTENSÃO JÁ INSTALADA:
 1. Baixe o novo arquivo .zip no site e extraia os arquivos substituindo os existentes na sua pasta da extensão.

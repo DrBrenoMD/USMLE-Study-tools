@@ -72,8 +72,8 @@ export function extractQidsFromText(text: string): string[] {
     }
   }
 
-  // 3. Specific QID/Platform patterns (e.g. #UWorld::17499, #COMLEX::24210, qid:17499, uworld-17499, amboss:12345)
-  const prefixRegex = /(?:^|[^\w])(?:qid|id|uworld|amboss|comlex|combank|usmle|nbme|step|question|item)?[:\s\-_#]*(\d{2,8})(?=[^\w]|$)/gi;
+  // 3. Specific QID/Platform patterns (e.g. #UWorld::17499, #COMLEX::24210, qid:17499, uworld-17499, amboss:12345, qid:752)
+  const prefixRegex = /(?:^|[^\w])(?:qid|id|uworld|amboss|comlex|combank|usmle|nbme|step|question|item)?[:\s\-_#]*(\d{1,8})(?=[^\w]|$)/gi;
   let match: RegExpExecArray | null;
   while ((match = prefixRegex.exec(trimmed)) !== null) {
     if (match[1]) {
@@ -91,7 +91,7 @@ export function extractQidsFromText(text: string): string[] {
   }
 
   // 4. Comma, semicolon or space separated list of numbers
-  const listMatches = trimmed.match(/\b\d{2,8}\b/g);
+  const listMatches = trimmed.match(/\b\d{1,8}\b/g);
   if (listMatches) {
     for (const num of listMatches) {
       const cleanNum = num.replace(/^0+/, '') || num;
@@ -100,9 +100,9 @@ export function extractQidsFromText(text: string): string[] {
     }
   }
 
-  // 5. Pure numeric or hashtag-numeric string (e.g. "#17499", "17499")
+  // 5. Pure numeric or hashtag-numeric string (e.g. "#17499", "17499", "752")
   const stripped = trimmed.replace(/^[#\s\-_:qQidID]+|[#\s\-_:qQidID]+$/gi, '');
-  if (/^\d{2,8}$/.test(stripped)) {
+  if (/^\d{1,8}$/.test(stripped)) {
     found.add(stripped);
     const cleanNum = stripped.replace(/^0+/, '') || stripped;
     found.add(cleanNum);
@@ -178,7 +178,7 @@ export function extractCardQids(card: Flashcard, deckName?: string): string[] {
 
   // 5. Back / Details / Explanations embedded question data
   const textToCheck = `${card.back || ''} ${card.details || ''} ${card.explanation || ''} ${card.questionStem || ''}`;
-  const embeddedMatches = textToCheck.matchAll(/(?:Question\s*ID|Dados da Questão|QID|UWorld(?:\s*ID)?)[:\s\-_#]*\(?(?:ID:\s*)?(\d{2,8})\)?/gi);
+  const embeddedMatches = textToCheck.matchAll(/(?:Question\s*ID|Dados da Questão|QID|UWorld(?:\s*ID)?)[:\s\-_#]*\(?(?:ID:\s*)?(\d{1,8})\)?/gi);
   for (const m of embeddedMatches) {
     if (m[1]) {
       addQid(m[1]);

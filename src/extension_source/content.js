@@ -469,22 +469,25 @@ function isPaginaResolucaoQBank() {
 
     // 1. Containers típicos de enunciado / stem de caso clínico
     const hasStemEl = Boolean(
-        document.querySelector('[id*="question-id"], [class*="question-id"], [data-question-id], .question-stem, .q-stem, [class*="questionBody"], [class*="question-content"], div[class*="case-study"], [id*="qStem"]')
+        document.querySelector('[id*="question-id"], [class*="question-id"], [data-question-id], .question-stem, .q-stem, [class*="questionBody"], [class*="question-content"], div[class*="case-study"], [id*="qStem"], [class*="vignette"], [class*="case-description"], [data-testid*="question"]')
     );
     // 2. Alternativas / opções de múltipla escolha
     const hasChoicesEl = Boolean(
-        document.querySelector('.choices-container, .answer-choices, table.choices, .choice-row, input[type="radio"][name*="question"], input[type="radio"][name*="choice"], tr.cursor-pointer:has(input), .option-text')
+        document.querySelector('.choices-container, .answer-choices, table.choices, .choice-row, input[type="radio"][name*="question"], input[type="radio"][name*="choice"], tr.cursor-pointer:has(input), .option-text, [class*="choice"], [class*="option-row"], [class*="answer-option"]')
     );
     // 3. Botões de navegação e resolução
     const hasNavButtons = Boolean(
-        document.querySelector('button[title*="Next" i], button[title*="Previous" i], button[title*="Submit" i], .submit-btn, button[class*="next" i], button[class*="prev" i]')
+        document.querySelector('button[title*="Next" i], button[title*="Previous" i], button[title*="Submit" i], .submit-btn, button[class*="next" i], button[class*="prev" i], button[aria-label*="Next" i], button[aria-label*="Previous" i]')
     );
-    // 4. Texto típico de questão no corpo da página
+    // 4. Texto típico de questão no corpo da página (Suporta QIDs de 1 a 8 dígitos)
     const bodyText = document.body ? (document.body.innerText || '') : '';
-    const hasQIdPattern = /(?:Question\s*Id|Item|Quest[aã]o)\s*[:#]?\s*(\d{4,8})/i.test(bodyText);
+    const hasQIdPattern = /(?:Question\s*Id|Item|Quest[aã]o|Q\s*ID|QID)\s*[:#]?\s*(\d{1,8})/i.test(bodyText);
     const hasChoiceLetters = /(?:^|\n)\s*[A-F]\s*[\.\)]\s+/m.test(bodyText);
+    const hasExplanationOrObjective = /(?:Explanation|Educational\s*Objective|Bottom\s*[-_]?\s*line)/i.test(bodyText);
 
-    return (hasStemEl && (hasChoicesEl || hasNavButtons)) || (hasQIdPattern && (hasChoicesEl || hasChoiceLetters || hasNavButtons));
+    return (hasStemEl && (hasChoicesEl || hasNavButtons || hasChoiceLetters)) || 
+           (hasQIdPattern && (hasChoicesEl || hasChoiceLetters || hasNavButtons || hasExplanationOrObjective)) ||
+           (hasChoicesEl && (hasNavButtons || hasChoiceLetters));
 }
 
 function atualizarVisibilidadeBotaoQBank() {
@@ -508,43 +511,43 @@ function atualizarVisibilidadeBotaoQBank() {
 function extrairIdQuestaoAtual() {
     let qId = '';
 
-    // 1. Procura label "Q ID" e seu irmão adjacente (como no QBankly: span com texto "Q ID" seguido de span com "4262")
-    const allLabels = Array.from(document.querySelectorAll('span, button, div, dt, td'));
+    // 1. Procura label "Q ID", "QID", "Question ID", "ID" e seu irmão adjacente (como no QBankly: span com texto "Q ID" seguido de span com "752" ou "4262")
+    const allLabels = Array.from(document.querySelectorAll('span, button, div, dt, td, p, strong, b, label'));
     for (let el of allLabels) {
         const txt = (el.innerText || el.textContent || '').trim();
-        if (/^Q\s*ID$/i.test(txt)) {
-            const next = el.nextElementSibling || (el.parentElement ? el.parentElement.querySelector('span:nth-child(2), [title], [class*="semibold"]') : null);
+        if (/^(?:Q\s*ID|QID|Question\s*ID|ID)$/i.test(txt)) {
+            const next = el.nextElementSibling || (el.parentElement ? el.parentElement.querySelector('span:nth-child(2), [title], [class*="semibold"], strong, b') : null);
             if (next && next !== el) {
                 const val = (next.getAttribute('title') || next.innerText || next.textContent || '').replace(/[^0-9]/g, '');
-                if (val) { qId = val; break; }
+                if (val && val.length >= 1 && val.length <= 8) { qId = val; break; }
             }
         }
     }
 
-    // 2. Procura Question Id na navbar superior: "Question Id: 4262"
+    // 2. Procura Question Id / QID na navbar ou cabeçalho: "Question Id: 4262", "QID: 752", "Question ID: 701"
     if (!qId) {
-        const headerEl = Array.from(document.querySelectorAll('span, div')).find(el => 
-            /Question\s*Id\s*:\s*\d+/i.test(el.textContent || '')
+        const headerEl = Array.from(document.querySelectorAll('span, div, p, strong, b, h1, h2, h3, h4, h5, h6, dt, dd')).find(el => 
+            /(?:Question\s*Id|Q\s*ID|QID)\s*[:#]?\s*\d+/i.test(el.textContent || '')
         );
         if (headerEl) {
-            const m = headerEl.textContent.match(/Question\s*Id\s*:\s*(\d+)/i);
-            if (m) qId = m[1];
+            const m = headerEl.textContent.match(/(?:Question\s*Id|Q\s*ID|QID)\s*[:#]?\s*(\d{1,8})/i);
+            if (m && m[1]) qId = m[1];
         }
     }
 
-    // 3. Atualiza o número da questão pelo item (ex: "Item 51 of 60" ou "51 / 60")
-    const itemEl = Array.from(document.querySelectorAll('span, div')).find(el => 
-        /Item\s*\d+\s*of\s*\d+/i.test(el.textContent || '') || /^\s*\d+\s*\/\s*\d+\s*$/.test(el.textContent || '')
+    // 3. Atualiza o número da questão pelo item (ex: "Item 51 of 60", "Item 5 of 40" ou "51 / 60")
+    const itemEl = Array.from(document.querySelectorAll('span, div, p, b, strong')).find(el => 
+        /Item\s*\d+\s*(?:of|\/|de)\s*\d+/i.test(el.textContent || '') || /^\s*\d+\s*\/\s*\d+\s*$/.test(el.textContent || '')
     );
     if (itemEl) {
-        const m = itemEl.textContent.match(/(?:Item\s*)?(\d+)\s*(?:of|\/)\s*(\d+)/i);
+        const m = itemEl.textContent.match(/(?:Item\s*)?(\d+)\s*(?:of|\/|de)\s*(\d+)/i);
         if (m) currentQNumberExt = parseInt(m[1], 10);
     }
 
-    // 4. Fallback no body text
+    // 4. Fallback no body text (Suporta QIDs de 1 a 8 dígitos)
     const bodyText = document.body ? document.body.innerText : '';
     if (!qId) {
-        const matchQId = bodyText.match(/(?:Question\s*Id|Quest[aã]o|QID)\s*[:#]?\s*(\d{2,8})/i);
+        const matchQId = bodyText.match(/(?:Question\s*Id|Quest[aã]o|Q\s*ID|QID)\s*[:#]?\s*(\d{1,8})/i);
         if (matchQId && matchQId[1]) qId = matchQId[1];
     }
 
@@ -1586,7 +1589,7 @@ function extrairDigitosFinais(str) {
             break;
         }
     }
-    if (digits.length >= 2) {
+    if (digits.length >= 1) {
         const beforeIndex = clean.length - digits.length;
         const prefix = clean.substring(Math.max(0, beforeIndex - 5), beforeIndex).toLowerCase();
         if (prefix.endsWith('v') || prefix.endsWith('vol') || prefix.endsWith('step') || prefix.endsWith('pt')) {
@@ -1603,7 +1606,7 @@ function extrairQidsDeTexto(text) {
     if (!trimmed) return [];
     const found = new Set();
 
-    // 1. Extração por varredura reversa de dígitos finais (ex: "##AK_Step2_v12::#UWorld::Step::17499" -> "17499")
+    // 1. Extração por varredura reversa de dígitos finais (ex: "##AK_Step2_v12::#UWorld::Step::17499" -> "17499", "QID::752" -> "752")
     const fullTrailing = extrairDigitosFinais(trimmed);
     if (fullTrailing) {
         found.add(fullTrailing);
@@ -1626,8 +1629,8 @@ function extrairQidsDeTexto(text) {
         }
     }
 
-    // 3. Padrões com prefixos conhecidos (qid:17499, #UWorld::17499, #COMLEX::24210, uworld-17499, #17499)
-    const prefixRegex = /(?:^|[^\w])(?:qid|id|uworld|amboss|comlex|combank|usmle|nbme|step|question|item)?[:\s\-_#]*(\d{2,8})(?=[^\w]|$)/gi;
+    // 3. Padrões com prefixos conhecidos (qid:17499, #UWorld::17499, #COMLEX::24210, uworld-17499, #17499, qid:752, #752)
+    const prefixRegex = /(?:^|[^\w])(?:qid|id|uworld|amboss|comlex|combank|usmle|nbme|step|question|item)?[:\s\-_#]*(\d{1,8})(?=[^\w]|$)/gi;
     let match;
     while ((match = prefixRegex.exec(trimmed)) !== null) {
         if (match[1]) {
@@ -1643,8 +1646,8 @@ function extrairQidsDeTexto(text) {
         }
     }
 
-    // 4. Qualquer sequência isolada de 2 a 8 dígitos
-    const listMatches = trimmed.match(/\b\d{2,8}\b/g);
+    // 4. Qualquer sequência isolada de 1 a 8 dígitos
+    const listMatches = trimmed.match(/\b\d{1,8}\b/g);
     if (listMatches) {
         for (const num of listMatches) {
             const cleanNum = num.replace(/^0+/, '') || num;
@@ -1653,9 +1656,9 @@ function extrairQidsDeTexto(text) {
         }
     }
 
-    // 5. String puramente numérica ou com hashtag/qid (#17499, 17499)
+    // 5. String puramente numérica ou com hashtag/qid (#17499, 17499, 752, #752)
     const stripped = trimmed.replace(/^[#\s\-_:qQidID]+|[#\s\-_:qQidID]+$/gi, '');
-    if (/^\d{2,8}$/.test(stripped)) {
+    if (/^\d{1,8}$/.test(stripped)) {
         found.add(stripped);
         const cleanNum = stripped.replace(/^0+/, '') || stripped;
         found.add(cleanNum);
@@ -1731,7 +1734,7 @@ function rebuildExtensionCardsIndex(cards) {
 
         // 6. Texto do Front / Back / Details
         const fullTxt = `${card.frontPreview || card.front || ''} ${card.backPreview || card.back || ''} ${card.details || ''}`;
-        const embeddedMatches = fullTxt.matchAll(/(?:Question\s*ID|Dados da Questão|QID|UWorld(?:\s*ID)?)[:\s\-_#]*\(?(?:ID:\s*)?(\d{2,8})\)?/gi);
+        const embeddedMatches = fullTxt.matchAll(/(?:Question\s*ID|Dados da Questão|QID|UWorld(?:\s*ID)?)[:\s\-_#]*\(?(?:ID:\s*)?(\d{1,8})\)?/gi);
         for (const m of embeddedMatches) {
             if (m[1]) addCardToQid(card, m[1]);
         }
@@ -2248,9 +2251,12 @@ try {
                         if (
                             cls.includes('explanation') ||
                             cls.includes('educational') ||
+                            cls.includes('bottom') ||
                             cls.includes('result') ||
                             cls.includes('alert') ||
                             txt.includes('educational objective') ||
+                            txt.includes('bottom line') ||
+                            txt.includes('bottom-line') ||
                             txt.includes('explanation') ||
                             txt.includes('gabarito') ||
                             txt.includes('correct') ||
@@ -2891,17 +2897,26 @@ function extrairAlternativasParaFila() {
 
 // Localiza estritamente o cabeçalho do Educational Objective ou Bottom Line
 function encontrarCabecalhoObjetivo() {
-    const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6, strong, b, [class*="header"]'));
+    // 1. Procura elementos dedicados com classes específicas de objetivo / bottom line
+    const dedicatedEl = document.querySelector('[class*="bottom-line" i], [class*="bottom_line" i], [class*="bottomline" i], [class*="educational-objective" i], [class*="educational_objective" i], [data-testid*="bottom-line" i], [data-testid*="educational-objective" i]');
+    if (dedicatedEl) {
+        const h = dedicatedEl.querySelector('h1, h2, h3, h4, h5, h6, strong, b, [class*="header"], [class*="title"]') || dedicatedEl;
+        return h;
+    }
+
+    // 2. Busca por cabeçalhos e tags de ênfase
+    const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6, strong, b, [class*="header"], [class*="title"], [class*="subtitle"], [class*="heading"], dt, th, label, div, span, p'));
     const directHeading = headings.find(h => {
         const txt = (h.textContent || '').trim();
-        return /(?:Educational\s*objective|Bottom\s*[-_]?\s*line|Key\s*points?|Take\s*[-_]?\s*home(?:\s*message)?|High\s*[-_]?\s*yield|Objetivo\s*educacional|Ponto\s*[-_]?\s*chave)/i.test(txt) && txt.length < 80;
+        return /(?:Educational\s*objective|Bottom\s*[-_]?\s*line|The\s*bottom\s*[-_]?\s*line|Key\s*points?|Key\s*takeaways?|Take\s*[-_]?\s*home(?:\s*message)?|High\s*[-_]?\s*yield|Objetivo\s*educacional|Ponto\s*[-_]?\s*chave)/i.test(txt) && txt.length < 90;
     });
     if (directHeading) return directHeading;
 
+    // 3. Varredura global de elementos compactos
     const all = Array.from(document.querySelectorAll('*'));
     return all.find(el => {
         const txt = (el.textContent || '').trim();
-        return /(?:Educational\s*objective|Bottom\s*[-_]?\s*line|Key\s*points?|Take\s*[-_]?\s*home(?:\s*message)?|High\s*[-_]?\s*yield|Objetivo\s*educacional|Ponto\s*[-_]?\s*chave)/i.test(txt) && txt.length < 60 && el.children.length <= 2;
+        return /(?:Educational\s*objective|Bottom\s*[-_]?\s*line|The\s*bottom\s*[-_]?\s*line|Key\s*points?|Key\s*takeaways?|Take\s*[-_]?\s*home(?:\s*message)?|High\s*[-_]?\s*yield|Objetivo\s*educacional|Ponto\s*[-_]?\s*chave)/i.test(txt) && txt.length < 70 && el.children.length <= 2;
     }) || null;
 }
 
@@ -2979,7 +2994,7 @@ function extrairExplicacaoParaFila() {
 
         // Se for parágrafo ou bloco de texto
         const rawText = (el.innerText || '').trim();
-        if (rawText.length > 3 && !/(?:Clear highlights|Mark Question|Educational\s*Objective|Bottom\s*[-_]?\s*line|Key\s*point)/i.test(rawText)) {
+        if (rawText.length > 3 && !/(?:Clear highlights|Mark Question|Educational\s*Objective|Bottom\s*[-_]?\s*line|The\s*bottom\s*[-_]?\s*line|Key\s*point)/i.test(rawText)) {
             // Evita adicionar nó filho se o pai já foi adicionado
             const isChildOfProcessed = Array.from(processedNodes).some(p => p.contains(el));
             if (!isChildOfProcessed) {
@@ -3006,12 +3021,22 @@ function extrairExplicacaoParaFila() {
 
 function extrairObjetivoParaFila() {
     const objHeader = encontrarCabecalhoObjetivo();
-    if (!objHeader) return [{ text: "Educational objective not found.", node: null }];
+    
+    // Se não encontrou cabeçalho visual no DOM, tenta fallback via regex no texto da página ou da explicação
+    if (!objHeader) {
+        const expContainer = obterContainerExplicacao();
+        const textToSearch = (expContainer ? expContainer.innerText : '') || (document.body ? document.body.innerText : '');
+        const matchObj = textToSearch.match(/(?:Bottom\s*[-_]?\s*line|The\s*bottom\s*[-_]?\s*line|Educational\s*Objective|Key\s*Points?|Take\s*[-_]?\s*home(?:\s*message)?)\s*[:\-\n\r]+([\s\S]+?)(?=(?:Subject|System|Q\s*ID|Choice\s+[A-H]:|$))/i);
+        if (matchObj && matchObj[1] && matchObj[1].trim().length > 5) {
+            return [{ text: matchObj[1].trim(), node: null }];
+        }
+        return [{ text: "Educational objective not found.", node: null }];
+    }
 
     const itens = [];
     let accumulatedDirectText = '';
 
-    // 1. Percorre todos os nós irmãos seguintes (incluindo TEXT_NODE e ELEMENT_NODE)
+    // 1. Percorre todos os nós irmãos seguintes do cabeçalho (incluindo TEXT_NODE e ELEMENT_NODE)
     let nextNode = objHeader.nextSibling;
     while (nextNode) {
         if (nextNode.nodeType === Node.ELEMENT_NODE) {
@@ -3039,25 +3064,40 @@ function extrairObjetivoParaFila() {
         itens.unshift({ text: accumulatedDirectText, node: objHeader.parentElement });
     }
 
-    // 2. Se ainda não encontrou itens pelos nós irmãos diretos, vasculha o pai ou contêiner seguinte
+    // 2. Se o cabeçalho estava dentro de um parágrafo/container que contém o texto logo após o título
     if (itens.length === 0 && objHeader.parentElement) {
         const parentText = (objHeader.parentElement.textContent || '').trim();
         const headerText = (objHeader.textContent || '').trim();
         const headerIdx = parentText.indexOf(headerText);
         if (headerIdx !== -1) {
-            let afterHeaderText = parentText.substring(headerIdx + headerText.length).trim();
+            let afterHeaderText = parentText.substring(headerIdx + headerText.length).replace(/^[:\-\s]+/, '').trim();
             // Remove rodapés de metadados se vazados no mesmo texto
             const metaIdx = afterHeaderText.search(/(?:Subject|System|Q\s*ID)\s*:/i);
             if (metaIdx !== -1) {
                 afterHeaderText = afterHeaderText.substring(0, metaIdx).trim();
             }
-            if (afterHeaderText.length > 5) {
+            if (afterHeaderText.length > 3) {
                 itens.push({ text: afterHeaderText, node: objHeader.parentElement });
             }
         }
     }
 
-    // 3. Fallback adicional se estiver em container de parágrafos
+    // 3. Se o cabeçalho estava num wrapper separado (ex: <div><h4>Bottom Line</h4></div> <div><p>...</p></div>)
+    if (itens.length === 0 && objHeader.parentElement && objHeader.parentElement.nextElementSibling) {
+        let parentSibling = objHeader.parentElement.nextElementSibling;
+        while (parentSibling) {
+            if (parentSibling.closest('[class*="border-y"]') || /(?:Subject|System|Q\s*ID)\s*:/i.test(parentSibling.innerText || '')) break;
+            const hasImg = parentSibling.tagName === 'IMG' || Boolean(parentSibling.querySelector('img'));
+            const txt = (parentSibling.innerText || '').trim();
+            if (txt.length > 3 || hasImg) {
+                const formatted = limparEFormatarConteudoHtml(parentSibling);
+                itens.push({ text: formatted || txt, node: parentSibling });
+            }
+            parentSibling = parentSibling.nextElementSibling;
+        }
+    }
+
+    // 4. Fallback adicional se estiver em container de parágrafos
     if (itens.length === 0) {
         const expContainer = obterContainerExplicacao();
         const allP = Array.from(expContainer.querySelectorAll('p, figure, div:has(> img)'));
@@ -3072,6 +3112,15 @@ function extrairObjetivoParaFila() {
                     itens.push({ text: formatted || txt, node: p });
                 }
             }
+        }
+    }
+
+    // 5. Fallback final via Regex no texto
+    if (itens.length === 0) {
+        const bodyText = document.body ? document.body.innerText : '';
+        const matchObj = bodyText.match(/(?:Bottom\s*[-_]?\s*line|The\s*bottom\s*[-_]?\s*line|Educational\s*Objective|Key\s*Points?|Take\s*[-_]?\s*home(?:\s*message)?)\s*[:\-\n\r]+([\s\S]+?)(?=(?:Subject|System|Q\s*ID|Choice\s+[A-H]:|$))/i);
+        if (matchObj && matchObj[1] && matchObj[1].trim().length > 5) {
+            itens.push({ text: matchObj[1].trim(), node: null });
         }
     }
 
