@@ -128,37 +128,27 @@ export function sanitizeStudyData(): SanitizeResult {
         }
       });
 
-      const updatedLogs = logs.map(l => {
-        // Verifica se é log de questões ou extensão
-        const isExtOrQBank = 
-          l.resourceId === 'qbankly' || 
-          l.resourceId === 'uworld' || 
-          l.unit === 'questões' ||
-          (l.notes && l.notes.includes('Extensão'));
+      // Mapeamento e desduplicação de logs redundantes (mesmo dia, material, quantidade e minutos)
+      const seenLogSignatures = new Set<string>();
+      const dedupedLogs: any[] = [];
 
-        if (isExtOrQBank && l.date) {
-          const dayData = answeredByDate.get(l.date);
-          const currentAmount = Number(l.amount) || 0;
+      logs.forEach(l => {
+        if (!l.id || !l.date) return;
 
-          // Se a contagem no log for inflada em relação às questões reais existentes
-          if (dayData && dayData.total > 0 && currentAmount > dayData.total) {
-            logsChanged = true;
-            fixedLogsCount++;
-            originalLogAmount += currentAmount;
-            correctedLogAmount += dayData.total;
-
-            const accuracy = Math.round((dayData.correct / dayData.total) * 100);
-            return {
-              ...l,
-              amount: dayData.total,
-              scorePercent: accuracy,
-              questionIds: Array.from(dayData.qids),
-              notes: `Sincronizado via Extensão (${dayData.total} questões únicas)`,
-            };
-          }
+        // Cria assinatura para identificar logs duplicados gerados por múltiplos eventos de finalização
+        const sig = `${l.date}|${l.resourceId || l.resourceName}|${l.amount}|${l.scorePercent || 'none'}|${l.minutesSpent || 0}`;
+        if (seenLogSignatures.has(sig) && l.notes && l.notes.includes('Registro Rápido')) {
+          logsChanged = true;
+          fixedLogsCount++;
+          originalLogAmount += Number(l.amount) || 0;
+          return;
         }
-        return l;
+
+        seenLogSignatures.add(sig);
+        dedupedLogs.push(l);
       });
+
+      const updatedLogs = dedupedLogs;
 
       if (logsChanged) {
         localStorage.setItem('usmle_study_logs_v4', JSON.stringify(updatedLogs));

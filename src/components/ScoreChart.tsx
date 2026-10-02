@@ -229,12 +229,23 @@ export function ScoreChart({ logs }: ScoreChartProps) {
       return existing;
     };
 
-    // Coleta questões relevantes de acordo com o banco selecionado
+    // Coleta questões individuais relevantes de acordo com o banco selecionado
     const relevantQuestions = questions.filter(matchesBank);
+
+    // Mapeamento temporário de questões individuais por data
+    const questionsByDay = new Map<string, { total: number; scored: number; correct: number; list: Question[] }>();
+
+    const getOrInitQuestionsDay = (dStr: string) => {
+      let existing = questionsByDay.get(dStr);
+      if (!existing) {
+        existing = { total: 0, scored: 0, correct: 0, list: [] };
+        questionsByDay.set(dStr, existing);
+      }
+      return existing;
+    };
 
     if (relevantQuestions.length > 0) {
       relevantQuestions.forEach((q) => {
-        // Ignora questões sem nenhuma resolução registrada
         const hasAttempts = Array.isArray(q.attempts) && q.attempts.length > 0;
         const isAnswered = hasAttempts || (q.status && q.status !== 'unused') || Boolean(q.lastAnsweredAt) || (q as any).isCorrect !== undefined;
 
@@ -249,38 +260,33 @@ export function ScoreChart({ logs }: ScoreChartProps) {
           : [];
 
         if (reviewHandlingMode === 'original_date') {
-          // Data Original: atribui à 1ª resolução
           const firstAtt = cleanedAttempts.length > 0 ? cleanedAttempts[0] : null;
           const t = firstAtt?.timestamp || q.createdAt || q.lastAnsweredAt || Date.now();
           const dStr = format(new Date(t), 'yyyy-MM-dd');
-          const entry = getOrInitDate(dStr);
+          const entry = getOrInitQuestionsDay(dStr);
 
-          // Evita duplicar a mesma questão no mesmo dia
-          if (!entry.questionsList.some(item => item.id === q.id || (item.qid && item.qid === q.qid))) {
+          if (!entry.list.some(item => item.id === q.id || (item.qid && item.qid === q.qid))) {
             const isCorr = isQuestionCorrect(q, firstAtt);
-            entry.totalAmount += 1;
-            entry.scoredAmount += 1;
-            entry.correctCount += isCorr ? 1 : 0;
-            entry.questionsList.push(q);
+            entry.total += 1;
+            entry.scored += 1;
+            entry.correct += isCorr ? 1 : 0;
+            entry.list.push(q);
           }
         } else if (reviewHandlingMode === 'latest_date') {
-          // Data Mais Recente: atribui à última resolução
           const lastAtt = cleanedAttempts.length > 0 ? cleanedAttempts[cleanedAttempts.length - 1] : null;
           const t = lastAtt?.timestamp || q.lastAnsweredAt || q.updatedAt || q.createdAt || Date.now();
           const dStr = format(new Date(t), 'yyyy-MM-dd');
-          const entry = getOrInitDate(dStr);
+          const entry = getOrInitQuestionsDay(dStr);
 
-          if (!entry.questionsList.some(item => item.id === q.id || (item.qid && item.qid === q.qid))) {
+          if (!entry.list.some(item => item.id === q.id || (item.qid && item.qid === q.qid))) {
             const isCorr = isQuestionCorrect(q, lastAtt);
-            entry.totalAmount += 1;
-            entry.scoredAmount += 1;
-            entry.correctCount += isCorr ? 1 : 0;
-            entry.questionsList.push(q);
+            entry.total += 1;
+            entry.scored += 1;
+            entry.correct += isCorr ? 1 : 0;
+            entry.list.push(q);
           }
         } else {
-          // Todas as Tentativas: contabiliza cada resolução única no dia em que ocorreu
           if (cleanedAttempts.length > 0) {
-            // Se houver múltiplas tentativas no mesmo dia, agrupa para não duplicar de forma irreal
             const dayAttMap = new Map<string, typeof cleanedAttempts[0]>();
             cleanedAttempts.forEach(att => {
               const t = att.timestamp || q.lastAnsweredAt || Date.now();
@@ -289,57 +295,102 @@ export function ScoreChart({ logs }: ScoreChartProps) {
             });
 
             dayAttMap.forEach((att, dStr) => {
-              const entry = getOrInitDate(dStr);
+              const entry = getOrInitQuestionsDay(dStr);
               const isCorr = Boolean(att.isCorrect);
 
-              entry.totalAmount += 1;
-              entry.scoredAmount += 1;
-              entry.correctCount += isCorr ? 1 : 0;
-              if (!entry.questionsList.some(item => item.id === q.id || (item.qid && item.qid === q.qid))) {
-                entry.questionsList.push(q);
+              entry.total += 1;
+              entry.scored += 1;
+              entry.correct += isCorr ? 1 : 0;
+              if (!entry.list.some(item => item.id === q.id || (item.qid && item.qid === q.qid))) {
+                entry.list.push(q);
               }
             });
           } else {
             const t = q.lastAnsweredAt || q.createdAt || Date.now();
             const dStr = format(new Date(t), 'yyyy-MM-dd');
-            const entry = getOrInitDate(dStr);
+            const entry = getOrInitQuestionsDay(dStr);
             const isCorr = isQuestionCorrect(q);
 
-            entry.totalAmount += 1;
-            entry.scoredAmount += 1;
-            entry.correctCount += isCorr ? 1 : 0;
-            if (!entry.questionsList.some(item => item.id === q.id || (item.qid && item.qid === q.qid))) {
-              entry.questionsList.push(q);
+            entry.total += 1;
+            entry.scored += 1;
+            entry.correct += isCorr ? 1 : 0;
+            if (!entry.list.some(item => item.id === q.id || (item.qid && item.qid === q.qid))) {
+              entry.list.push(q);
             }
           }
         }
       });
     }
 
-    // Processa logs manuais/sincronizados correspondentes ao banco selecionado
+    // Mapeamento de logs de estudo diários por data (somatório de todos os blocos/testes do dia)
+    const logsByDay = new Map<string, { totalAmount: number; scoredAmount: number; correctCount: number }>();
+
     logs.forEach((log) => {
       if (!log.date) return;
       const isQBank = log.resourceType === 'qbank' || log.unit === 'questões' || log.unit === 'questoes';
       if (!isQBank) return;
       if (!matchesBankLog(log)) return;
 
-      const entry = getOrInitDate(log.date);
       const amt = Number(log.amount) || 0;
       if (amt <= 0) return;
 
-      // Se a data não possui questões diretas da base, usa os números do log
-      if (entry.totalAmount === 0) {
-        entry.totalAmount = amt;
-        if (log.scorePercent !== undefined && log.scorePercent !== null) {
-          const pct = Number(log.scorePercent) || 0;
-          entry.scoredAmount = amt;
-          entry.correctCount = Math.round((pct / 100) * amt);
-        }
-      } else if (entry.scoredAmount === 0 && log.scorePercent !== undefined && log.scorePercent !== null) {
-        // Se já existiam questões mas sem informação de acerto/erro registrada, usa o percentual do log
+      let dayLog = logsByDay.get(log.date);
+      if (!dayLog) {
+        dayLog = { totalAmount: 0, scoredAmount: 0, correctCount: 0 };
+        logsByDay.set(log.date, dayLog);
+      }
+
+      dayLog.totalAmount += amt;
+      if (log.scorePercent !== undefined && log.scorePercent !== null) {
         const pct = Number(log.scorePercent) || 0;
-        entry.scoredAmount = entry.totalAmount;
-        entry.correctCount = Math.round((pct / 100) * entry.totalAmount);
+        dayLog.scoredAmount += amt;
+        dayLog.correctCount += Math.round((pct / 100) * amt);
+      }
+    });
+
+    // Unifica datas de ambas as fontes (sem redundância e sem disparidade)
+    const allKnownDates = new Set<string>([...questionsByDay.keys(), ...logsByDay.keys()]);
+
+    allKnownDates.forEach((dStr) => {
+      const qData = questionsByDay.get(dStr);
+      const lData = logsByDay.get(dStr);
+      const entry = getOrInitDate(dStr);
+
+      const lTotal = lData ? lData.totalAmount : 0;
+      const lScored = lData ? lData.scoredAmount : 0;
+      const lCorrect = lData ? lData.correctCount : 0;
+
+      const qTotal = qData ? qData.total : 0;
+      const qScored = qData ? qData.scored : 0;
+      const qCorrect = qData ? qData.correct : 0;
+
+      if (qData && qData.list) {
+        entry.questionsList = qData.list;
+      }
+
+      // O volume do dia é o total real consolidado dos blocos/testes ou o máximo das questões registradas
+      if (lTotal > 0) {
+        const consolidatedTotal = Math.max(lTotal, qTotal);
+        entry.totalAmount = consolidatedTotal;
+
+        if (lScored > 0) {
+          // Utiliza a taxa média ponderada dos blocos de teste registrados no dia
+          const logAccuracyRatio = lCorrect / lScored;
+          entry.scoredAmount = consolidatedTotal;
+          entry.correctCount = Math.round(logAccuracyRatio * consolidatedTotal);
+        } else if (qScored > 0) {
+          const qAccuracyRatio = qCorrect / qScored;
+          entry.scoredAmount = consolidatedTotal;
+          entry.correctCount = Math.round(qAccuracyRatio * consolidatedTotal);
+        } else {
+          entry.scoredAmount = 0;
+          entry.correctCount = 0;
+        }
+      } else {
+        // Sem logs de blocos: utiliza diretamente os registros das questões individuais
+        entry.totalAmount = qTotal;
+        entry.scoredAmount = qScored;
+        entry.correctCount = qCorrect;
       }
     });
 
@@ -766,10 +817,15 @@ export function ScoreChart({ logs }: ScoreChartProps) {
     const bankName = selectedBankId === 'all' ? 'Todos os Bancos' : (availableBanksList.find(b => b.id === selectedBankId)?.name || selectedBankId);
 
     if (matchedQuestions.length > 0) {
+      const totalDaily = dateEntry?.totalAmount || matchedQuestions.length;
+      const subtitleText = totalDaily > matchedQuestions.length
+        ? `${totalDaily} questões resolvidas no dia (${matchedQuestions.length} com detalhes completos de revisão) • Banco: ${bankName}${specificSubject ? ` • Matéria: ${specificSubject}` : ''}`
+        : `${matchedQuestions.length} questões registradas • Banco: ${bankName}${specificSubject ? ` • Matéria: ${specificSubject}` : ''}`;
+
       setDrillDownData({
         isOpen: true,
         title: `Questões de ${displayDate}`,
-        subtitle: `${matchedQuestions.length} questões registradas • Banco: ${bankName}${specificSubject ? ` • Matéria: ${specificSubject}` : ''}`,
+        subtitle: subtitleText,
         dateStr,
         questions: matchedQuestions
       });
