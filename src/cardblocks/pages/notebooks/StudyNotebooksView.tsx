@@ -44,7 +44,11 @@ import {
   ArrowRight,
   Move,
   CornerDownRight,
-  FolderTree
+  FolderTree,
+  Clock,
+  RotateCcw,
+  ArrowUpDown,
+  History
 } from 'lucide-react';
 import { sanitizeHtml, renderCardText, cn } from '../../lib/utils';
 import { format } from 'date-fns';
@@ -104,7 +108,9 @@ export const StudyNotebooksView: React.FC<StudyNotebooksViewProps> = ({
     deleteStudyNote,
     updateStudyNote,
     moveStudyNote,
-    reorderStudyNotes
+    reorderStudyNotes,
+    markStudyNoteReviewed,
+    createCardFromStudyNote
   } = useStore();
 
   const [selectedAreaId, setSelectedAreaId] = useState<string>(() => initialAreaId || 'all');
@@ -120,6 +126,12 @@ export const StudyNotebooksView: React.FC<StudyNotebooksViewProps> = ({
   // Layout switcher: Document (default Notion continuous), Grid (Blocos), List
   const [viewLayout, setViewLayout] = useState<'document' | 'grid' | 'list'>('document');
   const [revealAllClozes, setRevealAllClozes] = useState(false);
+
+  // Ordenação das notas (Tempo de revisão, manual, data, etc.)
+  const [sortBy, setSortBy] = useState<'manual' | 'review_oldest' | 'review_newest' | 'updated' | 'title'>('manual');
+
+  // Feedback Toast temporário
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Persisted Collapsed States (Notes & Sections)
   const [collapsedNotes, setCollapsedNotes] = useState<Record<string, boolean>>(() => {
@@ -298,6 +310,60 @@ export const StudyNotebooksView: React.FC<StudyNotebooksViewProps> = ({
       if (!matchTitle && !matchContent && !matchTags) return false;
     }
     return true;
+  };
+
+  // Cálculo de dias desde a última revisão da nota
+  const getDaysSinceReview = (note: StudyNote): number => {
+    const timestamp = note.lastReviewedAt ?? note.createdAt;
+    if (!timestamp) return 0;
+    const diffMs = Date.now() - timestamp;
+    const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    return Math.max(0, days);
+  };
+
+  // Zerar o contador de dias sem rever (marca como revisada agora)
+  const handleResetReviewDays = (e: React.MouseEvent, noteId: string) => {
+    e.stopPropagation();
+    markStudyNoteReviewed(noteId);
+    setToastMessage('✓ Contador de revisão zerado! Nota marcada como revisada hoje.');
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  // Gerar Flashcard a partir da Nota
+  const handleGenerateFlashcardFromNote = (e: React.MouseEvent, note: StudyNote) => {
+    e.stopPropagation();
+    const cardId = createCardFromStudyNote(note.id);
+    const area = notebookAreas.find(a => a.id === note.areaId);
+    const deckName = area ? `Caderno: ${area.name}` : 'Caderno de Estudos';
+    setToastMessage(`⚡ Flashcard gerado com sucesso no baralho "${deckName}" e vinculado à nota!`);
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  // Função de Ordenação das Notas
+  const sortNotes = (notesList: StudyNote[]): StudyNote[] => {
+    return [...notesList].sort((a, b) => {
+      if (sortBy === 'review_oldest') {
+        const daysA = getDaysSinceReview(a);
+        const daysB = getDaysSinceReview(b);
+        // Mais dias sem rever vêm primeiro (prioritárias para revisão)
+        if (daysB !== daysA) return daysB - daysA;
+        return (a.order ?? 0) - (b.order ?? 0);
+      }
+      if (sortBy === 'review_newest') {
+        const daysA = getDaysSinceReview(a);
+        const daysB = getDaysSinceReview(b);
+        if (daysA !== daysB) return daysA - daysB;
+        return (a.order ?? 0) - (b.order ?? 0);
+      }
+      if (sortBy === 'updated') {
+        return (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0);
+      }
+      if (sortBy === 'title') {
+        return a.title.localeCompare(b.title, 'pt-BR');
+      }
+      // 'manual' (Padrão)
+      return (a.order ?? 0) - (b.order ?? 0);
+    });
   };
 
   const handleCreateArea = (e: React.FormEvent) => {
@@ -951,6 +1017,23 @@ export const StudyNotebooksView: React.FC<StudyNotebooksViewProps> = ({
               </button>
             </div>
 
+            {/* Ordenação das Notas */}
+            <div className="flex items-center gap-1.5 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-xl border border-gray-200 dark:border-gray-700">
+              <ArrowUpDown className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as any)}
+                className="bg-transparent text-xs font-bold text-gray-700 dark:text-gray-200 focus:outline-none cursor-pointer pr-1"
+                title="Ordenar notas por tempo de revisão, data ou título"
+              >
+                <option value="manual">Ordem Padrão (Manual)</option>
+                <option value="review_oldest">Tempo sem Rever (Mais antigas ⚠️)</option>
+                <option value="review_newest">Tempo sem Rever (Mais recentes ✓)</option>
+                <option value="updated">Data de Modificação</option>
+                <option value="title">Título (A - Z)</option>
+              </select>
+            </div>
+
             {/* Toggle Clozes Ocultos / Revelados */}
             <button
               onClick={() => setRevealAllClozes(!revealAllClozes)}
@@ -985,7 +1068,7 @@ export const StudyNotebooksView: React.FC<StudyNotebooksViewProps> = ({
             {displayedAreas.map(area => {
               const areaKey = `area-${area.id}`;
               const isAreaCollapsed = collapsedSections[areaKey] === true;
-              const areaNotes = studyNotes.filter(n => n.areaId === area.id && filterNoteMatch(n));
+              const areaNotes = sortNotes(studyNotes.filter(n => n.areaId === area.id && filterNoteMatch(n)));
               const areaSystems = notebookSystems.filter(s => s.areaId === area.id);
 
               return (
@@ -1080,6 +1163,7 @@ export const StudyNotebooksView: React.FC<StudyNotebooksViewProps> = ({
                             const isDragging = draggedNoteId === note.id;
                             const isDragOverBefore = dragOverInfo?.noteId === note.id && dragOverInfo.position === 'before';
                             const isDragOverAfter = dragOverInfo?.noteId === note.id && dragOverInfo.position === 'after';
+                            const daysSinceReview = getDaysSinceReview(note);
 
                             // Resolve Hierarchy labels
                             const noteSystem = notebookSystems.find(s => s.id === note.systemId);
@@ -1221,7 +1305,41 @@ export const StudyNotebooksView: React.FC<StudyNotebooksViewProps> = ({
                                     </div>
 
                                     {/* Right Note Action Buttons */}
-                                    <div className="flex items-center gap-1.5 shrink-0">
+                                    <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+                                      {/* Botão de Tempo sem Revisão (Zera ao Clicar) */}
+                                      <button
+                                        type="button"
+                                        onClick={(e) => handleResetReviewDays(e, note.id)}
+                                        className={cn(
+                                          "px-2.5 py-1 rounded-xl text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs border",
+                                          daysSinceReview === 0
+                                            ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60 hover:bg-emerald-100"
+                                            : daysSinceReview <= 3
+                                            ? "bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/60 hover:bg-amber-100"
+                                            : "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800/60 hover:bg-rose-100"
+                                        )}
+                                        title={
+                                          note.lastReviewedAt
+                                            ? `Revisada há ${daysSinceReview} ${daysSinceReview === 1 ? 'dia' : 'dias'} (${format(note.lastReviewedAt, 'dd/MM/yyyy')}). Clique para zerar e marcar como revisada hoje!`
+                                            : `Nota criada há ${daysSinceReview} ${daysSinceReview === 1 ? 'dia' : 'dias'}. Clique para marcar como revisada hoje e zerar!`
+                                        }
+                                      >
+                                        <Clock className="w-3.5 h-3.5 shrink-0" />
+                                        <span>{daysSinceReview === 0 ? 'Revisada hoje (0d)' : `${daysSinceReview}d sem rever`}</span>
+                                        <RotateCcw className="w-3 h-3 opacity-60 hover:opacity-100 transition-opacity shrink-0" />
+                                      </button>
+
+                                      {/* Botão Gerar Flashcard da Nota */}
+                                      <button
+                                        type="button"
+                                        onClick={(e) => handleGenerateFlashcardFromNote(e, note)}
+                                        className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60 rounded-xl text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
+                                        title="Gerar flashcard a partir desta nota e vincular ao baralho"
+                                      >
+                                        <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                                        <span className="hidden sm:inline">Gerar Flashcard</span>
+                                      </button>
+
                                       {/* Quick Highlight Color Button */}
                                       <div className="relative group/color">
                                         <button
@@ -1400,8 +1518,9 @@ export const StudyNotebooksView: React.FC<StudyNotebooksViewProps> = ({
         {/* VIEW MODE 2: BLOCOS (CARDS GRID) */}
         {viewLayout === 'grid' && (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {studyNotes.filter(filterNoteMatch).map(note => {
+            {sortNotes(studyNotes.filter(filterNoteMatch)).map(note => {
               const area = notebookAreas.find(a => a.id === note.areaId);
+              const daysSinceReview = getDaysSinceReview(note);
               const customStyle = note.color ? {
                 borderLeft: `5px solid ${note.color}`,
                 backgroundColor: `${note.color}15`
@@ -1443,9 +1562,36 @@ export const StudyNotebooksView: React.FC<StudyNotebooksViewProps> = ({
                     />
                   </div>
 
-                  <div className="pt-4 mt-4 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between text-xs text-gray-500">
-                    <span>Clique para abrir e editar</span>
-                    <ChevronRight className="w-4 h-4 text-gray-400 group-hover:translate-x-0.5 transition-transform" />
+                  <div className="pt-3 mt-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between gap-2 flex-wrap text-xs">
+                    {/* Botão de Tempo sem Revisão */}
+                    <button
+                      type="button"
+                      onClick={(e) => handleResetReviewDays(e, note.id)}
+                      className={cn(
+                        "px-2 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer border",
+                        daysSinceReview === 0
+                          ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60"
+                          : daysSinceReview <= 3
+                          ? "bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/60"
+                          : "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800/60"
+                      )}
+                      title="Clique para zerar o contador de revisão"
+                    >
+                      <Clock className="w-3 h-3" />
+                      <span>{daysSinceReview === 0 ? '0d' : `${daysSinceReview}d sem rever`}</span>
+                      <RotateCcw className="w-2.5 h-2.5 opacity-60" />
+                    </button>
+
+                    {/* Botão Gerar Flashcard */}
+                    <button
+                      type="button"
+                      onClick={(e) => handleGenerateFlashcardFromNote(e, note)}
+                      className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60 flex items-center gap-1 cursor-pointer"
+                      title="Gerar Flashcard desta nota"
+                    >
+                      <Sparkles className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
+                      <span>Flashcard</span>
+                    </button>
                   </div>
                 </div>
               );
@@ -1458,11 +1604,12 @@ export const StudyNotebooksView: React.FC<StudyNotebooksViewProps> = ({
           <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-3xl overflow-hidden shadow-xs">
             <div className="p-3 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between text-xs font-bold text-gray-500 bg-gray-50/50 dark:bg-gray-800/30">
               <span>Título da Nota</span>
-              <span>Área / Data</span>
+              <span>Revisão / Ações / Área</span>
             </div>
             <div className="divide-y divide-gray-100 dark:divide-gray-800">
-              {studyNotes.filter(filterNoteMatch).map(note => {
+              {sortNotes(studyNotes.filter(filterNoteMatch)).map(note => {
                 const area = notebookAreas.find(a => a.id === note.areaId);
+                const daysSinceReview = getDaysSinceReview(note);
 
                 return (
                   <div
@@ -1476,12 +1623,42 @@ export const StudyNotebooksView: React.FC<StudyNotebooksViewProps> = ({
                     className="p-3.5 flex items-center justify-between gap-3 hover:bg-gray-50 dark:hover:bg-gray-800/40 cursor-pointer transition-colors text-xs"
                     style={note.color ? { borderLeft: `4px solid ${note.color}`, backgroundColor: `${note.color}10` } : {}}
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
                       <span>{note.icon || '📝'}</span>
                       <span className="font-bold text-gray-900 dark:text-white truncate">{note.title}</span>
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
+                      {/* Botão de Tempo sem Revisão */}
+                      <button
+                        type="button"
+                        onClick={(e) => handleResetReviewDays(e, note.id)}
+                        className={cn(
+                          "px-2 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer border",
+                          daysSinceReview === 0
+                            ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60"
+                            : daysSinceReview <= 3
+                            ? "bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/60"
+                            : "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800/60"
+                        )}
+                        title="Clique para zerar o contador de revisão"
+                      >
+                        <Clock className="w-3 h-3" />
+                        <span>{daysSinceReview === 0 ? '0d' : `${daysSinceReview}d`}</span>
+                        <RotateCcw className="w-2.5 h-2.5 opacity-60" />
+                      </button>
+
+                      {/* Botão Gerar Flashcard */}
+                      <button
+                        type="button"
+                        onClick={(e) => handleGenerateFlashcardFromNote(e, note)}
+                        className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60 flex items-center gap-1 cursor-pointer"
+                        title="Gerar Flashcard"
+                      >
+                        <Sparkles className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
+                        <span className="hidden sm:inline">Flashcard</span>
+                      </button>
+
                       {area && (
                         <span
                           className="text-[10px] font-bold px-2 py-0.5 rounded-full"
@@ -1515,6 +1692,30 @@ export const StudyNotebooksView: React.FC<StudyNotebooksViewProps> = ({
               <div className="px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-gray-400 border-b border-gray-100 dark:border-gray-700/60 pb-1 mb-1 truncate">
                 Nota: {contextMenu.note.title}
               </div>
+
+              <button
+                type="button"
+                onClick={(e) => {
+                  if (contextMenu.note) handleGenerateFlashcardFromNote(e, contextMenu.note);
+                  setContextMenu(prev => ({ ...prev, visible: false }));
+                }}
+                className="w-full px-2.5 py-1.5 text-left rounded-xl hover:bg-gray-100 dark:hover:bg-gray-750 flex items-center gap-2 transition-colors cursor-pointer text-indigo-600 dark:text-indigo-400 font-bold"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Gerar Flashcard da Nota</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={(e) => {
+                  if (contextMenu.note) handleResetReviewDays(e, contextMenu.note.id);
+                  setContextMenu(prev => ({ ...prev, visible: false }));
+                }}
+                className="w-full px-2.5 py-1.5 text-left rounded-xl hover:bg-gray-100 dark:hover:bg-gray-750 flex items-center gap-2 transition-colors cursor-pointer text-emerald-600 dark:text-emerald-400"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Marcar como Revisada Hoje (Zerar)</span>
+              </button>
 
               <button
                 type="button"
@@ -2172,6 +2373,20 @@ export const StudyNotebooksView: React.FC<StudyNotebooksViewProps> = ({
           onNavigate({ type: 'study', cardIds });
         }}
       />
+      {/* Floating Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 bg-gray-900 text-white dark:bg-white dark:text-gray-900 px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-2.5 text-xs font-bold animate-in fade-in slide-in-from-bottom-4 duration-200 border border-gray-700 dark:border-gray-200 max-w-md">
+          <Sparkles className="w-4 h-4 text-indigo-400 shrink-0" />
+          <span className="flex-1">{toastMessage}</span>
+          <button
+            type="button"
+            onClick={() => setToastMessage(null)}
+            className="p-1 hover:opacity-75 cursor-pointer ml-1 text-gray-400 hover:text-white dark:hover:text-gray-900"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
     </div>
   );
 };

@@ -221,6 +221,7 @@ export interface StudyNote {
   associatedCardIds?: string[]; // IDs de flashcards associados
   embeddedFlashcardIds?: string[]; // Flashcards embutidos diretamente para visualização/flip na nota
   mediaItems?: NoteMediaItem[];
+  lastReviewedAt?: number; // Timestamp da última revisão da nota
   createdAt: number;
   updatedAt: number;
 }
@@ -465,12 +466,14 @@ export interface StoreState {
   deleteStudyNote: (id: string) => void;
   reorderStudyNotes: (noteIds: string[]) => void;
   moveStudyNote: (noteId: string, target: { areaId: string; systemId?: string | null; subjectId?: string | null; topicId?: string | null }) => void;
+  markStudyNoteReviewed: (noteId: string) => void;
 
   // Associações Bidirecionais: Notas <-> Questões <-> Flashcards
   associateQuestionToNote: (noteId: string, questionId: string) => void;
   dissociateQuestionFromNote: (noteId: string, questionId: string) => void;
   associateCardToNote: (noteId: string, cardId: string) => void;
   dissociateCardFromNote: (noteId: string, cardId: string) => void;
+  createCardFromStudyNote: (noteId: string, targetDeckId?: string) => string;
   addFlashcardAsNote: (cardId: string, areaId: string, systemId?: string | null, customTitle?: string) => string;
   createNoteFromQuestion: (questionData: any, areaId?: string, customTitle?: string) => string;
 
@@ -1027,8 +1030,17 @@ export const useStore = create<StoreState>()(
               };
             });
 
+            // Atualiza lastReviewedAt das notas associadas aos cards revisados (sem alterar agendamento SRS)
+            const updatedStudyNotes = state.studyNotes.map(n => {
+              if (n.associatedCardIds?.some(cid => idSet.has(cid)) || n.embeddedFlashcardIds?.some(cid => idSet.has(cid))) {
+                return { ...n, lastReviewedAt: now };
+              }
+              return n;
+            });
+
             set({
               cards: updatedCards,
+              studyNotes: updatedStudyNotes,
               reviewHistory: [...newLogs, ...state.reviewHistory],
               reviewLog: [...newLogs, ...state.reviewLog],
             });
@@ -1071,8 +1083,17 @@ export const useStore = create<StoreState>()(
             };
           });
 
+          // Atualiza lastReviewedAt das notas associadas aos cards revisados
+          const updatedStudyNotes = state.studyNotes.map(n => {
+            if (n.associatedCardIds?.some(cid => idSet.has(cid)) || n.embeddedFlashcardIds?.some(cid => idSet.has(cid))) {
+              return { ...n, lastReviewedAt: now };
+            }
+            return n;
+          });
+
           set({
             cards: updatedCards,
+            studyNotes: updatedStudyNotes,
             reviewHistory: [...newLogs, ...state.reviewHistory],
             reviewLog: [...newLogs, ...state.reviewLog],
           });
@@ -1088,16 +1109,24 @@ export const useStore = create<StoreState>()(
             ? Date.now() + 15 * 60 * 1000
             : Date.now() + intervalDays * 24 * 60 * 60 * 1000;
           const newRepetition = rating >= 3 ? card.repetition + 1 : 0;
+          const now = Date.now();
 
           const reviewLogItem: ReviewLog = {
             id: 'rev-' + Math.random().toString(36).substring(2, 9),
             cardId,
             deckId: card.deckId,
             rating,
-            reviewDate: Date.now(),
+            reviewDate: now,
             interval: intervalDays,
             easeFactor,
           };
+
+          const updatedStudyNotes = state.studyNotes.map(n => {
+            if (n.associatedCardIds?.includes(cardId) || n.embeddedFlashcardIds?.includes(cardId)) {
+              return { ...n, lastReviewedAt: now };
+            }
+            return n;
+          });
 
           set({
             cards: state.cards.map(c =>
@@ -1106,13 +1135,14 @@ export const useStore = create<StoreState>()(
                     ...c,
                     repetition: newRepetition,
                     interval: intervalDays,
-                    easeFactor,
+                    easeFactor: Number(easeFactor.toFixed(2)),
                     nextReviewDate,
                   }
                 : c
             ),
-            reviewHistory: [reviewLogItem, ...state.reviewHistory],
-            reviewLog: [reviewLogItem, ...state.reviewLog],
+            studyNotes: updatedStudyNotes,
+            reviewHistory: [...state.reviewHistory, reviewLogItem],
+            reviewLog: [...state.reviewLog, reviewLogItem],
           });
         },
 
@@ -1350,13 +1380,14 @@ export const useStore = create<StoreState>()(
         },
 
         recordQuestionAnswer: (questionId, isCorrect, selectedChoiceId, resolutionTimeSeconds, reviewTimeSeconds) => {
-          set(state => ({
-            questions: state.questions.map(q => {
+          const now = Date.now();
+          set(state => {
+            const updatedQuestions = state.questions.map(q => {
               if (q.id !== questionId && q.qid !== questionId) return q;
 
               const attempts = q.attempts || [];
               const newAttempt: QuestionAttempt = {
-                timestamp: Date.now(),
+                timestamp: now,
                 selectedChoiceId,
                 isCorrect,
                 resolutionTimeSeconds: Math.max(1, Math.round(resolutionTimeSeconds || 0)),
@@ -1365,16 +1396,33 @@ export const useStore = create<StoreState>()(
 
               return {
                 ...q,
-                status: isCorrect ? 'correct' : 'incorrect',
+                status: isCorrect ? ('correct' as const) : ('incorrect' as const),
                 selectedChoiceId,
                 resolutionTimeSeconds: (q.resolutionTimeSeconds || 0) + newAttempt.resolutionTimeSeconds,
                 reviewTimeSeconds: (q.reviewTimeSeconds || 0) + newAttempt.reviewTimeSeconds,
                 attempts: [...attempts, newAttempt],
-                lastAnsweredAt: Date.now(),
-                updatedAt: Date.now(),
+                lastAnsweredAt: now,
+                updatedAt: now,
               };
-            })
-          }));
+            });
+
+            // Atualiza lastReviewedAt das notas associadas à questão (sem interferir no agendamento dos flashcards)
+            const updatedStudyNotes = state.studyNotes.map(n => {
+              if (n.associatedQuestionIds?.includes(questionId)) {
+                return { ...n, lastReviewedAt: now };
+              }
+              const matchedQ = state.questions.find(q => q.id === questionId || q.qid === questionId);
+              if (matchedQ?.qid && n.associatedQuestionIds?.includes(matchedQ.qid)) {
+                return { ...n, lastReviewedAt: now };
+              }
+              return n;
+            });
+
+            return {
+              questions: updatedQuestions,
+              studyNotes: updatedStudyNotes
+            };
+          });
         },
 
         resetQuestionStats: (questionId) => {
@@ -1900,6 +1948,7 @@ export const useStore = create<StoreState>()(
             associatedCardIds: noteData.associatedCardIds || [],
             embeddedFlashcardIds: noteData.embeddedFlashcardIds || [],
             mediaItems: noteData.mediaItems || [],
+            lastReviewedAt: noteData.lastReviewedAt || Date.now(),
             createdAt: Date.now(),
             updatedAt: Date.now()
           };
@@ -2018,6 +2067,13 @@ export const useStore = create<StoreState>()(
           }));
         },
 
+        markStudyNoteReviewed: (noteId) => {
+          const now = Date.now();
+          set(state => ({
+            studyNotes: state.studyNotes.map(n => n.id === noteId ? { ...n, lastReviewedAt: now } : n)
+          }));
+        },
+
         associateQuestionToNote: (noteId, questionId) => {
           set(state => {
             const note = state.studyNotes.find(n => n.id === noteId);
@@ -2103,6 +2159,46 @@ export const useStore = create<StoreState>()(
               associatedNoteIds: (c.associatedNoteIds || []).filter(nId => nId !== noteId)
             } : c)
           }));
+        },
+
+        createCardFromStudyNote: (noteId, targetDeckId) => {
+          const state = get();
+          const note = state.studyNotes.find(n => n.id === noteId);
+          if (!note) return '';
+
+          const area = state.notebookAreas.find(a => a.id === note.areaId);
+          const deckName = area ? `Caderno: ${area.name}` : 'Caderno de Estudos';
+          
+          let deckId = targetDeckId;
+          if (!deckId) {
+            const existingDeck = state.decks.find(d => d.name.toLowerCase() === deckName.toLowerCase());
+            if (existingDeck) {
+              deckId = existingDeck.id;
+            } else {
+              deckId = get().createDeck(deckName, null, false, `Flashcards gerados do caderno ${area?.name || ''}`);
+            }
+          }
+
+          const cleanTitle = note.title.trim() || 'Nota de Estudo';
+          const frontHtml = `<div class="font-bold text-base text-gray-900 dark:text-white">${cleanTitle}</div>`;
+          const backHtml = `<div class="study-note-card-body leading-relaxed">${note.content || '<p>Sem conteúdo adicional.</p>'}</div>`;
+
+          const cardTags = [
+            ...(note.tags || []),
+            'caderno',
+            area ? area.name.toLowerCase().replace(/\s+/g, '-') : 'geral'
+          ];
+
+          const cardId = get().createCard(
+            deckId,
+            frontHtml,
+            backHtml,
+            `Gerado da nota "${cleanTitle}"`,
+            cardTags
+          );
+
+          get().associateCardToNote(note.id, cardId);
+          return cardId;
         },
 
         addFlashcardAsNote: (cardId, areaId, systemId = null, customTitle) => {
@@ -2365,9 +2461,22 @@ ${objective ? `<blockquote><p><b>Educational Objective:</b> ${objective}</p></bl
               };
             });
 
+            // Atualiza lastReviewedAt das notas associadas à questão da sessão
+            const now = Date.now();
+            const updatedStudyNotes = state.studyNotes.map(n => {
+              if (
+                n.associatedQuestionIds?.includes(record.qid) ||
+                (record.questionId && n.associatedQuestionIds?.includes(record.questionId))
+              ) {
+                return { ...n, lastReviewedAt: now };
+              }
+              return n;
+            });
+
             return {
               studyDeskSessions: updatedSessions,
               questions: updatedQuestions,
+              studyNotes: updatedStudyNotes,
             };
           });
         },

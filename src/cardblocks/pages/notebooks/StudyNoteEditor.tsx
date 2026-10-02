@@ -23,7 +23,10 @@ import {
   EyeOff,
   Palette,
   Pin,
-  Printer
+  Printer,
+  Clock,
+  RotateCcw,
+  X
 } from 'lucide-react';
 import { RichEditor } from '../../components/RichEditor';
 import { AudioVoiceRecorder } from '../../components/AudioVoiceRecorder';
@@ -69,6 +72,8 @@ export const StudyNoteEditor: React.FC<StudyNoteEditorProps> = ({
     questions,
     updateStudyNote,
     deleteStudyNote,
+    markStudyNoteReviewed,
+    createCardFromStudyNote,
     createDeck,
     createCard,
     associateQuestionToNote,
@@ -108,6 +113,23 @@ export const StudyNoteEditor: React.FC<StudyNoteEditorProps> = ({
   // Question / Card Search inside note
   const [searchQuestion, setSearchQuestion] = useState('');
   const [searchCard, setSearchCard] = useState('');
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Dias sem revisão
+  const daysSinceReview = (() => {
+    if (!note) return 0;
+    const timestamp = note.lastReviewedAt ?? note.createdAt;
+    if (!timestamp) return 0;
+    const diffMs = Date.now() - timestamp;
+    return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+  })();
+
+  const handleResetReviewDays = () => {
+    if (!note) return;
+    markStudyNoteReviewed(note.id);
+    setToastMessage('✓ Contador de revisão zerado! Nota marcada como revisada hoje.');
+    setTimeout(() => setToastMessage(null), 3000);
+  };
 
   // Modal para criar novo sistema/matéria/tema inline
   const [newSystemName, setNewSystemName] = useState('');
@@ -226,24 +248,12 @@ export const StudyNoteEditor: React.FC<StudyNoteEditorProps> = ({
 
   // Criação de Flashcard rápido a partir desta nota
   const handleCreateCardFromNote = () => {
+    if (!note) return;
+    const cardId = createCardFromStudyNote(note.id);
     const deckName = currentArea ? `Caderno: ${currentArea.name}` : 'Caderno de Estudos';
-    let targetDeck = useStore.getState().decks.find(d => d.name === deckName);
-    let deckId = targetDeck?.id;
-    if (!deckId) {
-      deckId = createDeck(deckName, null, false, `Baralho associado à área ${currentArea?.name}`);
-    }
-
-    const cardId = createCard(
-      deckId,
-      `<h4>${title}</h4>`,
-      `<div class="p-3 bg-blue-50 dark:bg-blue-950/30 rounded-xl my-2 border border-blue-200">${content}</div>`,
-      `Criado a partir da nota "${title}"`,
-      [...(tags || []), 'caderno-nota', currentArea ? currentArea.name.toLowerCase().replace(/\s+/g, '-') : 'area']
-    );
-
-    associateCardToNote(note.id, cardId);
     handleSaveNote();
-    alert(`⚡ Flashcard criado com sucesso no baralho "${deckName}" e vinculado a esta nota!`);
+    setToastMessage(`⚡ Flashcard criado com sucesso no baralho "${deckName}" e vinculado a esta nota!`);
+    setTimeout(() => setToastMessage(null), 3500);
   };
 
   return (
@@ -504,6 +514,27 @@ export const StudyNoteEditor: React.FC<StudyNoteEditorProps> = ({
           >
             {previewClozeMode ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
             <span>{previewClozeMode ? 'Ocultar Clozes Ativo' : 'Testar Clozes'}</span>
+          </button>
+
+          {/* Botão de Dias sem Revisão */}
+          <button
+            onClick={handleResetReviewDays}
+            className={`px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border cursor-pointer ${
+              daysSinceReview === 0
+                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60 hover:bg-emerald-100'
+                : daysSinceReview <= 3
+                ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/60 hover:bg-amber-100'
+                : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800/60 hover:bg-rose-100'
+            }`}
+            title={
+              note?.lastReviewedAt
+                ? `Revisada há ${daysSinceReview} dias. Clique para zerar o contador!`
+                : `Nota criada há ${daysSinceReview} dias. Nunca revisada. Clique para marcar como revisada hoje!`
+            }
+          >
+            <Clock className="w-3.5 h-3.5" />
+            <span>{daysSinceReview === 0 ? 'Revisada hoje (0d)' : `${daysSinceReview}d sem rever`}</span>
+            <RotateCcw className="w-3 h-3 opacity-60" />
           </button>
 
           <button
@@ -983,6 +1014,21 @@ export const StudyNoteEditor: React.FC<StudyNoteEditorProps> = ({
         defaultNoteId={note.id}
         onClose={() => setIsPdfModalOpen(false)}
       />
+
+      {/* Floating Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 bg-gray-900 text-white dark:bg-white dark:text-gray-900 px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-2.5 text-xs font-bold animate-in fade-in slide-in-from-bottom-4 duration-200 border border-gray-700 dark:border-gray-200 max-w-md">
+          <Sparkles className="w-4 h-4 text-indigo-400 shrink-0" />
+          <span className="flex-1">{toastMessage}</span>
+          <button
+            type="button"
+            onClick={() => setToastMessage(null)}
+            className="p-1 hover:opacity-75 cursor-pointer ml-1 text-gray-400 hover:text-white dark:hover:text-gray-900"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
     </div>
   );
 };
