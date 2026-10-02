@@ -128,12 +128,23 @@ export function sanitizeStudyData(): SanitizeResult {
         }
       });
 
-      // Mapeamento e desduplicação de logs redundantes (mesmo dia, material, quantidade e minutos)
+      // Mapeamento e desduplicação de logs redundantes e reparo de scorePercent zerado indevidamente
       const seenLogSignatures = new Set<string>();
       const dedupedLogs: any[] = [];
 
       logs.forEach(l => {
         if (!l.id || !l.date) return;
+
+        // Repara scorePercent zerado se houver questões correspondentes com acertos registrados
+        const dayData = answeredByDate.get(l.date);
+        if (dayData && dayData.total > 0 && dayData.correct > 0 && (l.scorePercent === 0 || l.scorePercent === undefined)) {
+          const realScorePercent = Math.round((dayData.correct / dayData.total) * 100);
+          if (realScorePercent > 0) {
+            l.scorePercent = realScorePercent;
+            logsChanged = true;
+            fixedLogsCount++;
+          }
+        }
 
         // Cria assinatura para identificar logs duplicados gerados por múltiplos eventos de finalização
         const sig = `${l.date}|${l.resourceId || l.resourceName}|${l.amount}|${l.scorePercent || 'none'}|${l.minutesSpent || 0}`;

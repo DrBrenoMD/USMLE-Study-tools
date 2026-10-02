@@ -270,15 +270,16 @@ export function useQBankSync() {
         payload.isAnswered === true ||
         (payload.selectedChoice && payload.selectedChoice.trim().length > 0) ||
         (payload.selectedChoiceId && payload.selectedChoiceId.toString().trim().length > 0) ||
-        (payload.isCorrect !== undefined && payload.isAnswered !== false)
+        (payload.isCorrect !== undefined && payload.isAnswered !== false) ||
+        (payload.status && payload.status !== 'unused') ||
+        (payload.userAnswer && payload.userAnswer.toString().trim().length > 0)
       );
 
       if (isExplicitlyAnswered) {
-        const isCorrect = Boolean(payload.isCorrect);
         const resolutionTimeSeconds = Math.max(1, Number(payload.resolutionTimeSeconds || payload.solveTime || payload.timeSeconds || 60));
         const reviewTimeSeconds = Math.max(0, Number(payload.reviewTimeSeconds || payload.reviewTime || 0));
 
-        let selectedChoiceId = (payload.selectedChoiceId || payload.selectedChoice || '').toString().trim();
+        let selectedChoiceId = (payload.selectedChoiceId || payload.selectedChoice || payload.userAnswer || '').toString().trim();
         const foundSelected = alternatives.find(a => 
           a.id === selectedChoiceId || 
           (a.letter && selectedChoiceId && a.letter.toUpperCase() === selectedChoiceId.toUpperCase())
@@ -288,11 +289,33 @@ export function useQBankSync() {
         }
 
         let correctChoiceId = alternatives.find(a => a.isCorrect)?.id;
-        if (!correctChoiceId && payload.correctChoice) {
+        if (!correctChoiceId && (payload.correctChoice || payload.correctAnswer)) {
+          const corrStr = (payload.correctChoice || payload.correctAnswer).toString().trim().toUpperCase();
           const foundCorrect = alternatives.find(a => 
-            a.letter && a.letter.toUpperCase() === payload.correctChoice.toString().toUpperCase()
+            (a.letter && a.letter.toUpperCase() === corrStr) || a.id === corrStr
           );
-          if (foundCorrect) correctChoiceId = foundCorrect.id;
+          if (foundCorrect) {
+            correctChoiceId = foundCorrect.id;
+            foundCorrect.isCorrect = true;
+          }
+        }
+
+        // Determinação robusta de isCorrect
+        let isCorrect = false;
+        if (typeof payload.isCorrect === 'boolean') {
+          isCorrect = payload.isCorrect;
+        } else if (payload.isCorrect === 'true' || payload.isCorrect === 1 || payload.isCorrect === '1' || payload.isCorrect === 'correct') {
+          isCorrect = true;
+        } else if (payload.status === 'correct' || payload.result === 'correct' || payload.userResult === 'correct' || payload.correct === true) {
+          isCorrect = true;
+        } else if (foundSelected && foundSelected.isCorrect) {
+          isCorrect = true;
+        } else if (selectedChoiceId && correctChoiceId && selectedChoiceId === correctChoiceId) {
+          isCorrect = true;
+        } else if (payload.selectedChoice && payload.correctChoice && payload.selectedChoice.toString().trim().toUpperCase() === payload.correctChoice.toString().trim().toUpperCase()) {
+          isCorrect = true;
+        } else if (payload.userAnswer && payload.correctAnswer && payload.userAnswer.toString().trim().toUpperCase() === payload.correctAnswer.toString().trim().toUpperCase()) {
+          isCorrect = true;
         }
 
         const storeState = useStore.getState();
@@ -347,22 +370,37 @@ export function useQBankSync() {
             const existingLog = currentLogs[existingLogIndex];
             const qids: string[] = Array.isArray(existingLog.questionIds) ? existingLog.questionIds : [];
 
-            // Apenas incrementa a contagem de questões (amount) se for uma questão ainda não registrada hoje
             if (!qids.includes(qid)) {
               qids.push(qid);
-              existingLog.questionIds = qids;
-              const newAmount = qids.length;
-              const prevAmount = newAmount - 1;
-              const prevScore = Number(existingLog.scorePercent) || 0;
-              const newScore = Math.round(((prevScore * prevAmount) + (isCorrect ? 100 : 0)) / newAmount);
-              
-              existingLog.amount = newAmount;
-              existingLog.scorePercent = newScore;
-              existingLog.minutesSpent = (existingLog.minutesSpent || 0) + timeMinutes;
-            } else {
-              // Questão já registrada hoje: apenas atualiza o tempo se razoável
-              existingLog.minutesSpent = Math.max(existingLog.minutesSpent || 0, timeMinutes);
             }
+            existingLog.questionIds = qids;
+
+            // Recalcula scorePercent e volume com precisão
+            const stateQ = useStore.getState().questions;
+            let answeredQCount = 0;
+            let correctQCount = 0;
+
+            qids.forEach(curQid => {
+              const matched = stateQ.find(q => q.qid === curQid || q.id === curQid);
+              if (matched && (matched.status && matched.status !== 'unused')) {
+                answeredQCount++;
+                const isMatchCorrect = matched.status === 'correct' || (matched.attempts && matched.attempts.some(a => a.isCorrect)) || (matched as any).isCorrect === true;
+                if (isMatchCorrect) correctQCount++;
+              } else if (curQid === qid) {
+                answeredQCount++;
+                if (isCorrect) correctQCount++;
+              }
+            });
+
+            if (answeredQCount === 0) {
+              answeredQCount = qids.length;
+              correctQCount = isCorrect ? 1 : 0;
+            }
+
+            const newScore = Math.round((correctQCount / Math.max(1, answeredQCount)) * 100);
+            existingLog.amount = Math.max(existingLog.amount || 1, qids.length);
+            existingLog.scorePercent = newScore;
+            existingLog.minutesSpent = Math.max(existingLog.minutesSpent || 0, (existingLog.minutesSpent || 0) + timeMinutes);
           } else {
             currentLogs.unshift({
               id: 'log-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
@@ -391,7 +429,7 @@ export function useQBankSync() {
       const questionData = rawPayload.question || rawPayload.questionData || rawPayload.payload || rawPayload;
       if (!questionData) return;
       const state = useStore.getState();
-      const targetArea = rawPayload.areaId || state.notebookAreas[0]?.id || 'area-clinica';
+      const targetArea = rawPayload.areaId || undefined;
       const noteId = state.createNoteFromQuestion(questionData, targetArea, rawPayload.customTitle);
 
       // Também sincroniza a questão no repositório de questões

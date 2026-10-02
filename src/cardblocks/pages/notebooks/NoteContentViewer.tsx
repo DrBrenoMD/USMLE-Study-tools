@@ -1,6 +1,5 @@
 import React from 'react';
-import { IsolatedHtml } from '../../components/IsolatedHtml';
-import { renderNoteContentWithClozes, hasInteractiveHtml, cn } from '../../lib/utils';
+import { renderCardText, cn } from '../../lib/utils';
 
 interface NoteContentViewerProps {
   content?: string;
@@ -31,25 +30,7 @@ export const NoteContentViewer: React.FC<NoteContentViewerProps> = ({
     );
   }
 
-  const isInteractive = hasInteractiveHtml(content);
-
-  if (isInteractive) {
-    const processedHtml = renderNoteContentWithClozes(content, forceRevealClozes, true);
-    return (
-      <div
-        onDoubleClick={onDoubleClick}
-        className={cn("relative w-full max-w-full overflow-hidden my-1 group", className)}
-        title={title}
-      >
-        <IsolatedHtml
-          html={processedHtml}
-          className="w-full max-w-full rounded-xl overflow-hidden"
-        />
-      </div>
-    );
-  }
-
-  const renderedHtml = renderNoteContentWithClozes(content, forceRevealClozes);
+  const renderedHtml = renderCardText(content, forceRevealClozes);
 
   return (
     <div

@@ -217,7 +217,7 @@ export default function StudyDesk() {
     return availableQuestions[activeQuestionIndex] || null;
   }, [availableQuestions, activeQuestionIndex]);
 
-  // Current Question ID depending on Mode
+  // Current Question ID and matching object depending on Mode
   const activeQid = useMemo(() => {
     if (sourceMode === 'external') {
       return lastSyncedQid || 'QBank-Live';
@@ -225,15 +225,24 @@ export default function StudyDesk() {
     return currentInternalQuestion?.qid || currentInternalQuestion?.id || '—';
   }, [sourceMode, lastSyncedQid, currentInternalQuestion]);
 
+  const matchingQuestionObj = useMemo(() => {
+    if (sourceMode === 'internal') return currentInternalQuestion;
+    return questions.find(q => q.qid === activeQid || q.id === activeQid || q.qid === lastSyncedQid) || null;
+  }, [sourceMode, currentInternalQuestion, questions, activeQid, lastSyncedQid]);
+
   const activeSubject = useMemo(() => {
-    if (sourceMode === 'external') return lastSyncedSubject;
-    return currentInternalQuestion?.subject || 'Geral';
-  }, [sourceMode, lastSyncedSubject, currentInternalQuestion]);
+    if (sourceMode === 'external') {
+      return matchingQuestionObj?.subject || lastSyncedSubject || 'Geral';
+    }
+    return currentInternalQuestion?.subject || matchingQuestionObj?.subject || 'Geral';
+  }, [sourceMode, matchingQuestionObj, lastSyncedSubject, currentInternalQuestion]);
 
   const activeSystem = useMemo(() => {
-    if (sourceMode === 'external') return lastSyncedSystem;
-    return currentInternalQuestion?.system || 'Geral';
-  }, [sourceMode, lastSyncedSystem, currentInternalQuestion]);
+    if (sourceMode === 'external') {
+      return matchingQuestionObj?.system || lastSyncedSystem || 'Geral';
+    }
+    return currentInternalQuestion?.system || matchingQuestionObj?.system || 'Geral';
+  }, [sourceMode, matchingQuestionObj, lastSyncedSystem, currentInternalQuestion]);
 
   // Active Question's Associated Flashcards
   const activeQuestionCards = useMemo(() => {
@@ -269,10 +278,6 @@ export default function StudyDesk() {
     setCardFront('');
     setCardBack('');
     setCardTags(`qid:${activeQid}, ${activeSubject}, ${activeSystem}`.trim());
-
-    if (notebookAreas.length > 0 && !noteAreaId) {
-      setNoteAreaId(notebookAreas[0].id);
-    }
     setNoteTitle(`Questão ${activeQid} - ${activeSubject}`);
   }, [activeQid, activeSubject, activeSystem, sourceMode, currentInternalQuestion?.id]);
 
@@ -385,23 +390,28 @@ export default function StudyDesk() {
   // Quick Note Creation from Question
   const handleCreateNoteFromActive = () => {
     // Utiliza o Subject extraído da questão como a área; se não existir uma com esse nome, cria uma
-    const rawSubj = (activeSubject || 'Geral').trim();
+    const currentQ = matchingQuestionObj;
+    const rawSubj = (activeSubject || currentQ?.subject || (sourceMode === 'external' ? lastSyncedSubject : currentInternalQuestion?.subject) || 'Geral').trim();
+    const rawSys = (activeSystem || currentQ?.system || (sourceMode === 'external' ? lastSyncedSystem : currentInternalQuestion?.system) || 'Geral').trim();
+    
     let areaId = noteAreaId;
     if (!areaId) {
-      const foundArea = notebookAreas.find(a => a.name.trim().toLowerCase() === rawSubj.toLowerCase());
+      const state = useStore.getState();
+      const currentAreas = state.notebookAreas || [];
+      const foundArea = currentAreas.find(a => a.name.trim().toLowerCase() === rawSubj.toLowerCase());
       if (foundArea) {
         areaId = foundArea.id;
       } else {
-        const defaultNbId = studyNotebooks[0]?.id || 'nb-principal';
+        const defaultNbId = state.studyNotebooks[0]?.id || 'nb-principal';
         areaId = createNotebookArea(rawSubj, '#3b82f6', defaultNbId);
       }
     }
 
-    const title = noteTitle.trim() || `Questão ${activeQid} - ${activeSubject}`;
+    const title = noteTitle.trim() || `Questão ${activeQid} - ${rawSubj}`;
 
     const content = `<h3>Anotações da Questão (QID: ${activeQid}):</h3>
 <div class="p-3.5 bg-blue-50/60 dark:bg-blue-950/30 rounded-xl border border-blue-200 dark:border-blue-900/60 text-sm leading-relaxed my-3">
-  <b>Matéria:</b> ${activeSubject} | <b>Sistema:</b> ${activeSystem}
+  <b>Matéria:</b> ${rawSubj} | <b>Sistema:</b> ${rawSys}
 </div>
 ${lastSyncedObjective ? `<blockquote><p><b>Educational Objective:</b> ${lastSyncedObjective}</p></blockquote>` : ''}`;
 
@@ -415,7 +425,7 @@ ${lastSyncedObjective ? `<blockquote><p><b>Educational Objective:</b> ${lastSync
       content,
       icon: '🎯',
       associatedQuestionIds: [activeQid],
-      tags: [`qid:${activeQid}`, activeSubject, activeSystem],
+      tags: [`qid:${activeQid}`, rawSubj, rawSys].filter(Boolean),
     });
 
     setEditingNoteId(noteId);

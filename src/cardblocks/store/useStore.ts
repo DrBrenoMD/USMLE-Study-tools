@@ -425,6 +425,13 @@ export interface StoreState {
   resetExtensionStats: () => void;
   resetSubjectStats: (subject: string) => void;
   resetSystemStats: (system: string) => void;
+  resetDateStats: (dateStr: string) => void;
+  resetStatusStats: (status: 'correct' | 'incorrect') => void;
+  resetPerformanceTimes: () => void;
+  resetStudyDeskSessions: () => void;
+  resetManualStudyLogs: () => void;
+  resetChronologicalStats: () => void;
+  resetAllQuestionStats: () => void;
   updateQuestionNotes: (questionId: string, notes: string) => void;
   toggleQuestionFlag: (questionId: string) => void;
 
@@ -1535,6 +1542,108 @@ export const useStore = create<StoreState>()(
           }));
         },
 
+        resetDateStats: (dateStr) => {
+          get().deleteQuestionRecordsForDate(dateStr);
+        },
+
+        resetStatusStats: (targetStatus) => {
+          set(state => ({
+            questions: state.questions.map(q => {
+              if (q.status !== targetStatus) return q;
+              return {
+                ...q,
+                status: 'unused' as const,
+                selectedChoiceId: undefined,
+                resolutionTimeSeconds: 0,
+                reviewTimeSeconds: 0,
+                attempts: [],
+                lastAnsweredAt: undefined,
+                updatedAt: Date.now(),
+              };
+            }),
+            studyDeskSessions: (state.studyDeskSessions || []).map(s => {
+              const remaining = (s.questionRecords || []).filter(r => (targetStatus === 'correct' ? !r.isCorrect : r.isCorrect));
+              const correctCount = remaining.filter(r => r.isCorrect).length;
+              return {
+                ...s,
+                completedQuestions: remaining.length,
+                correctCount,
+                incorrectCount: remaining.length - correctCount,
+                questionRecords: remaining,
+              };
+            })
+          }));
+        },
+
+        resetPerformanceTimes: () => {
+          set(state => ({
+            questions: state.questions.map(q => ({
+              ...q,
+              resolutionTimeSeconds: 0,
+              reviewTimeSeconds: 0,
+              attempts: (q.attempts || []).map(a => ({ ...a, resolutionTimeSeconds: 0, reviewTimeSeconds: 0 })),
+              updatedAt: Date.now()
+            })),
+            studyDeskSessions: (state.studyDeskSessions || []).map(s => ({
+              ...s,
+              totalResolutionTimeSeconds: 0,
+              totalReviewTimeSeconds: 0,
+              questionRecords: (s.questionRecords || []).map(r => ({ ...r, resolutionTimeSeconds: 0, reviewTimeSeconds: 0 }))
+            }))
+          }));
+        },
+
+        resetStudyDeskSessions: () => {
+          set({ studyDeskSessions: [], activeDeskSessionId: null });
+        },
+
+        resetManualStudyLogs: () => {
+          try {
+            localStorage.removeItem('usmle_study_logs_v4');
+            window.dispatchEvent(new Event('usmle_logs_updated'));
+          } catch(e) {}
+        },
+
+        resetChronologicalStats: () => {
+          set(state => ({
+            questions: state.questions.map(q => ({
+              ...q,
+              status: 'unused' as const,
+              selectedChoiceId: undefined,
+              resolutionTimeSeconds: 0,
+              reviewTimeSeconds: 0,
+              attempts: [],
+              lastAnsweredAt: undefined,
+              updatedAt: Date.now()
+            })),
+            studyDeskSessions: []
+          }));
+          try {
+            localStorage.removeItem('usmle_study_logs_v4');
+            window.dispatchEvent(new Event('usmle_logs_updated'));
+          } catch(e) {}
+        },
+
+        resetAllQuestionStats: () => {
+          set(state => ({
+            questions: state.questions.map(q => ({
+              ...q,
+              status: 'unused' as const,
+              selectedChoiceId: undefined,
+              resolutionTimeSeconds: 0,
+              reviewTimeSeconds: 0,
+              attempts: [],
+              lastAnsweredAt: undefined,
+              updatedAt: Date.now()
+            })),
+            studyDeskSessions: []
+          }));
+          try {
+            localStorage.removeItem('usmle_study_logs_v4');
+            window.dispatchEvent(new Event('usmle_logs_updated'));
+          } catch(e) {}
+        },
+
         deleteQuestionRecordsForDate: (dateStr) => {
           set(state => {
             const updatedQuestions = state.questions.map(q => {
@@ -2237,11 +2346,23 @@ ${card.details ? `<p><i>Detalhes adicionais:</i> ${card.details}</p>` : ''}`;
           const state = get();
           const defaultNbId = state.studyNotebooks[0]?.id || 'nb-principal';
           
-          // Se não foi fornecida uma área específica, utiliza o Subject da questão como área
+          const qid = (questionData.qid || questionData.questionId || questionData.id || '').toString().trim();
+          const existingQ = state.questions.find(q => q.qid === qid || q.id === qid);
+
+          const rawSubj = (questionData.subject || existingQ?.subject || '').toString().trim();
+          const rawSys = (questionData.system || existingQ?.system || '').toString().trim();
+
+          // Se não foi fornecida uma área específica, utiliza o Subject da questão como área (encontra ou cria)
           let targetArea = areaId;
           if (!targetArea) {
-            const rawSubj = (questionData.subject || '').trim();
-            if (rawSubj) {
+            if (rawSubj && rawSubj.toLowerCase() !== 'geral' && rawSubj.toLowerCase() !== 'outros') {
+              const found = state.notebookAreas.find(a => a.name.trim().toLowerCase() === rawSubj.toLowerCase());
+              if (found) {
+                targetArea = found.id;
+              } else {
+                targetArea = get().createNotebookArea(rawSubj, '#3b82f6', defaultNbId);
+              }
+            } else if (rawSubj) {
               const found = state.notebookAreas.find(a => a.name.trim().toLowerCase() === rawSubj.toLowerCase());
               if (found) {
                 targetArea = found.id;
@@ -2253,15 +2374,18 @@ ${card.details ? `<p><i>Detalhes adicionais:</i> ${card.details}</p>` : ''}`;
             }
           }
 
-          const qid = questionData.qid || questionData.questionId || questionData.id || '';
-          const stem = questionData.stem || questionData.text || questionData.questionStem || '';
-          const explanation = questionData.explanation || '';
-          const objective = questionData.educationalObjective || '';
-          const title = customTitle || (stem ? stem.replace(/<[^>]+>/g, '').trim().substring(0, 85) + '...' : `Nota sobre Questão ${qid}`);
+          const stem = questionData.stem || questionData.text || questionData.questionStem || existingQ?.text || existingQ?.stem || '';
+          const explanation = questionData.explanation || existingQ?.explanation || '';
+          const objective = questionData.educationalObjective || (existingQ as any)?.educationalObjective || '';
+          const title = customTitle || (stem ? stem.replace(/<[^>]+>/g, '').trim().substring(0, 85) + '...' : `Nota sobre Questão ${qid || 'Q-Bank'}`);
 
           let choicesHtml = '';
-          if (Array.isArray(questionData.alternatives) && questionData.alternatives.length > 0) {
-            choicesHtml = `<div class="my-3 space-y-1.5 font-sans">${questionData.alternatives.map((a: any) => `
+          const alternatives = (Array.isArray(questionData.alternatives) && questionData.alternatives.length > 0)
+            ? questionData.alternatives
+            : (existingQ?.alternatives || []);
+
+          if (Array.isArray(alternatives) && alternatives.length > 0) {
+            choicesHtml = `<div class="my-3 space-y-1.5 font-sans">${alternatives.map((a: any) => `
               <div class="p-2.5 rounded-lg border ${a.isCorrect ? 'bg-emerald-50 border-emerald-300 text-emerald-950 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-200 font-bold' : 'bg-gray-50 border-gray-200 text-gray-800 dark:bg-gray-800/60 dark:border-gray-700 dark:text-gray-200'}">
                 <b>${a.letter || ''}.</b> ${a.text} ${a.isCorrect ? ' <span class="text-xs text-emerald-600 dark:text-emerald-400 font-semibold">[Gabarito Correto]</span>' : ''}
               </div>
@@ -2270,8 +2394,9 @@ ${card.details ? `<p><i>Detalhes adicionais:</i> ${card.details}</p>` : ''}`;
 
           const content = `<h3>Enunciado da Questão ${qid ? `(QID: ${qid})` : ''}:</h3>
 <div class="p-4 bg-gray-50 dark:bg-gray-800/80 rounded-xl border border-gray-200 dark:border-gray-700 text-sm leading-relaxed my-3">
-  ${stem}
+  ${stem || 'Questão importada do banco de questões.'}
 </div>
+${rawSubj || rawSys ? `<div class="p-3 bg-blue-50/60 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-900/60 text-xs text-blue-900 dark:text-blue-200 font-semibold my-2"><b>Matéria:</b> ${rawSubj || 'Geral'} • <b>Sistema:</b> ${rawSys || 'Geral'}</div>` : ''}
 ${choicesHtml}
 ${explanation ? `<h4>Explicação Comentada:</h4><div class="p-4 bg-blue-50/70 dark:bg-blue-950/30 rounded-xl border border-blue-200 dark:border-blue-900/60 text-sm leading-relaxed my-3">${explanation}</div>` : ''}
 ${objective ? `<blockquote><p><b>Educational Objective:</b> ${objective}</p></blockquote>` : ''}`;
@@ -2283,7 +2408,7 @@ ${objective ? `<blockquote><p><b>Educational Objective:</b> ${objective}</p></bl
             content,
             icon: '🎯',
             associatedQuestionIds: qid ? [qid] : [],
-            tags: questionData.tags || (qid ? [`qid:${qid}`] : [])
+            tags: questionData.tags || [qid ? `qid:${qid}` : '', rawSubj, rawSys].filter(Boolean)
           });
 
           return noteId;

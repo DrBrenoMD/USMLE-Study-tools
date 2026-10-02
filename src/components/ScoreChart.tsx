@@ -186,19 +186,29 @@ export function ScoreChart({ logs }: ScoreChartProps) {
   // Helper universal de determinação de acerto da questão
   const isQuestionCorrect = (q: Question, att?: any): boolean => {
     if (att && typeof att.isCorrect === 'boolean') return att.isCorrect;
+    if (att && (att.isCorrect === 'true' || att.isCorrect === 1 || att.isCorrect === '1' || att.isCorrect === 'correct')) return true;
     if (typeof q.status === 'string') {
-      const s = q.status.toLowerCase();
-      if (s === 'correct') return true;
-      if (s === 'incorrect') return false;
+      const s = q.status.toLowerCase().trim();
+      if (s === 'correct' || s === 'right' || s === 'acertou' || s === 'correta') return true;
+      if (s === 'incorrect' || s === 'wrong' || s === 'errou' || s === 'incorreta') return false;
     }
-    if ((q as any).isCorrect === true) return true;
+    if ((q as any).isCorrect === true || (q as any).isCorrect === 'true' || (q as any).isCorrect === 1 || (q as any).isCorrect === '1' || (q as any).isCorrect === 'correct') return true;
+    if ((q as any).result === 'correct' || (q as any).userResult === 'correct' || (q as any).correct === true) return true;
+    if (q.selectedChoiceId && Array.isArray(q.alternatives) && q.alternatives.length > 0) {
+      const selectedAlt = q.alternatives.find(a => 
+        a.id === q.selectedChoiceId || 
+        (a.letter && a.letter.toUpperCase() === q.selectedChoiceId?.toUpperCase()) ||
+        (a.text && q.selectedChoiceId && a.text.trim().toLowerCase() === q.selectedChoiceId.trim().toLowerCase())
+      );
+      if (selectedAlt && selectedAlt.isCorrect) return true;
+    }
     if (q.attempts && q.attempts.length > 0) {
       if (att) {
-        return Boolean(att.isCorrect);
+        return Boolean((att as any).isCorrect === true || (att as any).isCorrect === 'true' || (att as any).isCorrect === 1 || (att as any).isCorrect === '1' || (att as any).isCorrect === 'correct');
       }
       const last = q.attempts[q.attempts.length - 1];
       if (typeof last?.isCorrect === 'boolean') return last.isCorrect;
-      return q.attempts.some(a => a.isCorrect === true);
+      return q.attempts.some(a => (a as any).isCorrect === true || (a as any).isCorrect === 'true' || (a as any).isCorrect === 1 || (a as any).isCorrect === '1' || (a as any).isCorrect === 'correct');
     }
     return false;
   };
@@ -373,7 +383,12 @@ export function ScoreChart({ logs }: ScoreChartProps) {
         const consolidatedTotal = Math.max(lTotal, qTotal);
         entry.totalAmount = consolidatedTotal;
 
-        if (lScored > 0) {
+        // Se temos questões individuais com avaliação (qScored > 0) e elas trazem acertos ou o log está zerado
+        if (qScored > 0 && (qCorrect > 0 || lScored === 0 || lCorrect === 0)) {
+          const qAccuracyRatio = qCorrect / qScored;
+          entry.scoredAmount = consolidatedTotal;
+          entry.correctCount = Math.round(qAccuracyRatio * consolidatedTotal);
+        } else if (lScored > 0) {
           // Utiliza a taxa média ponderada dos blocos de teste registrados no dia
           const logAccuracyRatio = lCorrect / lScored;
           entry.scoredAmount = consolidatedTotal;

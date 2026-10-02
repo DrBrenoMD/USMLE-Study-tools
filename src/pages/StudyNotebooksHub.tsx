@@ -42,7 +42,7 @@ export default function StudyNotebooksHub() {
       if (existing) {
         setActiveNoteId(existing.id);
       } else {
-        const targetArea = areaIdParam || notebookAreas[0]?.id || 'area-clinica';
+        const targetArea = areaIdParam || undefined;
         const newId = createNoteFromQuestion({ qid, stem: `Questão QID: ${qid}` }, targetArea);
         setActiveNoteId(newId);
       }
@@ -54,7 +54,7 @@ export default function StudyNotebooksHub() {
       if (pendingNote) {
         const parsed = JSON.parse(pendingNote);
         if (parsed) {
-          const targetArea = areaIdParam || notebookAreas[0]?.id || 'area-clinica';
+          const targetArea = areaIdParam || undefined;
           const newId = createNoteFromQuestion(parsed, targetArea);
           setActiveNoteId(newId);
           localStorage.removeItem('pending_note_import');
@@ -69,7 +69,7 @@ export default function StudyNotebooksHub() {
       const detail = e.detail || e.data;
       if (detail && (detail.type === 'CREATE_NOTE_FROM_QUESTION' || detail.action === 'create_note_from_question') && (detail.question || detail.questionData)) {
         const qData = detail.question || detail.questionData;
-        const targetArea = detail.areaId || notebookAreas[0]?.id || 'area-clinica';
+        const targetArea = detail.areaId || undefined;
         const noteId = createNoteFromQuestion(qData, targetArea, detail.customTitle);
         setActiveNoteId(noteId);
       } else if (e.type === 'usmle_note_created' && e.detail?.noteId) {

@@ -5,6 +5,7 @@ import { Flame, Trophy, Clock, CheckCircle2, Calendar as CalendarIcon, Sparkles,
 import { StudyLogEntry, Resource, getCategoryIcon } from '../types';
 import { cn } from '../lib/utils';
 import { useTimerStore } from '../store/useTimerStore';
+import { useStore } from '../cardblocks/store/useStore';
 import { DateRecordsManagerModal } from './DateRecordsManagerModal';
 
 interface StudyHeatmapProps {
@@ -21,6 +22,7 @@ export function StudyHeatmap({ logs, resources, onAddLog, onDeleteLog, onSelectD
   const [weeksToShow, setWeeksToShow] = useState<number>(18); // ~4.5 meses
   const [isDateManagerOpen, setIsDateManagerOpen] = useState(false);
   const { dailyNetTime } = useTimerStore();
+  const { questions } = useStore();
 
   // Mapa de data (YYYY-MM-DD) -> Array de Logs
   const logsByDate = useMemo(() => {
@@ -200,6 +202,28 @@ export function StudyHeatmap({ logs, resources, onAddLog, onDeleteLog, onSelectD
   };
 
   const dayLabels = ['Seg', '', 'Qua', '', 'Sex', '', 'Dom'];
+
+  // Helper universal para conferir acerto da questão
+  const isQCorrect = (q: any) => {
+    if (typeof q.status === 'string') {
+      const s = q.status.toLowerCase().trim();
+      if (s === 'correct' || s === 'right' || s === 'acertou' || s === 'correta') return true;
+      if (s === 'incorrect' || s === 'wrong' || s === 'errou' || s === 'incorreta') return false;
+    }
+    if (q.isCorrect === true || q.isCorrect === 'true' || q.isCorrect === 1 || q.isCorrect === '1' || q.isCorrect === 'correct') return true;
+    if (q.selectedChoiceId && Array.isArray(q.alternatives) && q.alternatives.length > 0) {
+      const selectedAlt = q.alternatives.find((a: any) => 
+        a.id === q.selectedChoiceId || 
+        (a.letter && a.letter.toUpperCase() === q.selectedChoiceId?.toUpperCase()) ||
+        (a.text && q.selectedChoiceId && a.text.trim().toLowerCase() === q.selectedChoiceId.trim().toLowerCase())
+      );
+      if (selectedAlt && selectedAlt.isCorrect) return true;
+    }
+    if (q.attempts && q.attempts.length > 0) {
+      return q.attempts.some((a: any) => (a as any).isCorrect === true || (a as any).isCorrect === 'true' || (a as any).isCorrect === 1 || (a as any).isCorrect === '1' || (a as any).isCorrect === 'correct');
+    }
+    return false;
+  };
 
   return (
     <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 shadow-sm flex flex-col gap-6">
@@ -384,19 +408,40 @@ export function StudyHeatmap({ logs, resources, onAddLog, onDeleteLog, onSelectD
 
           <div className="flex items-center gap-4 flex-wrap">
             {(() => {
-              const qbankLogs = selectedDayLogs.filter(log => log.resourceType === 'qbank' || log.unit === 'questões');
-              const totalQuestions = qbankLogs.reduce((acc, log) => acc + log.amount, 0);
-              const totalAmountScored = qbankLogs.filter(l => l.scorePercent !== undefined).reduce((acc, log) => acc + log.amount, 0);
-              const totalScoreWeighted = qbankLogs.filter(l => l.scorePercent !== undefined).reduce((acc, log) => acc + ((log.scorePercent || 0) * log.amount), 0);
-              const avgScore = totalAmountScored > 0 ? Math.round(totalScoreWeighted / totalAmountScored) : 0;
+              const qbankLogs = selectedDayLogs.filter(log => log.resourceType === 'qbank' || log.unit === 'questões' || log.unit === 'questoes');
+              const totalLogQuestions = qbankLogs.reduce((acc, log) => acc + (Number(log.amount) || 0), 0);
+              const totalAmountScored = qbankLogs.filter(l => l.scorePercent !== undefined && l.scorePercent !== null).reduce((acc, log) => acc + (Number(log.amount) || 0), 0);
+              const totalScoreWeighted = qbankLogs.filter(l => l.scorePercent !== undefined && l.scorePercent !== null).reduce((acc, log) => acc + ((Number(log.scorePercent) || 0) * (Number(log.amount) || 0)), 0);
+              let logAvgScore = totalAmountScored > 0 ? Math.round(totalScoreWeighted / totalAmountScored) : 0;
 
-              return totalQuestions > 0 ? (
+              // Busca todas as questões respondidas nesta data no repositório
+              const dayQuestions = questions.filter(q => {
+                const isAnswered = (q.status && q.status !== 'unused') || (q.attempts && q.attempts.length > 0) || (q as any).isCorrect !== undefined || Boolean(q.lastAnsweredAt);
+                if (!isAnswered) return false;
+                const d = q.lastAnsweredAt ? format(new Date(q.lastAnsweredAt), 'yyyy-MM-dd') : q.updatedAt ? format(new Date(q.updatedAt), 'yyyy-MM-dd') : q.createdAt ? format(new Date(q.createdAt), 'yyyy-MM-dd') : null;
+                const matchesDate = d === selectedDateStr || (q.attempts && q.attempts.some(a => a.timestamp && format(new Date(a.timestamp), 'yyyy-MM-dd') === selectedDateStr));
+                return matchesDate;
+              });
+
+              let avgScore = logAvgScore;
+              const dayQCorrectCount = dayQuestions.filter(isQCorrect).length;
+              if (dayQuestions.length > 0) {
+                if (logAvgScore === 0 || dayQCorrectCount > 0) {
+                  avgScore = Math.round((dayQCorrectCount / dayQuestions.length) * 100);
+                }
+              }
+
+              const displayTotalQuestions = Math.max(totalLogQuestions, dayQuestions.length);
+
+              return displayTotalQuestions > 0 ? (
                 <div className="flex items-center gap-3 text-xs bg-white dark:bg-gray-900 px-2 py-1 rounded-md border border-gray-200 dark:border-gray-700">
                   <div className="flex items-center gap-1.5">
                     <CheckSquare className="w-3.5 h-3.5 text-blue-500" />
-                    <span className="font-semibold text-gray-700 dark:text-gray-300">{totalQuestions} questões</span>
+                    <span className="font-semibold text-gray-700 dark:text-gray-300">
+                      {displayTotalQuestions} questões
+                    </span>
                   </div>
-                  {totalAmountScored > 0 && (
+                  {(totalAmountScored > 0 || dayQuestions.length > 0) && (
                     <>
                       <div className="w-px h-3 bg-gray-200 dark:bg-gray-700"></div>
                       <div className="flex items-center gap-1.5">
@@ -432,6 +477,22 @@ export function StudyHeatmap({ logs, resources, onAddLog, onDeleteLog, onSelectD
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {selectedDayLogs.map((log) => {
               const Icon = getCategoryIcon(log.resourceType);
+
+              // Calcula acurácia real se o log estiver com 0% mas houver dados de questões
+              let displayScore = log.scorePercent;
+              if (displayScore === 0 || displayScore === undefined) {
+                const dayQ = questions.filter(q => {
+                  const isAnswered = (q.status && q.status !== 'unused') || (q.attempts && q.attempts.length > 0) || (q as any).isCorrect !== undefined || Boolean(q.lastAnsweredAt);
+                  if (!isAnswered) return false;
+                  const d = q.lastAnsweredAt ? format(new Date(q.lastAnsweredAt), 'yyyy-MM-dd') : q.updatedAt ? format(new Date(q.updatedAt), 'yyyy-MM-dd') : q.createdAt ? format(new Date(q.createdAt), 'yyyy-MM-dd') : null;
+                  return d === log.date || (q.attempts && q.attempts.some(a => a.timestamp && format(new Date(a.timestamp), 'yyyy-MM-dd') === log.date));
+                });
+                if (dayQ.length > 0) {
+                  const correct = dayQ.filter(isQCorrect).length;
+                  displayScore = Math.round((correct / dayQ.length) * 100);
+                }
+              }
+
               return (
                 <div key={log.id} className="flex items-center justify-between p-2.5 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-xs">
                   <div className="flex items-center gap-2.5">
@@ -442,8 +503,8 @@ export function StudyHeatmap({ logs, resources, onAddLog, onDeleteLog, onSelectD
                       <div className="font-semibold text-gray-900 dark:text-gray-100">{log.resourceName}</div>
                       <div className="text-[10px] text-gray-500 dark:text-gray-400">
                         {log.amount} {log.unit} • {log.minutesSpent} min
-                        {log.scorePercent !== undefined && (
-                          <span className="font-semibold text-emerald-600 ml-1">({log.scorePercent}% acertos)</span>
+                        {displayScore !== undefined && (
+                          <span className="font-semibold text-emerald-600 ml-1">({displayScore}% acertos)</span>
                         )}
                       </div>
                       {log.notes && (
